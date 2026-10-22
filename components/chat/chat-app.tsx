@@ -35,6 +35,9 @@ type Turn = {
 };
 
 const POLL_MS = 3000;
+const POLL_IDLE_MS = 15_000;
+/** Stop checking a chat with Billie after 10 quiet minutes. */
+const IDLE_MS = 10 * 60_000;
 let pendingSeq = 0;
 
 function storageKey(slug: string, channel: string) {
@@ -190,19 +193,26 @@ export function ChatApp({
     };
   }, [key, api, absorb, forget]);
 
-  // While a person has the chat, check for their replies.
+  // Check for the team's replies: often while a person has the chat, now and
+  // then for a recent chat with Billie (a team member may step in).
   useEffect(() => {
-    if (!token || !(status === "waiting" || status === "live" || status === "ticket")) return;
-    const t = setInterval(async () => {
-      if (document.visibilityState !== "visible") return;
-      try {
-        const after = lastAt.current ? `?after=${encodeURIComponent(lastAt.current)}` : "";
-        const { res, body } = await api(`messages${after}`);
-        if (res.ok) absorb(body as Turn, false);
-      } catch {
-        /* offline for a moment: try again next tick */
-      }
-    }, POLL_MS);
+    if (!token || status === "closed" || status === "collecting") return;
+    const withPerson = status === "waiting" || status === "live" || status === "ticket";
+    const t = setInterval(
+      async () => {
+        if (document.visibilityState !== "visible") return;
+        const last = lastAt.current ? Date.parse(lastAt.current) : 0;
+        if (!withPerson && Date.now() - last > IDLE_MS) return;
+        try {
+          const after = lastAt.current ? `?after=${encodeURIComponent(lastAt.current)}` : "";
+          const { res, body } = await api(`messages${after}`);
+          if (res.ok) absorb(body as Turn, false);
+        } catch {
+          /* offline for a moment: try again next tick */
+        }
+      },
+      withPerson ? POLL_MS : POLL_IDLE_MS,
+    );
     return () => clearInterval(t);
   }, [token, status, api, absorb]);
 

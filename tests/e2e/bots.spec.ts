@@ -176,3 +176,49 @@ test("the website widget shows only on the bot's own websites", async ({ browser
   await expect(other.getByRole("button", { name: "Chat with Exhibitor Help" })).toHaveCount(0);
   await visitor.close();
 });
+
+test("live handover: the team replies from the Inbox and hands back", async ({ page, browser }) => {
+  await signInAsAdmin(page);
+  await page.goto("/inbox");
+  await page.getByRole("switch", { name: "Available for live chats" }).click();
+  await expect(page.getByText("You're available for live chats")).toBeVisible();
+
+  const visitor = await browser.newContext();
+  const chat = await visitor.newPage();
+  await chat.goto("/c/exhibitor-help");
+  await chat.getByLabel("Your message").fill("Can I speak to a person please?");
+  await chat.getByLabel("Your message").press("Enter");
+  await expect(chat.getByText("Connecting you to the team…")).toBeVisible({ timeout: 20_000 });
+
+  // The chat waits in "Needs you"; open it and reply.
+  const row = page.getByTestId("inbox-row").filter({ hasText: "speak to a person" });
+  await expect(row).toBeVisible({ timeout: 15_000 });
+  await row.click();
+  await page.getByLabel("Reply").fill("Hi, it's Umit from the ops team. How can I help?");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+
+  await expect(chat.getByText("Hi, it's Umit from the ops team.", { exact: false })).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(chat.getByText("Chatting with Umit")).toBeVisible();
+  await shot(chat, "chat-live");
+
+  await chat.getByLabel("Your message").fill("Where do we unload on build-up day?");
+  await chat.getByLabel("Your message").press("Enter");
+  await expect(page.getByText("Where do we unload on build-up day?")).toBeVisible({ timeout: 15_000 });
+  await shot(page, "inbox");
+
+  // Teach Billie from the chat, then hand back.
+  await page.getByRole("button", { name: "Save an answer for this" }).last().click();
+  await page.getByLabel("Answer", { exact: true }).fill("Unload at Gate B from 7am.");
+  await page.getByRole("button", { name: "Save answer" }).click();
+  await expect(page.getByText(/use this answer from now on/)).toBeVisible();
+  await page.getByRole("button", { name: "Back to Billie" }).click();
+  await expect(chat.getByText("You're back with Billie. Ask me anything.")).toBeVisible({
+    timeout: 15_000,
+  });
+
+  await page.getByRole("switch", { name: "Available for live chats" }).click();
+  await expect(page.getByText("You're not taking live chats")).toBeVisible();
+  await visitor.close();
+});
