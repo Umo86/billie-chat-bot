@@ -3,12 +3,14 @@ import { signOut } from "@/app/actions/auth";
 import { requireActor } from "@/lib/auth/actor";
 import { can, ROLE_LABEL } from "@/lib/authz";
 import { navCounts } from "@/lib/shell";
+import { sweepWhileBusy } from "@/lib/jobs/kick";
 
 export const dynamic = "force-dynamic";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const actor = await requireActor();
   const counts = await navCounts(actor);
+  await sweepWhileBusy();
   return (
     <div className="mx-auto grid min-h-dvh w-full max-w-[1440px] grid-cols-1 gap-4 py-4 pl-[max(16px,env(safe-area-inset-left))] pr-[max(16px,env(safe-area-inset-right))] lg:grid-cols-[236px_minmax(0,1fr)] lg:gap-6">
       <Rail

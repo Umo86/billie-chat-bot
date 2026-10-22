@@ -72,10 +72,20 @@ GitHub Actions runs all of these on every push (`.github/workflows/ci.yml`).
    Configuration → Domains). Optionally add the sign-up check webhook
    (`/api/webhooks/neon-auth`, event `user.before_create`) so only invited
    people can create a sign-in at all.
-5. Open the site, create the first admin, then invite the team from Settings.
+5. Scheduled work: `vercel.json` runs the daily jobs (retention, re-reading
+   web pages, Monday's summary). Checking the Outlook mailbox and retrying
+   failed jobs runs every 5 minutes from GitHub Actions
+   (`.github/workflows/sweep.yml`): add the repository secrets `BILLIE_URL`
+   and `CRON_SECRET`. On Vercel Pro you can instead add an every-minute cron
+   for `/api/cron/jobs` to `vercel.json`. Most work doesn't wait for either:
+   it starts straight after the request that asked for it.
+6. Open the site, create the first admin, then invite the team from Settings.
 
 Settings → Connections shows what's connected and the webhook addresses to
 paste into Meta (WhatsApp) and Neon.
+
+Vercel's Hobby plan is for personal, non-commercial use; a company site
+like this belongs on Vercel Pro.
 
 ## Folders
 
