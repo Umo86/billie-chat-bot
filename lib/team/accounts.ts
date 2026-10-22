@@ -1,71 +1,59 @@
 import "server-only";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
-import { hashPassword } from "better-auth/crypto";
-import { db, type Tx } from "@/lib/db/client";
-import { authAccount, authSession, invitations, users } from "@/lib/db/schema";
+import { db } from "@/lib/db/client";
+import { invitations, users } from "@/lib/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { hashToken, newToken } from "@/lib/chat/token";
 import { appUrl, emailConfigured } from "@/lib/config";
 import { sendEmail } from "@/lib/email/send";
-import { INVITE_DAYS, firstAdminAllowed, passwordProblem } from "@/lib/auth/config";
+import { EMAIL_PATTERN, INVITE_DAYS, firstAdminAllowed, normaliseEmail } from "@/lib/auth/config";
+import type { AuthUser } from "@/lib/auth/provider";
 import type { Actor, Role } from "@/lib/authz";
 
 /**
- * Accounts: the first admin, invitations, roles, suspensions. Passwords
- * are hashed with Better Auth's scrypt and stored on a "credential" account
- * row, exactly as Better Auth's own sign-in expects.
+ * The team: the first admin, invitations, roles and suspensions. Passwords
+ * are never here: Neon Auth keeps them. A Billie account is linked to a
+ * Neon Auth user only by the first-run set-up or by an invitation link, so
+ * signing up with Neon Auth alone never gets anyone into Billie.
  */
 export class AccountError extends Error {}
-
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-
-async function setPassword(tx: Tx, userId: string, password: string) {
-  const hash = await hashPassword(password);
-  const existing = await tx.query.authAccount.findFirst({
-    where: and(eq(authAccount.userId, userId), eq(authAccount.providerId, "credential")),
-  });
-  if (existing) {
-    await tx
-      .update(authAccount)
-      .set({ password: hash, updatedAt: new Date() })
-      .where(eq(authAccount.id, existing.id));
-  } else {
-    await tx
-      .insert(authAccount)
-      .values({ userId, accountId: userId, providerId: "credential", password: hash });
-  }
-  // A new password signs every other session out.
-  await tx.delete(authSession).where(eq(authSession.userId, userId));
-}
 
 export async function hasAnyUser(): Promise<boolean> {
   const row = await db.query.users.findFirst({ columns: { id: true } });
   return Boolean(row);
 }
 
-/** First run only: the first account is an admin. Serialised so two can't race. */
-export async function createFirstAdmin(input: {
-  name: string;
-  email: string;
-  password: string;
-}): Promise<string> {
-  const email = input.email.trim().toLowerCase();
-  const name = input.name.trim();
-  if (!name) throw new AccountError("Add your name.");
-  if (!EMAIL.test(email)) throw new AccountError("That email doesn't look right.");
-  const problem = passwordProblem(input.password);
-  if (problem) throw new AccountError(problem);
-  if (!firstAdminAllowed(email)) {
+export function checkFirstAdmin(input: { name: string; email: string }): void {
+  if (!input.name.trim()) throw new AccountError("Add your name.");
+  if (!EMAIL_PATTERN.test(normaliseEmail(input.email)))
+    throw new AccountError("That email doesn't look right.");
+  if (!firstAdminAllowed(input.email))
     throw new AccountError(
       "Only the address set as FIRST_ADMIN_EMAIL can create the first account.",
     );
-  }
+}
+
+/** First run only: links the first signed-up person as an admin. Serialised so two can't race. */
+export async function linkFirstAdmin(
+  authUser: AuthUser,
+  name: string,
+  startedAt: Date,
+): Promise<string> {
+  checkFirstAdmin({ name, email: authUser.email });
   return db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(424242)`);
     const any = await tx.query.users.findFirst({ columns: { id: true } });
     if (any) throw new AccountError("Billie is already set up. Sign in instead.");
-    const [u] = await tx.insert(users).values({ email, fullName: name, role: "admin" }).returning();
-    await setPassword(tx, u.id, input.password);
+    const [u] = await tx
+      .insert(users)
+      .values({
+        authUserId: authUser.id,
+        linkedAt: startedAt,
+        email: normaliseEmail(authUser.email),
+        fullName: name.trim(),
+        role: "admin",
+      })
+      .returning();
     await writeAudit(tx, {
       actorUserId: u.id,
       entityType: "user",
@@ -81,13 +69,13 @@ export function inviteLink(token: string): string {
   return `${appUrl()}/invite/${token}`;
 }
 
-/** An invitation (or, for someone already on the team, a link to set a new password). */
+/** An invitation, or for someone already on the team, a fresh link to sign in with. */
 export async function createInvitation(
   actor: Actor,
   input: { email: string; name: string; role: Role },
 ): Promise<{ link: string; emailed: boolean }> {
-  const email = input.email.trim().toLowerCase();
-  if (!EMAIL.test(email)) throw new AccountError("That email doesn't look right.");
+  const email = normaliseEmail(input.email);
+  if (!EMAIL_PATTERN.test(email)) throw new AccountError("That email doesn't look right.");
   const existing = await db.query.users.findFirst({ where: eq(users.email, email) });
   const name = input.name.trim() || existing?.fullName || email.split("@")[0];
   const token = newToken();
@@ -126,8 +114,14 @@ export async function createInvitation(
     try {
       await sendEmail({
         to: email,
-        subject: existing ? "Set a new Billie password" : `${actor.name} invited you to Billie`,
-        text: `Hi ${name.split(" ")[0]},\n\n${existing ? "Use this link to set a new password for Billie:" : `${actor.name} invited you to Billie, the Media10 chat and email assistant. Use this link to set your password and sign in:`}\n\n${link}\n\nThe link works once and expires in ${INVITE_DAYS} days.`,
+        subject: existing
+          ? "Your link to sign in to Billie"
+          : `${actor.name} invited you to Billie`,
+        text: `Hi ${name.split(" ")[0]},\n\n${
+          existing
+            ? "Use this link to sign in to Billie again:"
+            : `${actor.name} invited you to Billie, the Media10 chat and email assistant. Use this link to choose your password and sign in:`
+        }\n\n${link}\n\nThe link works once and expires in ${INVITE_DAYS} days.`,
       });
       emailed = true;
     } catch (err) {
@@ -138,6 +132,7 @@ export async function createInvitation(
 }
 
 export async function invitationForToken(token: string) {
+  if (!/^[A-Za-z0-9_-]{20,200}$/.test(token)) return null;
   const row = await db.query.invitations.findFirst({
     where: and(
       eq(invitations.tokenHash, hashToken(token)),
@@ -149,13 +144,16 @@ export async function invitationForToken(token: string) {
   return row ?? null;
 }
 
-/** Accepting sets the password (creating the account if new) and uses the link up. */
+/**
+ * Uses the link up and links the signed-in Neon Auth user to Billie: a new
+ * team member with the invited role, or (for someone already on the team)
+ * the same account, now signed in through this Neon Auth user.
+ */
 export async function acceptInvitation(
   token: string,
-  password: string,
-): Promise<{ email: string }> {
-  const problem = passwordProblem(password);
-  if (problem) throw new AccountError(problem);
+  authUser: AuthUser,
+  startedAt: Date,
+): Promise<string> {
   return db.transaction(async (tx) => {
     const [inv] = await tx
       .update(invitations)
@@ -173,24 +171,44 @@ export async function acceptInvitation(
       throw new AccountError(
         "This link has expired or was already used. Ask an admin for a new one.",
       );
-    let user = await tx.query.users.findFirst({ where: eq(users.email, inv.email) });
-    if (!user) {
-      [user] = await tx
+    if (normaliseEmail(authUser.email) !== inv.email)
+      throw new AccountError("This link is for a different email address.");
+    // Whoever this Neon Auth user was linked to before stops being them.
+    await tx
+      .update(users)
+      .set({ authUserId: null, linkedAt: null })
+      .where(and(eq(users.authUserId, authUser.id), sql`${users.email} <> ${inv.email}`));
+    const existing = await tx.query.users.findFirst({ where: eq(users.email, inv.email) });
+    let id: string;
+    if (existing) {
+      if (existing.status !== "active")
+        throw new AccountError("This account is suspended. Ask an admin to reactivate it.");
+      await tx
+        .update(users)
+        .set({ authUserId: authUser.id, linkedAt: startedAt })
+        .where(eq(users.id, existing.id));
+      id = existing.id;
+    } else {
+      const [u] = await tx
         .insert(users)
-        .values({ email: inv.email, fullName: inv.fullName, role: inv.role })
-        .returning();
-    } else if (user.status !== "active") {
-      throw new AccountError("This account is suspended. Ask an admin to reactivate it.");
+        .values({
+          authUserId: authUser.id,
+          linkedAt: startedAt,
+          email: inv.email,
+          fullName: inv.fullName,
+          role: inv.role,
+        })
+        .returning({ id: users.id });
+      id = u.id;
     }
-    await setPassword(tx, user.id, password);
     await writeAudit(tx, {
-      actorUserId: user.id,
+      actorUserId: id,
       entityType: "user",
-      entityId: user.id,
-      action: "update",
-      summary: "Set a password from an invitation link",
+      entityId: id,
+      action: existing ? "update" : "create",
+      summary: existing ? "Signed in again from a new link" : `Joined the team as ${inv.role}`,
     });
-    return { email: user.email };
+    return id;
   });
 }
 
@@ -209,6 +227,7 @@ export async function changeRole(actor: Actor, userId: string, role: Role): Prom
   });
 }
 
+/** Suspended people are refused on their very next request (lib/auth/actor.ts). */
 export async function setSuspended(
   actor: Actor,
   userId: string,
@@ -222,7 +241,6 @@ export async function setSuspended(
       .where(eq(users.id, userId))
       .returning();
     if (!u) throw new AccountError("That person isn't on the team.");
-    if (suspended) await tx.delete(authSession).where(eq(authSession.userId, u.id));
     await writeAudit(tx, {
       actorUserId: actor.id,
       entityType: "user",
@@ -231,4 +249,20 @@ export async function setSuspended(
       summary: `${suspended ? "Suspended" : "Reactivated"} ${u.fullName}`,
     });
   });
+}
+
+/** For the Neon Auth sign-up check: may this email create an account? */
+export async function signUpAllowed(email: string): Promise<boolean> {
+  const e = normaliseEmail(email);
+  const invited = await db.query.invitations.findFirst({
+    where: and(
+      eq(invitations.email, e),
+      isNull(invitations.acceptedAt),
+      isNull(invitations.revokedAt),
+      gt(invitations.expiresAt, new Date()),
+    ),
+    columns: { id: true },
+  });
+  if (invited) return true;
+  return !(await hasAnyUser()) && firstAdminAllowed(e);
 }

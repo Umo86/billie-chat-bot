@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { runAction } from "@/lib/actions/run";
+import { friendly, runAction } from "@/lib/actions/run";
 import { fail, type ActionResult } from "@/lib/actions/result";
 import { getActor } from "@/lib/auth/actor";
 import { can } from "@/lib/authz";
@@ -16,7 +16,7 @@ import {
 } from "@/lib/knowledge/bases";
 import { passagesOf } from "@/lib/knowledge/queries";
 import { fileKind, MAX_FILE_BYTES } from "@/lib/knowledge/extract";
-import { putFile } from "@/lib/storage";
+import { putFile, storedBlobSize } from "@/lib/storage";
 import { UserError } from "@/lib/errors";
 
 const id = z.object({ id: z.uuid() });
@@ -153,11 +153,9 @@ export async function uploadFileAction(form: FormData): Promise<ActionResult> {
     refresh();
     return { ok: true };
   } catch (err) {
-    if (
-      err instanceof UserError ||
-      (err instanceof Error && /storage isn't set up/.test(err.message))
-    )
-      return fail(err.message);
+    const text = friendly(err);
+    if (text) return fail(text);
+    if (err instanceof Error && /storage isn't set up/.test(err.message)) return fail(err.message);
     console.error("upload failed", err);
     return fail(`${file.name} couldn't be uploaded. Try again.`);
   }
@@ -170,6 +168,7 @@ export async function registerUploadAction(input: unknown) {
     pathname: z
       .string()
       .regex(/^sources\/[\w./-]+$/)
+      .refine((p) => !p.includes(".."))
       .max(400),
     name: z.string().min(1).max(255),
     size: z.number().int().positive().max(MAX_FILE_BYTES),
@@ -178,11 +177,14 @@ export async function registerUploadAction(input: unknown) {
   return runAction("knowledge.edit", schema, input, async (actor, d) => {
     if (!fileKind(d.name, d.type))
       throw new UserError("Billie reads PDF, Word (.docx), Excel (.xlsx), CSV and text files.");
+    // Trust the store, not the browser: the file must really be there.
+    const size = await storedBlobSize(d.pathname);
+    if (size === null) throw new UserError(`${d.name} didn't finish uploading. Try again.`);
     await addSource(actor, d.kbId, {
       kind: "file",
       name: d.name,
       fileKey: `blob:${d.pathname}`,
-      size: d.size,
+      size,
       mimeType: d.type || "application/octet-stream",
     });
     refresh();

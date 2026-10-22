@@ -8,8 +8,18 @@ import { hasAnyUser } from "@/lib/team/accounts";
 export const metadata: Metadata = { title: "Sign in" };
 export const dynamic = "force-dynamic";
 
-export default async function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | undefined>>;
+}) {
   if (!(await hasAnyUser())) redirect("/setup");
   if (await getActor()) redirect("/");
-  return <SignInForm action={signIn} />;
+  const { reset } = await searchParams;
+  return (
+    <SignInForm
+      action={signIn}
+      notice={reset ? "Password changed. Sign in with your new password." : undefined}
+    />
+  );
 }

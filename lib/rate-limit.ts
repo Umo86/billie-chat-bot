@@ -2,6 +2,7 @@ import "server-only";
 import { createHmac } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db, query } from "@/lib/db/client";
+import { derivedSecret } from "@/lib/auth/config";
 
 /**
  * One rate limiter, in the database (rate_limits): fixed windows counted by
@@ -25,7 +26,7 @@ export const LIMITS = {
 } as const satisfies Record<string, Rule>;
 
 function secret(): string {
-  return process.env.BETTER_AUTH_SECRET ?? process.env.CRON_SECRET ?? "billie-dev";
+  return derivedSecret("rate-limit") ?? "billie-dev";
 }
 
 export function bucketKey(raw: string): string {

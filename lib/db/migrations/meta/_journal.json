@@ -29,6 +29,20 @@
       "when": 1792693191131,
       "tag": "0003_whatsapp_contacts",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792695233993,
+      "tag": "0004_neon_auth_link",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792695247982,
+      "tag": "0005_drop_self_hosted_auth",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,4 @@
 import {
-  boolean,
   index,
   integer,
   pgTable,
@@ -19,78 +18,29 @@ const timestamps = {
     .$onUpdate(() => new Date()),
 };
 
-/** Staff accounts. Better Auth's user model (lib/auth/server.ts) maps name → full_name. */
+/**
+ * Staff accounts in Billie. Who someone is (email and password) lives in
+ * Neon Auth (the neon_auth schema, managed by Neon); this row is what they
+ * may do in Billie. auth_user_id links the two; linked_at is when the link
+ * was made, and sessions older than that are refused (lib/auth/actor.ts).
+ */
 export const users = pgTable(
   "users",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    authUserId: text("auth_user_id"),
+    linkedAt: timestamp("linked_at", { withTimezone: true }),
     email: text("email").notNull(),
     fullName: text("full_name").notNull(),
-    emailVerified: boolean("email_verified").notNull().default(false),
-    image: text("image"),
     role: role("role").notNull().default("agent"),
     status: userStatus("status").notNull().default("active"),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
     ...timestamps,
   },
-  (t) => [uniqueIndex("users_email_unique").on(t.email)],
-);
-
-export const authSession = pgTable(
-  "auth_session",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    token: text("token").notNull().unique(),
-    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-    ipAddress: text("ip_address"),
-    userAgent: text("user_agent"),
-    ...timestamps,
-  },
   (t) => [
-    index("auth_session_user_idx").on(t.userId),
-    index("auth_session_expires_idx").on(t.expiresAt),
+    uniqueIndex("users_email_unique").on(t.email),
+    uniqueIndex("users_auth_user_id_unique").on(t.authUserId),
   ],
-);
-
-/** One row per way in; a password is providerId "credential". */
-export const authAccount = pgTable(
-  "auth_account",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    accountId: text("account_id").notNull(),
-    providerId: text("provider_id").notNull(),
-    accessToken: text("access_token"),
-    refreshToken: text("refresh_token"),
-    idToken: text("id_token"),
-    accessTokenExpiresAt: timestamp("access_token_expires_at", { withTimezone: true }),
-    refreshTokenExpiresAt: timestamp("refresh_token_expires_at", { withTimezone: true }),
-    scope: text("scope"),
-    password: text("password"),
-    ...timestamps,
-  },
-  (t) => [
-    index("auth_account_user_idx").on(t.userId),
-    uniqueIndex("auth_account_provider_account_unique").on(t.providerId, t.accountId),
-  ],
-);
-
-/** Reset tokens, stored hashed. */
-export const authVerification = pgTable(
-  "auth_verification",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    identifier: text("identifier").notNull(),
-    value: text("value").notNull(),
-    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-    ...timestamps,
-  },
-  (t) => [index("auth_verification_identifier_idx").on(t.identifier)],
 );
 
 /** Invitations to the team: a link with a one-time token (stored as its SHA-256). */

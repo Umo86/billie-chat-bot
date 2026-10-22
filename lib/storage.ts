@@ -78,3 +78,15 @@ export async function deleteStoredFile(key: string | null | undefined): Promise<
 
 /** Blob uploads made straight from the browser land under this prefix. */
 export const CLIENT_UPLOAD_PREFIX = "sources/";
+
+/** Size of a file the browser says it uploaded, or null if it isn't there. */
+export async function storedBlobSize(pathname: string): Promise<number | null> {
+  if (!blobConfigured()) return null;
+  try {
+    const { head } = await import("@vercel/blob");
+    const info = await head(pathname);
+    return info.pathname === pathname ? info.size : null;
+  } catch {
+    return null;
+  }
+}
