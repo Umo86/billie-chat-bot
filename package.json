@@ -19,8 +19,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx lib/db/migrate.ts",
-    "db:seed": "tsx lib/db/seed.ts"
+    "db:migrate": "tsx lib/db/migrate.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.1.0",
