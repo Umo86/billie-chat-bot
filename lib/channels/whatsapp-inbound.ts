@@ -1,10 +1,11 @@
 import "server-only";
-import { and, desc, eq, inArray, ne } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, ne } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { conversations, messages, whatsappContacts } from "@/lib/db/schema";
 import { botById } from "@/lib/bots/load";
 import { getSettings } from "@/lib/settings";
 import { visitorMessage, type ConversationRow } from "@/lib/conversations/service";
+import { allow, LIMITS } from "@/lib/rate-limit";
 import { formatAnswer, sendButtons, sendText, type InboundMessage } from "./whatsapp";
 
 /**
@@ -12,7 +13,9 @@ import { formatAnswer, sendButtons, sendText, type InboundMessage } from "./what
  * answers Meta at once). First contact asks "Visiting or exhibiting?" and
  * keeps the question until they choose; after that the chosen bot answers,
  * and Billie's reply, any handover line and the details request go back as
- * WhatsApp messages. A message already handled (Meta retries) is skipped.
+ * WhatsApp messages. A message already handled (Meta retries, or this job
+ * retrying after a failed send) only resends what didn't go out: each reply
+ * records the WhatsApp id it was sent as.
  */
 const ROUTE_PROMPT = "Hi! Are you visiting the show or exhibiting at it?";
 const CHOICES = [
@@ -35,16 +38,64 @@ async function openConversation(waId: string, botId: string): Promise<Conversati
   return Date.now() - row.lastMessageAt.getTime() > NEW_CHAT_AFTER_MS ? null : row;
 }
 
-async function alreadyHandled(messageId: string): Promise<boolean> {
-  const row = await db.query.messages.findFirst({
+type Outgoing = {
+  id: string;
+  role: string;
+  text: string;
+  sources: { title: string; label: string }[];
+};
+
+/** Sends replies in order, marking each as sent (its WhatsApp id) so a retry won't repeat it. */
+async function deliver(to: string, rows: Outgoing[]): Promise<void> {
+  for (const r of rows) {
+    const sentId = await sendText(to, r.role === "bot" ? formatAnswer(r.text, r.sources) : r.text);
+    if (sentId)
+      await db
+        .update(messages)
+        .set({ externalId: sentId })
+        .where(and(eq(messages.id, r.id), isNull(messages.externalId)));
+  }
+}
+
+/** For a message already recorded: the replies after it that never went out. */
+async function unsentAfter(messageId: string): Promise<Outgoing[] | null> {
+  const visitor = await db.query.messages.findFirst({
     where: eq(messages.externalId, messageId),
-    columns: { id: true },
+    columns: { conversationId: true, createdAt: true },
   });
-  return Boolean(row);
+  if (!visitor) return null;
+  const rows = await db
+    .select({
+      id: messages.id,
+      role: messages.role,
+      text: messages.text,
+      sources: messages.sources,
+    })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.conversationId, visitor.conversationId),
+        gt(messages.createdAt, visitor.createdAt),
+        inArray(messages.role, ["bot", "system"]),
+        isNull(messages.externalId),
+      ),
+    )
+    .orderBy(asc(messages.createdAt));
+  return rows.map((r) => ({ ...r, sources: r.sources as Outgoing["sources"] }));
 }
 
 export async function handleWhatsAppInbound(m: InboundMessage): Promise<void> {
-  if (await alreadyHandled(m.id)) return;
+  const unsent = await unsentAfter(m.id);
+  if (unsent) {
+    await deliver(m.from, unsent);
+    return;
+  }
+  // One sender can't run up the answer budget.
+  if (
+    !(await allow(`wa:${m.from}`, LIMITS.whatsappSender)) ||
+    !(await allow(`wa:day:${m.from}`, LIMITS.whatsappSenderDaily))
+  )
+    return;
   const settings = await getSettings();
   const visitorBot = settings.whatsappVisitorBotId
     ? await botById(settings.whatsappVisitorBotId)
@@ -121,9 +172,10 @@ export async function handleWhatsAppInbound(m: InboundMessage): Promise<void> {
   }
 
   // Everything after the person's own message goes back, one WhatsApp message each.
-  for (const msg of turn.messages.slice(1)) {
-    await sendText(m.from, msg.role === "bot" ? formatAnswer(msg.text, msg.sources) : msg.text);
-  }
+  await deliver(
+    m.from,
+    turn.messages.slice(1).filter((x) => x.role === "bot" || x.role === "system"),
+  );
   if (turn.offer) {
     await sendText(m.from, 'Reply "team" and I\'ll pass your question to a person.');
   }

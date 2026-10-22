@@ -62,7 +62,8 @@ GitHub Actions runs all of these on every push (`.github/workflows/ci.yml`).
    deploy (`vercel-build`).
 3. Add environment variables (Settings → Environment Variables):
    - `NEON_AUTH_BASE_URL`: Neon Console → Auth → Configuration.
-   - `CRON_SECRET`: a long random value (`openssl rand -base64 32`).
+   - `NEON_AUTH_COOKIE_SECRET`: 32+ random characters; signs session cookies.
+   - `CRON_SECRET`: another long random value (`openssl rand -base64 32`).
    - `FIRST_ADMIN_EMAIL`: who may create the first admin account.
    - `ANTHROPIC_API_KEY`, and optionally `VOYAGE_API_KEY`.
    - Add **Vercel Blob** storage to the project for file uploads.
@@ -72,20 +73,17 @@ GitHub Actions runs all of these on every push (`.github/workflows/ci.yml`).
    Configuration → Domains). Optionally add the sign-up check webhook
    (`/api/webhooks/neon-auth`, event `user.before_create`) so only invited
    people can create a sign-in at all.
-5. Scheduled work: `vercel.json` runs the daily jobs (retention, re-reading
-   web pages, Monday's summary). Checking the Outlook mailbox and retrying
-   failed jobs runs every 5 minutes from GitHub Actions
-   (`.github/workflows/sweep.yml`): add the repository secrets `BILLIE_URL`
-   and `CRON_SECRET`. On Vercel Pro you can instead add an every-minute cron
-   for `/api/cron/jobs` to `vercel.json`. Most work doesn't wait for either:
-   it starts straight after the request that asked for it.
-6. Open the site, create the first admin, then invite the team from Settings.
+5. Scheduled work runs on Vercel Cron (`vercel.json`, Vercel Pro): every
+   minute it checks the Outlook mailbox and retries failed jobs; once a day
+   it runs retention, re-reads web pages and sends Monday's summary. Most
+   work doesn't wait for either: it starts straight after the request that
+   asked for it.
+6. Open the site and create the first admin. The set-up page asks for a
+   set-up code: the `CRON_SECRET` value, so only whoever deployed Billie can
+   claim the first account. Then invite the team from Settings.
 
 Settings → Connections shows what's connected and the webhook addresses to
 paste into Meta (WhatsApp) and Neon.
-
-Vercel's Hobby plan is for personal, non-commercial use; a company site
-like this belongs on Vercel Pro.
 
 ## Folders
 

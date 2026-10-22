@@ -2,6 +2,34 @@
 
 Short records of the choices that shape Billie, newest first.
 
+## Security review fixes (before the first deploy)
+
+An independent review found these; all are fixed and tested.
+
+- **First admin:** set-up also asks for the `CRON_SECRET` value, so only
+  the person who deployed Billie can claim the first account, and the page
+  no longer shows `FIRST_ADMIN_EMAIL`.
+- **Session secret:** `NEON_AUTH_COOKIE_SECRET` is required and never
+  derived from another secret (whoever holds it could sign in as anyone).
+- **Chat frame:** every `/embed/…` request goes through the proxy; odd
+  spellings (`/embed/uk%63w`) get a 404, and the page refuses requests the
+  proxy didn't mark, so no path reaches a bot without its CSP.
+- **Budget:** visitors get a daily limit per address (IPv6 counted by
+  /64), WhatsApp senders an hourly and daily limit, and visitor answers stop
+  at 85% of the daily cap so the team keeps the rest.
+- **Web pages:** private addresses are refused in every IPv6 spelling
+  (mapped, NAT64, 6to4…), checked again where the socket actually
+  connected, and the whole fetch has a deadline.
+- **WhatsApp:** each reply records the WhatsApp id it was sent as, so a
+  retried job resends only what didn't go out.
+- **Invitations:** a sender's open invitations stop working when they're
+  suspended or no longer admin; password resets work for invited people
+  (so a sign-in someone registered in advance can't lock them out).
+- **Page addresses:** chats keep the page's address without its query
+  string, which can hold private tokens.
+- **Kept on purpose:** agents can download a transcript of a chat they
+  can already read in the Inbox; bulk and per-person exports are admin-only.
+
 ## Sign-in: Neon Auth, with roles kept in Billie
 
 Neon Auth (Neon's managed Better Auth) stores identities, passwords and
@@ -37,8 +65,8 @@ sleeps. Transactions and row locks (`FOR UPDATE`) work normally.
 Reading files, drafting emails, alerts and WhatsApp replies run as jobs
 (`FOR UPDATE SKIP LOCKED`, leases, retries with backoff, de-duplication).
 Each request that queues work starts it straight after the response
-(`after()`); Vercel Cron sweeps every minute as a safety net. No extra
-service to run or pay for.
+(`after()`); Vercel Cron (Pro) sweeps every minute as a safety net and
+checks the Outlook mailbox. No extra service to run or pay for.
 
 ## Search: hybrid full-text + vectors
 

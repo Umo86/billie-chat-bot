@@ -68,6 +68,11 @@ describe.skipIf(!hasDb)("rate limits and the daily cap (Postgres)", () => {
     expect(await answersToday()).toBe(before + 1);
     await db.update(settings).set({ dailyAnswerCap: before + 1 });
     expect(await capReached()).toBe(true);
+    // Visitors stop at 85% of the cap; the rest is kept for the team.
+    const used = await answersToday();
+    await db.update(settings).set({ dailyAnswerCap: Math.ceil(used / 0.85) + 1 });
+    expect(await capReached("visitor")).toBe(true);
+    expect(await capReached("staff")).toBe(false);
     await db.update(settings).set({ dailyAnswerCap: 3000 });
   });
 });

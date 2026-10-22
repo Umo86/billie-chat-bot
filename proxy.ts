@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { cspWithAncestors } from "@/lib/csp";
+import { frameMark } from "@/lib/chat/frame-mark";
 
 /**
  * Runs before two kinds of page:
@@ -12,6 +13,11 @@ import { cspWithAncestors } from "@/lib/csp";
  */
 const STAFF_PAGE = /^\/(?:$|bots|knowledge|inbox|emails|try|reports|settings)(?:\/|$)/;
 const EMBED = /^\/embed\/([a-z0-9][a-z0-9-]{0,62})\/?$/;
+const NOT_FOUND = () =>
+  new NextResponse("Not found", {
+    status: 404,
+    headers: { "Content-Security-Policy": cspWithAncestors("'none'") },
+  });
 
 type Middleware = (request: NextRequest) => Promise<NextResponse>;
 let neonMiddleware: Middleware | undefined;
@@ -33,7 +39,7 @@ async function staffSession(request: NextRequest): Promise<NextResponse> {
 const policies = new Map<string, { csp: string; at: number }>();
 const POLICY_TTL_MS = 30_000;
 
-async function chatFrame(slug: string): Promise<NextResponse> {
+async function chatFrame(request: NextRequest, slug: string): Promise<NextResponse> {
   let hit = policies.get(slug);
   if (!hit || Date.now() - hit.at > POLICY_TTL_MS) {
     let ancestors = "'self'";
@@ -47,7 +53,10 @@ async function chatFrame(slug: string): Promise<NextResponse> {
     if (policies.size > 500) policies.clear();
     policies.set(slug, hit);
   }
-  const response = NextResponse.next();
+  // Tells the page the policy was set; a request that skipped this check gets a 404 there.
+  const forwarded = new Headers(request.headers);
+  forwarded.set("x-billie-frame", frameMark());
+  const response = NextResponse.next({ request: { headers: forwarded } });
   response.headers.set("Content-Security-Policy", hit.csp);
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
@@ -61,8 +70,12 @@ async function chatFrame(slug: string): Promise<NextResponse> {
 
 export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
-  const embed = EMBED.exec(path);
-  if (embed) return chatFrame(embed[1]);
+  // Every chat-frame address gets a policy. Only the plain form is served:
+  // an encoded one (/embed/uk%63w) would reach the same bot without it.
+  if (path.startsWith("/embed/") || path === "/embed") {
+    const embed = EMBED.exec(path);
+    return embed ? chatFrame(request, embed[1]) : NOT_FOUND();
+  }
   if (STAFF_PAGE.test(path)) return staffSession(request);
   return NextResponse.next();
 }
@@ -77,6 +90,7 @@ export const config = {
     "/try/:path*",
     "/reports/:path*",
     "/settings/:path*",
+    "/embed",
     "/embed/:path*",
   ],
 };

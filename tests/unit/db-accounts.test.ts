@@ -5,6 +5,7 @@ import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
 import {
   acceptInvitation,
+  changeRole,
   createInvitation,
   invitationForToken,
   linkFirstAdmin,
@@ -81,5 +82,28 @@ describe.skipIf(!hasDb)("team accounts linked to Neon Auth", () => {
     await expect(
       linkFirstAdmin(authUser("first@media10.test"), "First", new Date()),
     ).rejects.toThrow(/already set up/);
+  });
+});
+
+describe.skipIf(!hasDb)("invitations follow their sender's rights", () => {
+  it("stop working when the admin who sent them is suspended or demoted", async () => {
+    const boss = await makeUser("admin");
+    const sender = await makeUser("admin");
+    const a = await createInvitation(sender, {
+      email: `${randomUUID().slice(0, 8)}@x.test`,
+      name: "A",
+      role: "admin",
+    });
+    await setSuspended(boss, sender.id, true);
+    expect(await invitationForToken(tokenOf(a.link))).toBeNull();
+
+    const other = await makeUser("admin");
+    const b = await createInvitation(other, {
+      email: `${randomUUID().slice(0, 8)}@x.test`,
+      name: "B",
+      role: "editor",
+    });
+    await changeRole(boss, other.id, "editor");
+    expect(await invitationForToken(tokenOf(b.link))).toBeNull();
   });
 });

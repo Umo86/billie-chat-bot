@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { z } from "zod";
 import { appUrl } from "@/lib/config";
-import { allow, ipFrom, LIMITS } from "@/lib/rate-limit";
+import { allow, clientKey, ipFrom, LIMITS } from "@/lib/rate-limit";
 import {
   callerConversation,
   chatBot,
@@ -132,7 +132,7 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
     const found = await chatBot(slug, asked ?? null);
     if (found instanceof Response) return found;
     const { bot, channel } = found;
-    const ip = ipFrom(await headers());
+    const ip = clientKey(ipFrom(await headers()));
     const conversation = await callerConversation(request, bot);
 
     if (action === "messages") {
@@ -140,6 +140,7 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
       if (!parsed.success) return problem(400, "Type a message first.");
       const allowed =
         (await allow(`chat:ip:${ip}:${bot.id}`, LIMITS.chatMessage)) &&
+        (await allow(`chat:day:${ip}`, LIMITS.chatDaily)) &&
         (conversation
           ? await allow(`chat:conv:${conversation.id}`, LIMITS.chatPerConversation)
           : await allow(`chat:start:${ip}`, LIMITS.chatStart));

@@ -2,6 +2,9 @@ import { generateKeyPairSync, sign } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   authMode,
+  authProblem,
+  setupCodeRequired,
+  setupCodeValid,
   derivedSecret,
   firstAdminAllowed,
   LINK_GRACE_MS,
@@ -53,6 +56,37 @@ describe("secrets", () => {
     const long = "x".repeat(40);
     expect(neonCookieSecret({ NEON_AUTH_COOKIE_SECRET: long, VERCEL: "1" })).toBe(long);
     expect(neonCookieSecret({ NEON_AUTH_COOKIE_SECRET: "short", VERCEL: "1" })).toBeNull();
+  });
+});
+
+describe("first-run set-up code", () => {
+  it("is the CRON_SECRET, compared exactly", () => {
+    const env = { CRON_SECRET: "the-deployers-secret-value", VERCEL: "1" };
+    expect(setupCodeRequired(env)).toBe(true);
+    expect(setupCodeValid("the-deployers-secret-value", env)).toBe(true);
+    expect(setupCodeValid(" the-deployers-secret-value ", env)).toBe(true);
+    expect(setupCodeValid("the-deployers-secret-valu", env)).toBe(false);
+    expect(setupCodeValid("", env)).toBe(false);
+  });
+  it("can't be skipped on Vercel, and isn't asked locally without a secret", () => {
+    expect(setupCodeValid("anything", { VERCEL: "1" })).toBe(false);
+    expect(setupCodeRequired({})).toBe(false);
+    expect(setupCodeValid("", {})).toBe(true);
+  });
+});
+
+describe("sign-in configuration problems", () => {
+  const base = "https://ep-x.neonauth.eu-west-2.aws.neon.tech/neondb/auth";
+  it("names what's missing", () => {
+    expect(authProblem({ VERCEL: "1" })).toMatch(/NEON_AUTH_BASE_URL/);
+    expect(authProblem({ NEON_AUTH_BASE_URL: base })).toMatch(/NEON_AUTH_COOKIE_SECRET/);
+    expect(
+      authProblem({ NEON_AUTH_BASE_URL: base, NEON_AUTH_COOKIE_SECRET: "x".repeat(32) }),
+    ).toBeNull();
+    expect(authProblem({ BILLIE_LOCAL_AUTH: "1" })).toBeNull();
+  });
+  it("never derives the session secret from another secret", () => {
+    expect(neonCookieSecret({ CRON_SECRET: "s".repeat(40) })).toBeNull();
   });
 });
 

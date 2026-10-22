@@ -1,6 +1,6 @@
 import "server-only";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
-import { db } from "@/lib/db/client";
+import { db, type Tx } from "@/lib/db/client";
 import { invitations, users } from "@/lib/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { hashToken, newToken } from "@/lib/chat/token";
@@ -173,6 +173,11 @@ export async function acceptInvitation(
       );
     if (normaliseEmail(authUser.email) !== inv.email)
       throw new AccountError("This link is for a different email address.");
+    if (inv.invitedBy) {
+      const inviter = await tx.query.users.findFirst({ where: eq(users.id, inv.invitedBy) });
+      if (!inviter || inviter.status !== "active" || inviter.role !== "admin")
+        throw new AccountError("This invitation is no longer valid. Ask an admin for a new one.");
+    }
     // Whoever this Neon Auth user was linked to before stops being them.
     await tx
       .update(users)
@@ -212,11 +217,26 @@ export async function acceptInvitation(
   });
 }
 
+/** Open invitations someone sent stop working when they can no longer invite. */
+async function revokeInvitationsFrom(tx: Tx, userId: string): Promise<void> {
+  await tx
+    .update(invitations)
+    .set({ revokedAt: new Date() })
+    .where(
+      and(
+        eq(invitations.invitedBy, userId),
+        isNull(invitations.acceptedAt),
+        isNull(invitations.revokedAt),
+      ),
+    );
+}
+
 export async function changeRole(actor: Actor, userId: string, role: Role): Promise<void> {
   if (userId === actor.id) throw new AccountError("You can't change your own role.");
   await db.transaction(async (tx) => {
     const [u] = await tx.update(users).set({ role }).where(eq(users.id, userId)).returning();
     if (!u) throw new AccountError("That person isn't on the team.");
+    if (role !== "admin") await revokeInvitationsFrom(tx, u.id);
     await writeAudit(tx, {
       actorUserId: actor.id,
       entityType: "user",
@@ -241,6 +261,7 @@ export async function setSuspended(
       .where(eq(users.id, userId))
       .returning();
     if (!u) throw new AccountError("That person isn't on the team.");
+    if (suspended) await revokeInvitationsFrom(tx, u.id);
     await writeAudit(tx, {
       actorUserId: actor.id,
       entityType: "user",
@@ -251,19 +272,23 @@ export async function setSuspended(
   });
 }
 
-/** For the Neon Auth sign-up check: may this email create an account? */
-export async function signUpAllowed(email: string): Promise<boolean> {
-  const e = normaliseEmail(email);
+export async function openInvitationFor(email: string): Promise<boolean> {
   const invited = await db.query.invitations.findFirst({
     where: and(
-      eq(invitations.email, e),
+      eq(invitations.email, normaliseEmail(email)),
       isNull(invitations.acceptedAt),
       isNull(invitations.revokedAt),
       gt(invitations.expiresAt, new Date()),
     ),
     columns: { id: true },
   });
-  if (invited) return true;
+  return Boolean(invited);
+}
+
+/** For the Neon Auth sign-up check: may this email create an account? */
+export async function signUpAllowed(email: string): Promise<boolean> {
+  const e = normaliseEmail(email);
+  if (await openInvitationFor(e)) return true;
   return !(await hasAnyUser()) && firstAdminAllowed(e);
 }
 

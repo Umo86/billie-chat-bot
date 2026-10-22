@@ -18,6 +18,11 @@ export const LIMITS = {
   chatStart: { window: 3600, max: 30 },
   /** Per chat: stops one tab hammering Claude. */
   chatPerConversation: { window: 3600, max: 120 },
+  /** Per visitor address per day, across every bot. */
+  chatDaily: { window: 86_400, max: 300 },
+  /** WhatsApp, per sender. */
+  whatsappSender: { window: 3600, max: 40 },
+  whatsappSenderDaily: { window: 86_400, max: 200 },
   /** Staff sign-in, per email and per IP. */
   signIn: { window: 900, max: 10 },
   signInIp: { window: 900, max: 50 },
@@ -76,6 +81,27 @@ export async function pruneRateLimits(now = Date.now()): Promise<number> {
     sql`DELETE FROM rate_limits WHERE window_start < ${now - 86_400_000} RETURNING key`,
   );
   return rows.length;
+}
+
+/**
+ * The rate-limit identity for an address: IPv4 as it is; IPv6 by its /64
+ * network, because one connection is usually given a whole /64 and could
+ * otherwise rotate through addresses to dodge the limits.
+ */
+export function clientKey(ip: string): string {
+  if (!ip.includes(":")) return ip;
+  const [head, tail = ""] = ip.toLowerCase().split("::");
+  const left = head ? head.split(":") : [];
+  const right = tail ? tail.split(":") : [];
+  const groups = [
+    ...left,
+    ...new Array(Math.max(0, 8 - left.length - right.length)).fill("0"),
+    ...right,
+  ];
+  return `${groups
+    .slice(0, 4)
+    .map((g) => g.replace(/^0+(?=.)/, ""))
+    .join(":")}::/64`;
 }
 
 /** The caller's IP on Vercel (x-real-ip), else the first x-forwarded-for, else "unknown". */

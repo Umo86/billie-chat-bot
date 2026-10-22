@@ -169,6 +169,14 @@ test("the website widget shows only on the bot's own websites", async ({ browser
   await chat.getByRole("button", { name: "Close chat" }).click();
   await expect(button).toHaveAttribute("aria-expanded", "false");
 
+  // An encoded address can't reach the chat frame without its policy.
+  const sneaky = await visitor.request.get(`${app}/embed/exhibitor%2Dhelp`);
+  expect(sneaky.status()).toBe(404);
+  const direct = await visitor.request.get(`${app}/embed/exhibitor-help`);
+  expect(direct.headers()["content-security-policy"]).toContain(
+    "frame-ancestors 'self' https://ukconstructionweek.com https://*.ukconstructionweek.com",
+  );
+
   // Copied onto another website, the button doesn't appear.
   const other = await visitor.newPage();
   await other.goto("https://copycat.example/");

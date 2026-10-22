@@ -4,6 +4,7 @@ import { SignInForm } from "@/components/auth/auth-card";
 import { signIn } from "@/app/actions/auth";
 import { getActor } from "@/lib/auth/actor";
 import { hasAnyUser } from "@/lib/team/accounts";
+import { authProblem } from "@/lib/auth/config";
 
 export const metadata: Metadata = { title: "Sign in" };
 export const dynamic = "force-dynamic";
@@ -20,6 +21,7 @@ export default async function LoginPage({
     <SignInForm
       action={signIn}
       notice={reset ? "Password changed. Sign in with your new password." : undefined}
+      problem={authProblem()}
     />
   );
 }

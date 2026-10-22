@@ -60,3 +60,14 @@ describe("bot handles", () => {
     expect(initials("billie")).toBe("BI");
   });
 });
+
+import { clientKey } from "@/lib/rate-limit";
+
+describe("rate-limit identity", () => {
+  it("keeps IPv4 as it is and groups IPv6 by its /64", () => {
+    expect(clientKey("203.0.113.9")).toBe("203.0.113.9");
+    expect(clientKey("2a00:23c7:abcd:1200:1:2:3:4")).toBe("2a00:23c7:abcd:1200::/64");
+    expect(clientKey("2a00:23c7:abcd:1200::99")).toBe("2a00:23c7:abcd:1200::/64");
+    expect(clientKey("2a00:23c7::1")).toBe("2a00:23c7:0:0::/64");
+  });
+});

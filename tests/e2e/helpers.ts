@@ -1,5 +1,8 @@
 import { expect, type Page } from "@playwright/test";
 
+/** The CRON_SECRET the e2e server runs with (playwright.config.ts): the set-up code. */
+export const SETUP_CODE = "e2e-only-cron-secret-value";
+
 export const ADMIN = {
   name: "Umit Bozdag",
   email: "umit@media10.test",
@@ -13,6 +16,7 @@ export async function signInAsAdmin(page: Page) {
     await page.getByLabel("Your name").fill(ADMIN.name);
     await page.getByLabel("Work email").fill(ADMIN.email);
     await page.getByLabel("Password").fill(ADMIN.password);
+    await page.getByLabel("Set-up code").fill(SETUP_CODE);
     await page.getByRole("button", { name: "Create account" }).click();
   } else {
     await page.getByLabel("Email").fill(ADMIN.email);

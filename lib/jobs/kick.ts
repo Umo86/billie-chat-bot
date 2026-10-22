@@ -24,7 +24,7 @@ const SWEEP_EVERY_MS = 60_000;
 /**
  * While the team is using Billie, pick up retries and anything left over
  * (at most once a minute per server instance). Cheap when nothing is due:
- * one indexed query. The scheduled sweeps (Vercel Cron, GitHub Actions)
+ * one indexed query. The every-minute Vercel Cron sweep
  * cover the hours when nobody is signed in.
  */
 export async function sweepWhileBusy(now = Date.now()): Promise<void> {

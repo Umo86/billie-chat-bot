@@ -18,11 +18,23 @@ export async function answersToday(now = new Date()): Promise<number> {
   return rows[0]?.n ?? 0;
 }
 
-export async function capReached(now = new Date()): Promise<boolean> {
+/** Share of the daily cap that visitors (chats, WhatsApp) may use; the rest is kept for the team. */
+export const VISITOR_SHARE = 0.85;
+
+/**
+ * True once today's answers reach the cap. Visitors stop at 85% of it, so a
+ * flood of public messages can't use up what the team needs for email drafts
+ * and test runs.
+ */
+export async function capReached(
+  from: "visitor" | "staff" = "staff",
+  now = new Date(),
+): Promise<boolean> {
   const [s] = await db.select({ cap: settings.dailyAnswerCap }).from(settings).limit(1);
   const cap = s?.cap ?? 3000;
   if (cap <= 0) return false;
-  return (await answersToday(now)) >= cap;
+  const limit = from === "visitor" ? Math.floor(cap * VISITOR_SHARE) : cap;
+  return (await answersToday(now)) >= limit;
 }
 
 export async function recordUsage(scope: string, usage: Usage, now = new Date()): Promise<void> {

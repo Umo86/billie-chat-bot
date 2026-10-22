@@ -109,14 +109,14 @@ export function originAllowed(origin: string | null, bot: BotRow, appOrigin: str
   });
 }
 
-/** A page address the visitor was on (for the Inbox), or null if it isn't a plain web address. */
+/** The page the visitor was on (for the Inbox), without its query string; null if not a web address. */
 export function cleanPageUrl(raw: unknown): string | null {
   if (typeof raw !== "string" || raw.length > 1000) return null;
   try {
     const u = new URL(raw);
     if (u.protocol !== "https:" && u.protocol !== "http:") return null;
-    u.hash = "";
-    return u.toString().slice(0, 500);
+    // Keep the page, not its query string or fragment (they can hold private tokens).
+    return `${u.origin}${u.pathname}`.slice(0, 500);
   } catch {
     return null;
   }

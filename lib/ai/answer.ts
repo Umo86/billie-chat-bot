@@ -58,9 +58,11 @@ export async function answerQuestion(input: {
   question: string;
   /** Skip usage recording and the cap (test console runs still count; this is for internal checks). */
   countUsage?: boolean;
+  /** Who asked: visitors stop earlier, keeping some of the daily cap for the team. */
+  from?: "visitor" | "staff";
 }): Promise<AnswerResult> {
   const { bot, history, question } = input;
-  if (input.countUsage !== false && (await capReached())) {
+  if (input.countUsage !== false && (await capReached(input.from ?? "staff"))) {
     throw new AiError("cap_reached", "Today's answer limit has been reached");
   }
 

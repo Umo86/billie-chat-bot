@@ -7,7 +7,13 @@ import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
 import { appUrl } from "@/lib/config";
 import { authProvider, type AuthResult, type AuthUser } from "@/lib/auth/provider";
-import { normaliseEmail, passwordProblem, sessionAllowed } from "@/lib/auth/config";
+import {
+  firstAdminAllowed,
+  normaliseEmail,
+  passwordProblem,
+  sessionAllowed,
+  setupCodeValid,
+} from "@/lib/auth/config";
 import { allow, ipFrom, LIMITS } from "@/lib/rate-limit";
 import {
   AccountError,
@@ -16,6 +22,7 @@ import {
   hasAnyUser,
   invitationForToken,
   linkFirstAdmin,
+  openInvitationFor,
 } from "@/lib/team/accounts";
 import { fail, failWith, success, type ActionResult } from "@/lib/actions/result";
 
@@ -98,6 +105,8 @@ export async function setUpFirstAdmin(
   const email = normaliseEmail(String(form.get("email") ?? ""));
   const password = String(form.get("password") ?? "");
   const no = (message: string) => failWith(message, { name, email });
+  if (!setupCodeValid(String(form.get("code") ?? "")))
+    return no("That set-up code isn't right. It's the CRON_SECRET value added in Vercel.");
   try {
     checkFirstAdmin({ name, email });
   } catch (err) {
@@ -152,6 +161,14 @@ export async function acceptInvite(
   redirect("/");
 }
 
+/** Members, people with an open invitation, and on a fresh site the first admin. */
+async function resetAllowed(email: string): Promise<boolean> {
+  const member = await db.query.users.findFirst({ where: eq(users.email, email) });
+  if (member) return member.status === "active";
+  if (await openInvitationFor(email)) return true;
+  return !(await hasAnyUser()) && firstAdminAllowed(email);
+}
+
 export async function requestPasswordReset(
   _prev: ActionResult | null,
   form: FormData,
@@ -162,9 +179,9 @@ export async function requestPasswordReset(
   const ip = ipFrom(await headers());
   if (await limited([`reset:email:${email}`, LIMITS.invite], [`reset:ip:${ip}`, LIMITS.invite]))
     return no("Too many attempts. Wait a few minutes.");
-  // Only people on the team get an email; everyone sees the same answer.
-  const member = await db.query.users.findFirst({ where: eq(users.email, email) });
-  if (member?.status === "active" && member.authUserId) {
+  // Only people on the team (or invited to it, or setting it up) get an
+  // email; everyone sees the same answer.
+  if (await resetAllowed(email)) {
     const result = await (
       await authProvider()
     ).requestPasswordReset(email, `${appUrl()}/reset-password`);

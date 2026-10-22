@@ -99,11 +99,36 @@ describe("web pages for the knowledge base", () => {
       "fd00::1",
       "fe80::1",
       "::ffff:127.0.0.1",
+      // Other spellings of private IPv4 addresses inside IPv6.
+      "::ffff:7f00:1",
+      "::ffff:a00:5",
+      "::ffff:a9fe:a9fe",
+      "0:0:0:0:0:ffff:192.168.1.1",
+      "::127.0.0.1",
+      "64:ff9b::a00:1",
+      "64:ff9b:1::1",
+      "2002:7f00:1::",
+      "2001:0:4136:e378::1",
+      "2001:db8::1",
+      "fe80::1%eth0",
+      "ff02::1",
+      "198.51.100.7",
+      "203.0.113.9",
+      "not-an-ip",
     ]) {
       expect(isPrivateAddress(ip), ip).toBe(true);
     }
-    for (const ip of ["8.8.8.8", "151.101.1.69", "2a00:1450:4009:81f::200e"])
+    for (const ip of [
+      "8.8.8.8",
+      "151.101.1.69",
+      "2a00:1450:4009:81f::200e",
+      "::ffff:808:808",
+      "64:ff9b::808:808",
+    ])
       expect(isPrivateAddress(ip), ip).toBe(false);
+    // Node writes [::ffff:127.0.0.1] as ::ffff:7f00:1; it must still be refused.
+    expect(() => checkUrl("http://[::ffff:127.0.0.1]/")).toThrow(/public web/);
+    expect(() => checkUrl("http://[::ffff:169.254.169.254]/latest")).toThrow(/public web/);
     expect(() => checkUrl("http://localhost/admin")).toThrow(/public web/);
     expect(() => checkUrl("http://169.254.169.254/latest/meta-data")).toThrow(/public web/);
     expect(() => checkUrl("file:///etc/passwd")).toThrow(/http and https/);

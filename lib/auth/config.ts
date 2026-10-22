@@ -6,7 +6,7 @@
  * Better Auth, with its users in the neon_auth schema of our database. What
  * they may do in Billie (role, suspended or not) is ours, in the users table.
  */
-import { createHmac } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 type Env = Record<string, string | undefined>;
 
@@ -47,8 +47,9 @@ export function neonAuthBaseUrl(env: Env = process.env): string | null {
 }
 
 /**
- * A secret for one purpose, derived from CRON_SECRET so a deployment needs
- * only that one secret typed in. A fixed value is used only off Vercel.
+ * A key for one low-stakes purpose (hashing rate-limit buckets, marking
+ * checked chat-frame requests), derived from CRON_SECRET. A fixed value is
+ * used only off Vercel. Never used for sessions: see neonCookieSecret.
  */
 export function derivedSecret(purpose: string, env: Env = process.env): string | null {
   const cron = env.CRON_SECRET?.trim();
@@ -57,11 +58,43 @@ export function derivedSecret(purpose: string, env: Env = process.env): string |
   return null;
 }
 
-/** Signs Neon Auth's session cache cookie: NEON_AUTH_COOKIE_SECRET, or derived. */
+/**
+ * Signs Neon Auth's session cache cookie. Its own secret, never derived from
+ * another: whoever holds it could sign in as anyone.
+ */
 export function neonCookieSecret(env: Env = process.env): string | null {
   const explicit = env.NEON_AUTH_COOKIE_SECRET?.trim();
-  if (explicit) return explicit.length >= 32 ? explicit : null;
-  return derivedSecret("neon-auth-cookie", env);
+  return explicit && explicit.length >= 32 ? explicit : null;
+}
+
+/** What's missing for sign-in to work, in words for the sign-in page; null when ready. */
+export function authProblem(env: Env = process.env): string | null {
+  const mode = authMode(env);
+  if (mode === "local") return null;
+  if (mode === "none")
+    return "Sign-in isn't set up yet: add NEON_AUTH_BASE_URL in Vercel, then redeploy.";
+  if (!neonAuthBaseUrl(env)) return "NEON_AUTH_BASE_URL must be the https Auth URL from Neon.";
+  if (!neonCookieSecret(env))
+    return "Add NEON_AUTH_COOKIE_SECRET in Vercel (32 or more random characters), then redeploy.";
+  return null;
+}
+
+/**
+ * First-run set-up asks for a code only the person who deployed Billie
+ * knows (the CRON_SECRET they set), so nobody else can claim the first
+ * admin account on a fresh site. Locally, without CRON_SECRET, it isn't asked.
+ */
+export function setupCodeRequired(env: Env = process.env): boolean {
+  return Boolean(env.CRON_SECRET?.trim()) || Boolean(env.VERCEL);
+}
+
+export function setupCodeValid(code: string, env: Env = process.env): boolean {
+  if (!setupCodeRequired(env)) return true;
+  const expected = env.CRON_SECRET?.trim();
+  if (!expected) return false;
+  const a = createHash("sha256").update(code.trim()).digest();
+  const b = createHash("sha256").update(expected).digest();
+  return timingSafeEqual(a, b);
 }
 
 /**

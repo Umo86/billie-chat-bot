@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { invite } from "./db";
-import { ADMIN } from "./helpers";
+import { ADMIN, SETUP_CODE } from "./helpers";
 
 /**
  * Sign-in, end to end: first-run set-up, signing out and in, an invitation
@@ -15,6 +15,14 @@ test("first run: set up the admin account", async ({ page }) => {
   await page.getByLabel("Your name").fill(ADMIN.name);
   await page.getByLabel("Work email").fill(ADMIN.email);
   await page.getByLabel("Password").fill(ADMIN.password);
+  // Without the deployer's set-up code, nobody can claim the first account.
+  await page.getByLabel("Set-up code").fill("a-guess");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page.getByText("That set-up code isn't right.", { exact: false })).toBeVisible();
+  await expect(page.getByLabel("Work email")).toHaveValue(ADMIN.email);
+
+  await page.getByLabel("Password").fill(ADMIN.password);
+  await page.getByLabel("Set-up code").fill(SETUP_CODE);
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(page).toHaveURL(/\/\?welcome=1$/);
   await expect(page.getByRole("heading", { name: "Your bots" })).toBeVisible();

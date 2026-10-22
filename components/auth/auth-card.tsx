@@ -38,11 +38,20 @@ function Shell({
   );
 }
 
-export function SignInForm({ action, notice }: { action: FormAction; notice?: string }) {
+export function SignInForm({
+  action,
+  notice,
+  problem,
+}: {
+  action: FormAction;
+  notice?: string;
+  problem?: string | null;
+}) {
   const [state, formAction, pending] = useActionState(action, null);
   return (
     <Shell title="Sign in" lede="The chat and email assistant for Media10 shows.">
       <form action={formAction} className="flex flex-col gap-4">
+        {problem ? <Note tone="warn">{problem}</Note> : null}
         {notice ? <Note tone="good">{notice}</Note> : null}
         <Field id="email" label="Email">
           <Input
@@ -80,10 +89,12 @@ export function SignInForm({ action, notice }: { action: FormAction; notice?: st
 
 export function SetUpForm({
   action,
-  lockedEmail,
+  askCode,
+  problem,
 }: {
   action: FormAction;
-  lockedEmail: string | null;
+  askCode: boolean;
+  problem: string | null;
 }) {
   const [state, formAction, pending] = useActionState(action, null);
   return (
@@ -91,7 +102,8 @@ export function SetUpForm({
       title="Set up Billie"
       lede="Create the first account. It will be an admin, and can invite the rest of the team."
     >
-      <form action={formAction} className="flex flex-col gap-4">
+      {problem ? <Note tone="warn">{problem}</Note> : null}
+      <form action={formAction} className="mt-4 flex flex-col gap-4">
         <Field id="name" label="Your name">
           <Input
             id="name"
@@ -105,7 +117,7 @@ export function SetUpForm({
         <Field
           id="email"
           label="Work email"
-          hint={lockedEmail ? "Only this address can create the first account." : undefined}
+          hint="The address set as FIRST_ADMIN_EMAIL when Billie was deployed."
         >
           <Input
             id="email"
@@ -113,8 +125,7 @@ export function SetUpForm({
             type="email"
             autoComplete="username"
             required
-            defaultValue={lockedEmail ?? typed(state, "email") ?? ""}
-            readOnly={Boolean(lockedEmail)}
+            defaultValue={typed(state, "email") ?? ""}
           />
         </Field>
         <Field id="password" label="Password" hint="At least 10 characters.">
@@ -127,8 +138,17 @@ export function SetUpForm({
             minLength={10}
           />
         </Field>
+        {askCode ? (
+          <Field
+            id="code"
+            label="Set-up code"
+            hint="The CRON_SECRET value added in Vercel. It proves you're the person who deployed Billie."
+          >
+            <Input id="code" name="code" type="password" autoComplete="off" required />
+          </Field>
+        ) : null}
         {state && !state.ok ? <Note tone="bad">{state.error}</Note> : null}
-        <Button type="submit" variant="primary" disabled={pending}>
+        <Button type="submit" variant="primary" disabled={pending || Boolean(problem)}>
           {pending ? "Setting up…" : "Create account"}
         </Button>
       </form>

@@ -127,7 +127,12 @@
       open = next;
       if (open && !frame.src) {
         frame.src =
-          origin + "/embed/" + slug + "?page=" + encodeURIComponent(location.href.slice(0, 900));
+          origin +
+          "/embed/" +
+          slug +
+          "?page=" +
+          // Address and path only: query strings can hold private tokens.
+          encodeURIComponent((location.origin + location.pathname).slice(0, 900));
       }
       panel.style.setProperty("display", open ? "block" : "none");
       button.setAttribute("aria-expanded", open ? "true" : "false");

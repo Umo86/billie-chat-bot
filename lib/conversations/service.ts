@@ -246,7 +246,12 @@ export async function visitorMessage(input: {
   // 2. Billie answers.
   let answer;
   try {
-    answer = await answerQuestion({ bot: await answerBotFor(input.bot), history, question: text });
+    answer = await answerQuestion({
+      bot: await answerBotFor(input.bot),
+      history,
+      question: text,
+      from: input.channel === "try" ? "staff" : "visitor",
+    });
   } catch (err) {
     console.error("answer failed", err instanceof Error ? `${err.name}: ${err.message}` : err);
     const failed = await db.transaction((tx) =>
