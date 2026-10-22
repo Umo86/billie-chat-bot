@@ -266,3 +266,21 @@ export async function signUpAllowed(email: string): Promise<boolean> {
   if (invited) return true;
   return !(await hasAnyUser()) && firstAdminAllowed(e);
 }
+
+export async function revokeInvitation(actor: Actor, id: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [inv] = await tx
+      .update(invitations)
+      .set({ revokedAt: new Date() })
+      .where(and(eq(invitations.id, id), isNull(invitations.acceptedAt)))
+      .returning({ email: invitations.email });
+    if (!inv) return;
+    await writeAudit(tx, {
+      actorUserId: actor.id,
+      entityType: "invitation",
+      entityId: id,
+      action: "status_change",
+      summary: `Cancelled the invitation for ${inv.email}`,
+    });
+  });
+}

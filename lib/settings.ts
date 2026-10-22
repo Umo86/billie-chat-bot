@@ -16,3 +16,34 @@ export async function getSettings(): Promise<Settings> {
     .returning();
   return created ?? (await db.query.settings.findFirst({ where: eq(settings.id, "main") }))!;
 }
+
+export type SettingsPatch = Partial<
+  Pick<
+    Settings,
+    | "companyName"
+    | "retentionMonths"
+    | "dailyAnswerCap"
+    | "consentText"
+    | "alertEmails"
+    | "weeklySummary"
+    | "whatsappVisitorBotId"
+    | "whatsappExhibitorBotId"
+    | "emailBotId"
+    | "emailSignature"
+  >
+>;
+
+export async function updateSettings(actorId: string, patch: SettingsPatch): Promise<void> {
+  const { writeAudit } = await import("@/lib/audit");
+  await getSettings();
+  await db.transaction(async (tx) => {
+    await tx.update(settings).set(patch).where(eq(settings.id, "main"));
+    await writeAudit(tx, {
+      actorUserId: actorId,
+      entityType: "settings",
+      entityId: null,
+      action: "update",
+      summary: `Changed settings: ${Object.keys(patch).join(", ")}`,
+    });
+  });
+}
