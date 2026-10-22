@@ -18,7 +18,15 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${PORT}`,
     trace: "retain-on-failure",
-    launchOptions: { executablePath: process.env.PW_CHROMIUM_PATH || undefined },
+    launchOptions: {
+      executablePath: process.env.PW_CHROMIUM_PATH || undefined,
+      // The widget test serves a stand-in public website that loads Billie
+      // from localhost; Chrome would otherwise hold that request for a
+      // local-network permission prompt nobody can click.
+      args: [
+        "--disable-features=LocalNetworkAccessChecks,PrivateNetworkAccessSendPreflights,BlockInsecurePrivateNetworkRequests",
+      ],
+    },
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {

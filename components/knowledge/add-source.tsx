@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/form";
 import { Segmented } from "@/components/ui/segmented";
 import { Switch } from "@/components/ui/switch";
-import { Panel } from "@/components/ui/bits";
+import { Note, Panel } from "@/components/ui/bits";
 import { useRunner } from "@/components/ui/use-runner";
 import {
   addQaAction,
@@ -27,13 +27,16 @@ export function AddSource({
   accept,
   maxBytes,
   blobUploads,
+  filesOff = false,
 }: {
   kbId: string;
   accept: string[];
   maxBytes: number;
   blobUploads: boolean;
+  /** True when no file storage is set up (Vercel Blob missing on a deployment). */
+  filesOff?: boolean;
 }) {
-  const [tab, setTab] = useState<Tab>("file");
+  const [tab, setTab] = useState<Tab>(filesOff ? "text" : "file");
   return (
     <Panel className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -78,7 +81,13 @@ export function AddSource({
           ]}
         />
       </div>
-      {tab === "file" ? (
+      {tab === "file" && filesOff ? (
+        <Note tone="warn">
+          File uploads need somewhere to keep the files. An admin can add Vercel Blob to the project
+          (Vercel → Storage → Blob), then reload this page. Until then, paste the text or add web
+          pages.
+        </Note>
+      ) : tab === "file" ? (
         <FileDrop kbId={kbId} accept={accept} maxBytes={maxBytes} blobUploads={blobUploads} />
       ) : tab === "text" ? (
         <PasteText kbId={kbId} />

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { invite } from "./db";
+import { ADMIN } from "./helpers";
 
 /**
  * Sign-in, end to end: first-run set-up, signing out and in, an invitation
@@ -7,12 +8,6 @@ import { invite } from "./db";
  * test creates the admin the others rely on.
  */
 test.describe.configure({ mode: "serial" });
-
-const ADMIN = {
-  name: "Umit Bozdag",
-  email: "umit@media10.test",
-  password: "correct-horse-battery",
-};
 
 test("first run: set up the admin account", async ({ page }) => {
   await page.goto("/");

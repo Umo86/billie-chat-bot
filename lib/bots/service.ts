@@ -198,23 +198,30 @@ export async function runTests(actor: Actor, id: string): Promise<TestRun> {
   if (!bot) throw new UserError("That bot no longer exists.");
   if (!bot.tests.length) throw new UserError("Add at least one test question first.");
   const answerBot = await answerBotFor(bot);
-  const results: TestResult[] = [];
-  for (const t of bot.tests) {
-    try {
-      const a = await answerQuestion({ bot: answerBot, history: [], question: t.question });
-      results.push(scoreTest(t, a));
-    } catch (err) {
-      results.push({
-        id: t.id,
-        question: t.question,
-        pass: false,
-        answer: err instanceof Error ? err.message : "Failed",
-        handover: "unknown",
-        missing: [],
-        error: true,
-      });
+  // Three at a time: quick enough for 50 questions, gentle on rate limits.
+  const results: TestResult[] = new Array(bot.tests.length);
+  let next = 0;
+  async function worker() {
+    while (next < bot!.tests.length) {
+      const i = next++;
+      const t = bot!.tests[i];
+      try {
+        const a = await answerQuestion({ bot: answerBot, history: [], question: t.question });
+        results[i] = scoreTest(t, a);
+      } catch (err) {
+        results[i] = {
+          id: t.id,
+          question: t.question,
+          pass: false,
+          answer: err instanceof Error ? err.message : "Failed",
+          handover: "unknown",
+          missing: [],
+          error: true,
+        };
+      }
     }
   }
+  await Promise.all([worker(), worker(), worker()]);
   const run: TestRun = {
     at: new Date().toISOString(),
     passed: results.filter((r) => r.pass).length,

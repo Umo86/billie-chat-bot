@@ -3,7 +3,7 @@ import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { getActor } from "@/lib/auth/actor";
 import { can } from "@/lib/authz";
 import { blobConfigured } from "@/lib/config";
-import { MAX_FILE_BYTES } from "@/lib/knowledge/extract";
+import { MAX_FILE_BYTES } from "@/lib/knowledge/files";
 import { CLIENT_UPLOAD_PREFIX } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";

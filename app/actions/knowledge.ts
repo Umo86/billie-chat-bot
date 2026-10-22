@@ -15,7 +15,7 @@ import {
   setKnowledgeBaseDeleted,
 } from "@/lib/knowledge/bases";
 import { passagesOf } from "@/lib/knowledge/queries";
-import { fileKind, MAX_FILE_BYTES } from "@/lib/knowledge/extract";
+import { fileKind, MAX_FILE_BYTES } from "@/lib/knowledge/files";
 import { putFile, storedBlobSize } from "@/lib/storage";
 import { UserError } from "@/lib/errors";
 
