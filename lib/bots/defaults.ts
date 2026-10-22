@@ -20,19 +20,31 @@ export const FIELD_LABEL: Record<ContactField, string> = {
 
 export function defaultRules(audience: "visitors" | "exhibitors"): BotRules {
   return {
-    alwaysHuman: audience === "visitors" ? ALWAYS_HUMAN_DEFAULT.slice(0, 3) : ALWAYS_HUMAN_DEFAULT.slice(),
+    alwaysHuman:
+      audience === "visitors" ? ALWAYS_HUMAN_DEFAULT.slice(0, 3) : ALWAYS_HUMAN_DEFAULT.slice(),
     hours: { days: [1, 2, 3, 4, 5], start: "09:00", end: "17:30" },
-    collect: audience === "visitors" ? ["name", "email", "phone"] : ["name", "company", "stand", "email", "phone"],
+    collect:
+      audience === "visitors"
+        ? ["name", "email", "phone"]
+        : ["name", "company", "stand", "email", "phone"],
     promise: "by the next working day",
   };
 }
 
 export const STARTER_EXAMPLES = {
-  exhibitors: ["When can we start building?", "How do deliveries work?", "How many badges do we get?"],
+  exhibitors: [
+    "When can we start building?",
+    "How do deliveries work?",
+    "How many badges do we get?",
+  ],
   visitors: ["When is the show?", "Where is the venue?", "What time does it open?"],
 } as const;
 
-export function suggestedWelcome(b: { name: string; audience: "visitors" | "exhibitors"; showName: string }): string {
+export function suggestedWelcome(b: {
+  name: string;
+  audience: "visitors" | "exhibitors";
+  showName: string;
+}): string {
   const verb = b.audience === "visitors" ? "visiting" : "exhibiting at";
   return `Hi, I'm ${b.name || "your assistant"}. Ask me anything about ${verb} ${b.showName || "the show"}.`;
 }

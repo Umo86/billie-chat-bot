@@ -14,7 +14,12 @@ function normaliseParagraphs(text: string): string[] {
     .replace(/\r/g, "")
     .replace(/\u0000/g, "")
     .split(/\n\s*\n/)
-    .map((p) => p.replace(/[ \t\f\v]+/g, " ").replace(/ *\n */g, "\n").trim())
+    .map((p) =>
+      p
+        .replace(/[ \t\f\v]+/g, " ")
+        .replace(/ *\n */g, "\n")
+        .trim(),
+    )
     .filter(Boolean);
 }
 

@@ -91,7 +91,8 @@ export async function answerQuestion(input: {
   });
 
   const parsed = answerSchema.safeParse(result.json);
-  if (!parsed.success) throw new AiError("invalid_output", "The reply didn't match the expected shape");
+  if (!parsed.success)
+    throw new AiError("invalid_output", "The reply didn't match the expected shape");
   const r = parsed.data;
 
   const used = r.used.filter((n) => Number.isInteger(n) && n >= 1 && n <= passages.length);
@@ -127,6 +128,7 @@ export async function answerQuestion(input: {
 
 /** What the person sees when Claude can't be reached; the chat is then offered to the team. */
 export function aiFailureLine(err: unknown): string {
-  if (err instanceof AiError && err.code === "refused") return "Sorry, I can't help with that message.";
+  if (err instanceof AiError && err.code === "refused")
+    return "Sorry, I can't help with that message.";
   return "Sorry, I can't answer right now.";
 }

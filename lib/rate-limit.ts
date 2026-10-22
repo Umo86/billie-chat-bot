@@ -39,12 +39,15 @@ export async function consume(
   now = Date.now(),
 ): Promise<{ allowed: boolean; retryAfter: number }> {
   const since = now - rule.window * 1000;
-  const rows = await query<{ count: number; window_start: string | number }>(db, sql`
+  const rows = await query<{ count: number; window_start: string | number }>(
+    db,
+    sql`
     INSERT INTO rate_limits (key, count, window_start) VALUES (${bucketKey(raw)}, 1, ${now})
     ON CONFLICT (key) DO UPDATE SET
       count = CASE WHEN rate_limits.window_start <= ${since} THEN 1 ELSE rate_limits.count + 1 END,
       window_start = CASE WHEN rate_limits.window_start <= ${since} THEN ${now} ELSE rate_limits.window_start END
-    RETURNING count, window_start`);
+    RETURNING count, window_start`,
+  );
   const row = rows[0];
   const allowed = Number(row.count) <= rule.max;
   const retryAfter = Math.max(

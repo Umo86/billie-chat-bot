@@ -5,7 +5,9 @@ import { initials, slugify, textOn, uniqueSlug } from "@/lib/bots/slug";
 
 describe("allowed websites", () => {
   it("normalises what people type to a bare hostname", () => {
-    expect(normaliseDomain("https://www.UKConstructionWeek.com/exhibit?x=1")).toBe("ukconstructionweek.com");
+    expect(normaliseDomain("https://www.UKConstructionWeek.com/exhibit?x=1")).toBe(
+      "ukconstructionweek.com",
+    );
     expect(normaliseDomain("manual.example.co.uk:443")).toBe("manual.example.co.uk");
     expect(normaliseDomain("localhost")).toBe("localhost");
     expect(normaliseDomain("not a domain")).toBeNull();
@@ -46,7 +48,9 @@ describe("bot handles", () => {
     expect(slugify("Exhibitor Help!")).toBe("exhibitor-help");
     expect(slugify("Café Bot")).toBe("cafe-bot");
     expect(slugify("!!!")).toBe("bot");
-    expect(uniqueSlug("Exhibitor Help", ["exhibitor-help", "exhibitor-help-2"])).toBe("exhibitor-help-3");
+    expect(uniqueSlug("Exhibitor Help", ["exhibitor-help", "exhibitor-help-2"])).toBe(
+      "exhibitor-help-3",
+    );
   });
 
   it("picks readable text colours and initials", () => {

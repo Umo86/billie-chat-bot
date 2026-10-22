@@ -6,13 +6,18 @@ import { orQuery } from "@/lib/knowledge/search";
 
 describe("chunking", () => {
   it("keeps each passage within the limit and never mixes labels", () => {
-    const long = Array.from({ length: 40 }, (_, i) => `Sentence number ${i} about deliveries and badges.`).join(" ");
+    const long = Array.from(
+      { length: 40 },
+      (_, i) => `Sentence number ${i} about deliveries and badges.`,
+    ).join(" ");
     const chunks = chunkSegments([
       { text: `Intro paragraph.\n\n${long}`, label: "p. 1" },
       { text: "Second page text.", label: "p. 2" },
     ]);
     expect(chunks.every((c) => c.text.length <= MAX_PASSAGE * 1.2)).toBe(true);
-    expect(chunks.filter((c) => c.label === "p. 2").map((c) => c.text)).toEqual(["Second page text."]);
+    expect(chunks.filter((c) => c.label === "p. 2").map((c) => c.text)).toEqual([
+      "Second page text.",
+    ]);
     expect(chunks.filter((c) => c.label === "p. 1").length).toBeGreaterThan(1);
   });
 
@@ -54,7 +59,9 @@ describe("ranking", () => {
   });
 
   it("builds a safe OR query for Postgres", () => {
-    expect(orQuery("Badges: how many?!")).toBe("badges | badge | pass | lanyard | registration | many");
+    expect(orQuery("Badges: how many?!")).toBe(
+      "badges | badge | pass | lanyard | registration | many",
+    );
     expect(orQuery("'); DROP TABLE x; --")).toBe("drop | table");
     expect(orQuery("??")).toBeNull();
   });

@@ -9,12 +9,19 @@ import { agentPresence, users } from "@/lib/db/schema";
  */
 export const AVAILABLE_HOURS = 8;
 
-export async function setAvailable(userId: string, available: boolean, now = new Date()): Promise<void> {
+export async function setAvailable(
+  userId: string,
+  available: boolean,
+  now = new Date(),
+): Promise<void> {
   const until = available ? new Date(now.getTime() + AVAILABLE_HOURS * 3_600_000) : null;
   await db
     .insert(agentPresence)
     .values({ userId, availableUntil: until, updatedAt: now })
-    .onConflictDoUpdate({ target: agentPresence.userId, set: { availableUntil: until, updatedAt: now } });
+    .onConflictDoUpdate({
+      target: agentPresence.userId,
+      set: { availableUntil: until, updatedAt: now },
+    });
 }
 
 /** Keeps an available person available while their Inbox is open (no effect when they're off). */

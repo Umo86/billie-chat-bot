@@ -33,10 +33,22 @@ export function fileKind(name: string, mime: string | null | undefined): FileKin
   return null;
 }
 
-export const ACCEPTED_EXTENSIONS = [".pdf", ".docx", ".xlsx", ".csv", ".txt", ".md", ".html", ".htm"];
+export const ACCEPTED_EXTENSIONS = [
+  ".pdf",
+  ".docx",
+  ".xlsx",
+  ".csv",
+  ".txt",
+  ".md",
+  ".html",
+  ".htm",
+];
 
 function clean(text: string): string {
-  return text.replace(/\u0000/g, "").replace(/[ \t]+\n/g, "\n").trim();
+  return text
+    .replace(/\u0000/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .trim();
 }
 
 async function pdfSegments(bytes: Buffer): Promise<Segment[]> {
@@ -48,12 +60,16 @@ async function pdfSegments(bytes: Buffer): Promise<Segment[]> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (/password/i.test(msg)) {
-      throw new UnreadableFileError("This PDF is password-protected. Save a copy without the password and add that.");
+      throw new UnreadableFileError(
+        "This PDF is password-protected. Save a copy without the password and add that.",
+      );
     }
     throw new UnreadableFileError("This file couldn't be opened as a PDF.");
   }
   const { text } = await extractText(doc, { mergePages: false });
-  const pages = text.map((t, i) => ({ text: clean(t), label: `p. ${i + 1}` })).filter((p) => p.text);
+  const pages = text
+    .map((t, i) => ({ text: clean(t), label: `p. ${i + 1}` }))
+    .filter((p) => p.text);
   if (!pages.length) {
     throw new UnreadableFileError(
       "No text found: this looks like a scanned PDF. Export it from the original document, or paste the text instead.",
@@ -178,7 +194,9 @@ export async function extractFile(
   mime: string | null | undefined,
 ): Promise<Segment[]> {
   if (bytes.length > MAX_FILE_BYTES) {
-    throw new UnreadableFileError("This file is over 50 MB. Split it, or upload the sections people ask about.");
+    throw new UnreadableFileError(
+      "This file is over 50 MB. Split it, or upload the sections people ask about.",
+    );
   }
   const kind = fileKind(name, mime);
   switch (kind) {

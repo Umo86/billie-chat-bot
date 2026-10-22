@@ -79,7 +79,10 @@ export async function ingestSource(sourceId: string): Promise<void> {
 
   const contentHash = hashChunks(chunks);
   if (src.kind === "web" && src.status === "ready" && src.contentHash === contentHash) {
-    await db.update(sources).set({ status: "ready", lastReadAt: new Date(), title }).where(eq(sources.id, sourceId));
+    await db
+      .update(sources)
+      .set({ status: "ready", lastReadAt: new Date(), title })
+      .where(eq(sources.id, sourceId));
     return; // The page hasn't changed since the last read.
   }
 

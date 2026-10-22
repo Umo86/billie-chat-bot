@@ -34,7 +34,8 @@ export function formatPassages(passages: PromptPassage[]): string {
   return passages
     .map((p, i) => {
       const where = [p.sourceTitle, p.label].filter(Boolean).join(", ");
-      const typed = p.kind === "qa" ? " (typed answer from the team: prefer it if a file disagrees)" : "";
+      const typed =
+        p.kind === "qa" ? " (typed answer from the team: prefer it if a file disagrees)" : "";
       return `[${i + 1}] Source: ${where}${typed}\n${p.text}`;
     })
     .join("\n\n");

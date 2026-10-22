@@ -48,7 +48,10 @@ export type Tx = Parameters<Parameters<DrizzleDb["transaction"]>[0]>[0];
 export type DbOrTx = Db | Tx;
 
 /** Rows of a raw SQL statement (node-postgres returns them under .rows). */
-export async function query<T extends Record<string, unknown>>(runner: DbOrTx, statement: SQL): Promise<T[]> {
+export async function query<T extends Record<string, unknown>>(
+  runner: DbOrTx,
+  statement: SQL,
+): Promise<T[]> {
   const result = await runner.execute<T>(statement);
   return result.rows as T[];
 }

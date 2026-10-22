@@ -19,9 +19,14 @@ export async function makeUser(role: Actor["role"] = "admin"): Promise<Actor> {
   return { id: u.id, email: u.email, name: u.fullName, role: u.role, status: u.status };
 }
 
-export async function makeBot(opts: { audience?: "visitors" | "exhibitors"; status?: "draft" | "live" } = {}) {
+export async function makeBot(
+  opts: { audience?: "visitors" | "exhibitors"; status?: "draft" | "live" } = {},
+) {
   const audience = opts.audience ?? "exhibitors";
-  const [kb] = await db.insert(knowledgeBases).values({ name: `KB ${randomUUID().slice(0, 6)}` }).returning();
+  const [kb] = await db
+    .insert(knowledgeBases)
+    .values({ name: `KB ${randomUUID().slice(0, 6)}` })
+    .returning();
   const [bot] = await db
     .insert(bots)
     .values({
@@ -45,7 +50,12 @@ export async function addAndRead(actor: Actor, kbId: string, input: NewSource): 
   return id;
 }
 
-export async function addFixture(actor: Actor, kbId: string, name: string, mimeType: string): Promise<string> {
+export async function addFixture(
+  actor: Actor,
+  kbId: string,
+  name: string,
+  mimeType: string,
+): Promise<string> {
   const bytes = await readFile(path.join(__dirname, "..", "fixtures", name));
   const fileKey = await putFile(name, bytes, mimeType);
   return addAndRead(actor, kbId, { kind: "file", name, fileKey, size: bytes.length, mimeType });
@@ -60,5 +70,8 @@ export async function setAvailableAgent(userId: string, available: boolean) {
 }
 
 export async function clearPresence() {
-  await db.update(agentPresence).set({ availableUntil: null }).where(eq(agentPresence.availableUntil, agentPresence.availableUntil));
+  await db
+    .update(agentPresence)
+    .set({ availableUntil: null })
+    .where(eq(agentPresence.availableUntil, agentPresence.availableUntil));
 }

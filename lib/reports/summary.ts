@@ -34,7 +34,11 @@ export async function sendWeeklySummary(now = new Date()): Promise<boolean> {
   const to = s.alertEmails.split(/[,;\s]+/).filter((x) => x.includes("@"));
   if (!s.weeklySummary || !to.length || !emailConfigured()) return false;
   const since = new Date(now.getTime() - 7 * 86_400_000);
-  const text = summaryText({ k: await kpis(since), top: await topQuestions(since, 5), link: `${appUrl()}/reports` });
+  const text = summaryText({
+    k: await kpis(since),
+    top: await topQuestions(since, 5),
+    link: `${appUrl()}/reports`,
+  });
   await sendEmail({ to, subject: "Billie: your weekly summary", text });
   return true;
 }

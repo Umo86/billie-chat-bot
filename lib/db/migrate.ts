@@ -11,7 +11,10 @@ import { describeDatabase, migrationDatabaseUrl, normaliseSsl } from "./urls";
  * every deploy; prints the host, never the credentials.
  */
 export async function runMigrations(url: string, folder = "lib/db/migrations"): Promise<void> {
-  const client = new Client({ connectionString: normaliseSsl(url), connectionTimeoutMillis: 30_000 });
+  const client = new Client({
+    connectionString: normaliseSsl(url),
+    connectionTimeoutMillis: 30_000,
+  });
   await client.connect();
   try {
     await migrate(drizzle({ client }), { migrationsFolder: folder });

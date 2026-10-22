@@ -10,7 +10,10 @@ export function normaliseDomain(input: string): string | null {
   let s = input.trim().toLowerCase();
   if (!s) return null;
   s = s.replace(/^[a-z][a-z0-9+.-]*:\/\//, "");
-  s = s.replace(/[/?#].*$/, "").replace(/:\d+$/, "").replace(/\.$/, "");
+  s = s
+    .replace(/[/?#].*$/, "")
+    .replace(/:\d+$/, "")
+    .replace(/\.$/, "");
   s = s.replace(/^www\./, "");
   if (s === "localhost") return s;
   return HOST.test(s) ? s : null;

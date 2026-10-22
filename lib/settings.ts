@@ -9,6 +9,10 @@ export type Settings = typeof settings.$inferSelect;
 export async function getSettings(): Promise<Settings> {
   const row = await db.query.settings.findFirst({ where: eq(settings.id, "main") });
   if (row) return row;
-  const [created] = await db.insert(settings).values({ id: "main" }).onConflictDoNothing().returning();
+  const [created] = await db
+    .insert(settings)
+    .values({ id: "main" })
+    .onConflictDoNothing()
+    .returning();
   return created ?? (await db.query.settings.findFirst({ where: eq(settings.id, "main") }))!;
 }

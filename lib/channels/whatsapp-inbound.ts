@@ -24,7 +24,11 @@ const NEW_CHAT_AFTER_MS = 7 * 86_400_000;
 
 async function openConversation(waId: string, botId: string): Promise<ConversationRow | null> {
   const row = await db.query.conversations.findFirst({
-    where: and(eq(conversations.waId, waId), eq(conversations.botId, botId), ne(conversations.status, "closed")),
+    where: and(
+      eq(conversations.waId, waId),
+      eq(conversations.botId, botId),
+      ne(conversations.status, "closed"),
+    ),
     orderBy: desc(conversations.lastMessageAt),
   });
   if (!row) return null;
@@ -32,15 +36,22 @@ async function openConversation(waId: string, botId: string): Promise<Conversati
 }
 
 async function alreadyHandled(messageId: string): Promise<boolean> {
-  const row = await db.query.messages.findFirst({ where: eq(messages.externalId, messageId), columns: { id: true } });
+  const row = await db.query.messages.findFirst({
+    where: eq(messages.externalId, messageId),
+    columns: { id: true },
+  });
   return Boolean(row);
 }
 
 export async function handleWhatsAppInbound(m: InboundMessage): Promise<void> {
   if (await alreadyHandled(m.id)) return;
   const settings = await getSettings();
-  const visitorBot = settings.whatsappVisitorBotId ? await botById(settings.whatsappVisitorBotId) : null;
-  const exhibitorBot = settings.whatsappExhibitorBotId ? await botById(settings.whatsappExhibitorBotId) : null;
+  const visitorBot = settings.whatsappVisitorBotId
+    ? await botById(settings.whatsappVisitorBotId)
+    : null;
+  const exhibitorBot = settings.whatsappExhibitorBotId
+    ? await botById(settings.whatsappExhibitorBotId)
+    : null;
   const live = [visitorBot, exhibitorBot].filter((b) => b && b.status === "live");
   if (!live.length) {
     await sendText(m.from, "Sorry, this number isn't answering questions yet.");
@@ -54,7 +65,9 @@ export async function handleWhatsAppInbound(m: InboundMessage): Promise<void> {
       target: whatsappContacts.waId,
       set: { profileName: m.profileName.slice(0, 120), lastInboundAt: m.timestamp },
     });
-  const contact = await db.query.whatsappContacts.findFirst({ where: eq(whatsappContacts.waId, m.from) });
+  const contact = await db.query.whatsappContacts.findFirst({
+    where: eq(whatsappContacts.waId, m.from),
+  });
 
   // Which bot? A tapped button decides; otherwise their earlier choice; otherwise ask.
   let bot = null as typeof visitorBot;
@@ -99,7 +112,12 @@ export async function handleWhatsAppInbound(m: InboundMessage): Promise<void> {
     await db
       .update(conversations)
       .set({ contact: { name: m.profileName.slice(0, 120), phone: `+${m.from}` } })
-      .where(and(eq(conversations.id, turn.conversationId), inArray(conversations.status, ["bot", "waiting", "live"])));
+      .where(
+        and(
+          eq(conversations.id, turn.conversationId),
+          inArray(conversations.status, ["bot", "waiting", "live"]),
+        ),
+      );
   }
 
   // Everything after the person's own message goes back, one WhatsApp message each.
@@ -107,9 +125,12 @@ export async function handleWhatsAppInbound(m: InboundMessage): Promise<void> {
     await sendText(m.from, msg.role === "bot" ? formatAnswer(msg.text, msg.sources) : msg.text);
   }
   if (turn.offer) {
-    await sendText(m.from, "Reply \"team\" and I'll pass your question to a person.");
+    await sendText(m.from, 'Reply "team" and I\'ll pass your question to a person.');
   }
   if (turn.form) {
-    await sendText(m.from, "Please reply with your name, company and stand number, and the team will get back to you here.");
+    await sendText(
+      m.from,
+      "Please reply with your name, company and stand number, and the team will get back to you here.",
+    );
   }
 }

@@ -18,7 +18,10 @@ export function storageBackend(): "vercel-blob" | "local" | "none" {
 }
 
 export function safeName(name: string): string {
-  const base = path.basename(name).normalize("NFKD").replace(/[^\w.-]+/g, "-");
+  const base = path
+    .basename(name)
+    .normalize("NFKD")
+    .replace(/[^\w.-]+/g, "-");
   return base.replace(/^-+|-+$/g, "").slice(-120) || "file";
 }
 
@@ -36,7 +39,9 @@ export async function putFile(name: string, bytes: Buffer, contentType: string):
     await writeFile(file, bytes);
     return `local:${pathname}`;
   }
-  throw new Error("File storage isn't set up: add Vercel Blob to the project (BLOB_READ_WRITE_TOKEN).");
+  throw new Error(
+    "File storage isn't set up: add Vercel Blob to the project (BLOB_READ_WRITE_TOKEN).",
+  );
 }
 
 function localPath(key: string): string {

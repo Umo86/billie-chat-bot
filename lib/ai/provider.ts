@@ -35,11 +35,7 @@ export type Usage = { inputTokens: number; outputTokens: number; cachedTokens: n
 export type StructuredResult = { json: unknown; model: string; usage: Usage; latencyMs: number };
 
 export type AiErrorCode =
-  | "not_configured"
-  | "unavailable"
-  | "refused"
-  | "invalid_output"
-  | "cap_reached";
+  "not_configured" | "unavailable" | "refused" | "invalid_output" | "cap_reached";
 
 export class AiError extends Error {
   constructor(
@@ -85,7 +81,8 @@ async function callAnthropic(call: StructuredCall, model: string): Promise<Struc
     output_config: { format: { type: "json_schema", schema: call.schema } },
   });
   if (res.stop_reason === "refusal") throw new AiError("refused", "Claude declined to answer");
-  if (res.stop_reason === "max_tokens") throw new AiError("invalid_output", "The reply was cut off");
+  if (res.stop_reason === "max_tokens")
+    throw new AiError("invalid_output", "The reply was cut off");
   const text = res.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")
     .map((b) => b.text)

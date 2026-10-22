@@ -18,19 +18,27 @@ let token: { value: string; expires: number } | null = null;
 
 async function accessToken(): Promise<string> {
   if (token && token.expires > Date.now() + 60_000) return token.value;
-  const res = await fetch(`https://login.microsoftonline.com/${process.env.MS_TENANT_ID}/oauth2/v2.0/token`, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: process.env.MS_CLIENT_ID!,
-      client_secret: process.env.MS_CLIENT_SECRET!,
-      scope: "https://graph.microsoft.com/.default",
-      grant_type: "client_credentials",
-    }),
-    signal: AbortSignal.timeout(15_000),
-  });
-  const json = (await res.json()) as { access_token?: string; expires_in?: number; error_description?: string };
-  if (!res.ok || !json.access_token) throw new Error(`Microsoft sign-in failed: ${json.error_description ?? res.status}`);
+  const res = await fetch(
+    `https://login.microsoftonline.com/${process.env.MS_TENANT_ID}/oauth2/v2.0/token`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: process.env.MS_CLIENT_ID!,
+        client_secret: process.env.MS_CLIENT_SECRET!,
+        scope: "https://graph.microsoft.com/.default",
+        grant_type: "client_credentials",
+      }),
+      signal: AbortSignal.timeout(15_000),
+    },
+  );
+  const json = (await res.json()) as {
+    access_token?: string;
+    expires_in?: number;
+    error_description?: string;
+  };
+  if (!res.ok || !json.access_token)
+    throw new Error(`Microsoft sign-in failed: ${json.error_description ?? res.status}`);
   token = { value: json.access_token, expires: Date.now() + (json.expires_in ?? 3600) * 1000 };
   return token.value;
 }
@@ -80,7 +88,11 @@ export async function syncMailbox(now = new Date()): Promise<{ added: number }> 
   const since = first ? now.getTime() - 2 * 86_400_000 : 0;
   let added = 0;
   for (let page = 0; page < 50; page++) {
-    const res = await graph<{ value: GraphMessage[]; "@odata.nextLink"?: string; "@odata.deltaLink"?: string }>(url);
+    const res = await graph<{
+      value: GraphMessage[];
+      "@odata.nextLink"?: string;
+      "@odata.deltaLink"?: string;
+    }>(url);
     for (const m of res.value) {
       if (m["@removed"] || m.isDraft) continue;
       const from = m.from?.emailAddress?.address?.toLowerCase() ?? "";
@@ -112,7 +124,10 @@ export async function syncMailbox(now = new Date()): Promise<{ added: number }> 
       continue;
     }
     if (res["@odata.deltaLink"]) {
-      await db.update(settings).set({ outlookDeltaLink: res["@odata.deltaLink"] }).where(eq(settings.id, "main"));
+      await db
+        .update(settings)
+        .set({ outlookDeltaLink: res["@odata.deltaLink"] })
+        .where(eq(settings.id, "main"));
     }
     break;
   }
@@ -121,10 +136,13 @@ export async function syncMailbox(now = new Date()): Promise<{ added: number }> 
 
 /** A reply draft in the same Outlook thread, with Billie's text above the quoted email. */
 export async function createReplyDraft(messageId: string, text: string): Promise<string> {
-  const draft = await graph<{ id: string }>(`/users/${mailbox()}/messages/${encodeURIComponent(messageId)}/createReply`, {
-    method: "POST",
-    body: JSON.stringify({ comment: text }),
-  });
+  const draft = await graph<{ id: string }>(
+    `/users/${mailbox()}/messages/${encodeURIComponent(messageId)}/createReply`,
+    {
+      method: "POST",
+      body: JSON.stringify({ comment: text }),
+    },
+  );
   return draft.id;
 }
 

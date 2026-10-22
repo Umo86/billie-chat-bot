@@ -86,7 +86,10 @@ export function toVisitor(m: MessageRow, authorName?: string | null): VisitorMes
 async function authorNames(rows: MessageRow[]): Promise<Map<string, string>> {
   const ids = [...new Set(rows.map((m) => m.authorId).filter((x): x is string => Boolean(x)))];
   if (!ids.length) return new Map();
-  const list = await db.select({ id: users.id, name: users.fullName }).from(users).where(inArray(users.id, ids));
+  const list = await db
+    .select({ id: users.id, name: users.fullName })
+    .from(users)
+    .where(inArray(users.id, ids));
   return new Map(list.map((u) => [u.id, u.name]));
 }
 
@@ -110,7 +113,10 @@ async function insertMessage(
   conversationId: string,
   values: Omit<typeof messages.$inferInsert, "conversationId">,
 ): Promise<MessageRow> {
-  const [m] = await tx.insert(messages).values({ conversationId, ...values }).returning();
+  const [m] = await tx
+    .insert(messages)
+    .values({ conversationId, ...values })
+    .returning();
   await tx
     .update(conversations)
     .set({
@@ -124,7 +130,11 @@ async function insertMessage(
   return m;
 }
 
-async function move(tx: Tx, conv: ConversationRow, event: ConversationEvent): Promise<ConversationStatus> {
+async function move(
+  tx: Tx,
+  conv: ConversationRow,
+  event: ConversationEvent,
+): Promise<ConversationStatus> {
   const to = nextStatus(conv.status, event);
   if (!to) return conv.status;
   if (to !== conv.status) {
@@ -137,9 +147,15 @@ async function move(tx: Tx, conv: ConversationRow, event: ConversationEvent): Pr
 }
 
 /** A visitor's chat (web, hosted, try) by its token, or null. */
-export async function conversationForToken(token: string, botId: string): Promise<ConversationRow | null> {
+export async function conversationForToken(
+  token: string,
+  botId: string,
+): Promise<ConversationRow | null> {
   const row = await db.query.conversations.findFirst({
-    where: and(eq(conversations.visitorTokenHash, hashToken(token)), eq(conversations.botId, botId)),
+    where: and(
+      eq(conversations.visitorTokenHash, hashToken(token)),
+      eq(conversations.botId, botId),
+    ),
   });
   return row ?? null;
 }
@@ -176,7 +192,8 @@ export async function visitorMessage(input: {
 }): Promise<Turn> {
   const text = input.text.trim();
   if (!text) throw new ChatError("invalid", "Type a message first.");
-  if (text.length > MAX_MESSAGE) throw new ChatError("invalid", "That message is too long. Keep it under 2,000 characters.");
+  if (text.length > MAX_MESSAGE)
+    throw new ChatError("invalid", "That message is too long. Keep it under 2,000 characters.");
 
   let token: string | undefined;
   let conv = input.conversation;
@@ -268,7 +285,11 @@ export async function visitorMessage(input: {
 }
 
 /** Pass the chat to the team: live if someone is available, otherwise take details. */
-export async function handover(bot: BotRow, conversationId: string, reason: HandoverReason): Promise<Turn> {
+export async function handover(
+  bot: BotRow,
+  conversationId: string,
+  reason: HandoverReason,
+): Promise<Turn> {
   const route = handoverRoute(await agentsAvailable());
   const result = await db.transaction(async (tx) => {
     const c = await lock(tx, conversationId);
@@ -285,10 +306,17 @@ export async function handover(bot: BotRow, conversationId: string, reason: Hand
         role: "system",
         text: `Nobody from the team is online right now. They'll reply here ${bot.rules.promise}.`,
       });
-      await enqueue("notify_handover", { conversationId: c.id, kind: "ticket" }, { tx, dedupeKey: `notify:${c.id}:ticket` });
+      await enqueue(
+        "notify_handover",
+        { conversationId: c.id, kind: "ticket" },
+        { tx, dedupeKey: `notify:${c.id}:ticket` },
+      );
       return { status, rows: [line], changed: true };
     }
-    const line = await insertMessage(tx, c.id, { role: "system", text: handoverLine(route, reason) });
+    const line = await insertMessage(tx, c.id, {
+      role: "system",
+      text: handoverLine(route, reason),
+    });
     await writeAudit(tx, {
       actorType: "visitor",
       entityType: "conversation",
@@ -297,7 +325,11 @@ export async function handover(bot: BotRow, conversationId: string, reason: Hand
       summary: `Chat with ${bot.name} handed to the team (${route === "live" ? "live" : "details"}, ${reason})`,
     });
     if (route === "live") {
-      await enqueue("notify_handover", { conversationId: c.id, kind: "live" }, { tx, dedupeKey: `notify:${c.id}:live` });
+      await enqueue(
+        "notify_handover",
+        { conversationId: c.id, kind: "live" },
+        { tx, dedupeKey: `notify:${c.id}:live` },
+      );
     }
     return { status, rows: [line], changed: true };
   });
@@ -321,7 +353,9 @@ export function cleanContact(
   const contact: ContactDetails = {};
   const errors: Partial<Record<ContactField, string>> = {};
   for (const f of fields) {
-    const v = String(input[f] ?? "").trim().slice(0, 200);
+    const v = String(input[f] ?? "")
+      .trim()
+      .slice(0, 200);
     if (v) contact[f] = v;
   }
   if (fields.includes("name") && !contact.name) errors.name = "Add your name.";
@@ -329,7 +363,8 @@ export function cleanContact(
     if (!contact.email) errors.email = "Add your email so the team can reply.";
     else if (!EMAIL.test(contact.email)) errors.email = "That email doesn't look right.";
   }
-  if (contact.phone && !/^[+()\d\s-]{6,25}$/.test(contact.phone)) errors.phone = "That phone number doesn't look right.";
+  if (contact.phone && !/^[+()\d\s-]{6,25}$/.test(contact.phone))
+    errors.phone = "That phone number doesn't look right.";
   return { contact, errors };
 }
 
@@ -351,7 +386,11 @@ export async function submitDetails(
       role: "system",
       text: `Thanks${name ? `, ${name}` : ""}. The team will reply ${bot.rules.promise}.`,
     });
-    await enqueue("notify_handover", { conversationId: c.id, kind: "ticket" }, { tx, dedupeKey: `notify:${c.id}:ticket` });
+    await enqueue(
+      "notify_handover",
+      { conversationId: c.id, kind: "ticket" },
+      { tx, dedupeKey: `notify:${c.id}:ticket` },
+    );
     return [line];
   });
   await kickJobs();
@@ -363,7 +402,10 @@ export async function cancelDetails(conversationId: string): Promise<Turn> {
     const c = await lock(tx, conversationId);
     const status = await move(tx, c, "form_cancelled");
     if (status === c.status) return { status, rows: [] as MessageRow[] };
-    const line = await insertMessage(tx, c.id, { role: "system", text: "No problem. Ask me anything else." });
+    const line = await insertMessage(tx, c.id, {
+      role: "system",
+      text: "No problem. Ask me anything else.",
+    });
     return { status, rows: [line] };
   });
   return { conversationId, status, messages: await view(rows), offer: null, form: null };
@@ -380,11 +422,20 @@ export async function rateMessage(
     const [m] = await tx
       .update(messages)
       .set({ rating })
-      .where(and(eq(messages.id, messageId), eq(messages.conversationId, c.id), eq(messages.role, "bot")))
+      .where(
+        and(
+          eq(messages.id, messageId),
+          eq(messages.conversationId, c.id),
+          eq(messages.role, "bot"),
+        ),
+      )
       .returning({ id: messages.id });
     if (!m) throw new ChatError("not_found", "That answer isn't in this chat.");
     const next = rating === -1 ? c.thumbsDownStreak + 1 : 0;
-    await tx.update(conversations).set({ thumbsDownStreak: next }).where(eq(conversations.id, c.id));
+    await tx
+      .update(conversations)
+      .set({ thumbsDownStreak: next })
+      .where(eq(conversations.id, c.id));
     return c.status === "bot" ? next : 0;
   });
   const decision = afterRating(streak);
@@ -418,7 +469,11 @@ export async function visitorUpdates(
 
 /* ------------------------------------------------------------- staff side */
 
-export async function staffReply(actor: Actor, conversationId: string, text: string): Promise<MessageRow> {
+export async function staffReply(
+  actor: Actor,
+  conversationId: string,
+  text: string,
+): Promise<MessageRow> {
   const body = text.trim();
   if (!body) throw new ChatError("invalid", "Write a reply first.");
   if (body.length > 4000) throw new ChatError("invalid", "Keep replies under 4,000 characters.");
@@ -443,7 +498,10 @@ export async function staffReply(actor: Actor, conversationId: string, text: str
     });
     // Replies go back the way the question came: WhatsApp, or email when the person left details.
     const contact = c.contact as ContactDetails;
-    const byEmail = (c.channel === "web" || c.channel === "hosted") && Boolean(contact.email) && ["ticket", "replied"].includes(status);
+    const byEmail =
+      (c.channel === "web" || c.channel === "hosted") &&
+      Boolean(contact.email) &&
+      ["ticket", "replied"].includes(status);
     const followUp = c.channel === "whatsapp" || byEmail;
     if (followUp) {
       await enqueue(
@@ -462,8 +520,12 @@ export async function handBack(actor: Actor, conversationId: string): Promise<vo
   await db.transaction(async (tx) => {
     const c = await lock(tx, conversationId);
     const status = await move(tx, c, "hand_back");
-    if (status === c.status) throw new ChatError("invalid", "Only a waiting or live chat can go back to Billie.");
-    await insertMessage(tx, c.id, { role: "system", text: "You're back with Billie. Ask me anything." });
+    if (status === c.status)
+      throw new ChatError("invalid", "Only a waiting or live chat can go back to Billie.");
+    await insertMessage(tx, c.id, {
+      role: "system",
+      text: "You're back with Billie. Ask me anything.",
+    });
     await writeAudit(tx, {
       actorUserId: actor.id,
       entityType: "conversation",
@@ -490,5 +552,8 @@ export async function closeConversation(actor: Actor, conversationId: string): P
 }
 
 export async function markRead(conversationId: string): Promise<void> {
-  await db.update(conversations).set({ staffReadAt: new Date() }).where(eq(conversations.id, conversationId));
+  await db
+    .update(conversations)
+    .set({ staffReadAt: new Date() })
+    .where(eq(conversations.id, conversationId));
 }

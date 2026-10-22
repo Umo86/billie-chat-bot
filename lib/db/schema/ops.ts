@@ -124,9 +124,9 @@ export const settings = pgTable("settings", {
   /** Outlook delta link: where the next mailbox sync carries on from. */
   outlookDeltaLink: text("outlook_delta_link"),
   updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow()
-      .$onUpdate(() => new Date()),
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
 });
 
 /** Claude use per day, for the daily cap and Reports. scope = "bot:<id>" or "email". */

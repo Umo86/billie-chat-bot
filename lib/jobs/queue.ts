@@ -37,20 +37,25 @@ export async function enqueue(
   opts: { runAt?: Date; dedupeKey?: string; maxAttempts?: number; tx?: DbOrTx } = {},
 ): Promise<string | null> {
   const runner = opts.tx ?? db;
-  const rows = await query<{ id: string }>(runner, sql`
+  const rows = await query<{ id: string }>(
+    runner,
+    sql`
     INSERT INTO jobs (kind, payload, run_at, dedupe_key, max_attempts)
     VALUES (${kind}, ${JSON.stringify(payload)}::jsonb, ${(opts.runAt ?? new Date()).toISOString()},
             ${opts.dedupeKey ?? null}, ${opts.maxAttempts ?? 5})
     ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL AND status IN ('queued', 'running')
     DO NOTHING
-    RETURNING id`);
+    RETURNING id`,
+  );
   return rows[0]?.id ?? null;
 }
 
 /** Takes up to `limit` due jobs (queued and due, or running with an expired lease). */
 export async function claim(limit: number, now = new Date()): Promise<Job[]> {
   const lease = new Date(now.getTime() + LEASE_MS).toISOString();
-  const rows = await query<{ id: string }>(db, sql`
+  const rows = await query<{ id: string }>(
+    db,
+    sql`
     UPDATE jobs SET status = 'running', attempts = attempts + 1, locked_until = ${lease}, updated_at = now()
     WHERE id IN (
       SELECT id FROM jobs
@@ -60,7 +65,8 @@ export async function claim(limit: number, now = new Date()): Promise<Job[]> {
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED
     )
-    RETURNING id`);
+    RETURNING id`,
+  );
   if (!rows.length) return [];
   const ids = rows.map((r) => String(r.id));
   return db.query.jobs.findMany({ where: (j, { inArray }) => inArray(j.id, ids) });
@@ -103,7 +109,9 @@ export async function fail(job: Job, err: unknown, now = new Date()): Promise<"r
   return "retry";
 }
 
-export type Handlers = Partial<Record<JobKind, (payload: Record<string, unknown>, job: Job) => Promise<void>>>;
+export type Handlers = Partial<
+  Record<JobKind, (payload: Record<string, unknown>, job: Job) => Promise<void>>
+>;
 
 /** Runs due jobs until none are left or the time budget is used. */
 export async function runDueJobs(
@@ -124,7 +132,10 @@ export async function runDueJobs(
           await complete(job.id);
           result.done++;
         } catch (err) {
-          console.error(`job ${job.kind} ${job.id} failed`, err instanceof Error ? err.message : err);
+          console.error(
+            `job ${job.kind} ${job.id} failed`,
+            err instanceof Error ? err.message : err,
+          );
           const outcome = await fail(job, err);
           if (outcome === "retry") result.retried++;
           else result.failed++;
@@ -137,10 +148,13 @@ export async function runDueJobs(
 
 /** Old finished jobs are removed by the daily job after 14 days (failed ones after 60). */
 export async function pruneJobs(now = new Date()): Promise<number> {
-  const rows = await query(db, sql`
+  const rows = await query(
+    db,
+    sql`
     DELETE FROM jobs
     WHERE (status = 'done' AND finished_at < ${new Date(now.getTime() - 14 * 86_400_000).toISOString()})
        OR (status = 'failed' AND finished_at < ${new Date(now.getTime() - 60 * 86_400_000).toISOString()})
-    RETURNING id`);
+    RETURNING id`,
+  );
   return rows.length;
 }

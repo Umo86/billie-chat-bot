@@ -16,12 +16,16 @@ export async function knowledgeBaseIdsFor(botId: string): Promise<string[]> {
 }
 
 export async function botBySlug(slug: string): Promise<BotRow | null> {
-  const bot = await db.query.bots.findFirst({ where: and(eq(bots.slug, slug), isNull(bots.deletedAt)) });
+  const bot = await db.query.bots.findFirst({
+    where: and(eq(bots.slug, slug), isNull(bots.deletedAt)),
+  });
   return bot ?? null;
 }
 
 export async function botById(id: string): Promise<BotRow | null> {
-  const bot = await db.query.bots.findFirst({ where: and(eq(bots.id, id), isNull(bots.deletedAt)) });
+  const bot = await db.query.bots.findFirst({
+    where: and(eq(bots.id, id), isNull(bots.deletedAt)),
+  });
   return bot ?? null;
 }
 

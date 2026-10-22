@@ -10,7 +10,8 @@ import type { FakeContext } from "./provider";
 import type { PromptPassage } from "./prompts";
 import { searchTerms } from "@/lib/knowledge/rank";
 
-const PERSON = /\b(human|person|someone real|real person|agent|speak to|talk to|call me|the team)\b/i;
+const PERSON =
+  /\b(human|person|someone real|real person|agent|speak to|talk to|call me|the team)\b/i;
 const OFF_TOPIC = /\b(football|weather|joke|poem|bitcoin|recipe|homework)\b/i;
 
 const TOPIC_WORDS: Record<string, RegExp> = {
@@ -57,21 +58,55 @@ function bestPassage(
   return { index: best, sentences: (sentences.length ? sentences : [text]).slice(0, 3).join(" ") };
 }
 
-function fakeAnswer(question: string, passages: PromptPassage[], alwaysHuman: string[]): AnswerJson {
+function fakeAnswer(
+  question: string,
+  passages: PromptPassage[],
+  alwaysHuman: string[],
+): AnswerJson {
   if (PERSON.test(question)) {
-    return { answer: "Of course. I'll get someone from the team.", used: [], confident: true, handover: "asked_for_person", topic: "Speak to a person" };
+    return {
+      answer: "Of course. I'll get someone from the team.",
+      used: [],
+      confident: true,
+      handover: "asked_for_person",
+      topic: "Speak to a person",
+    };
   }
   if (alwaysHumanHit(question, alwaysHuman)) {
-    return { answer: "The team handles this personally, so I'll pass it to them.", used: [], confident: true, handover: "always_human", topic: "Always a person" };
+    return {
+      answer: "The team handles this personally, so I'll pass it to them.",
+      used: [],
+      confident: true,
+      handover: "always_human",
+      topic: "Always a person",
+    };
   }
   if (OFF_TOPIC.test(question)) {
-    return { answer: "Sorry, I can only help with questions about the show.", used: [], confident: true, handover: "none", topic: "Off topic" };
+    return {
+      answer: "Sorry, I can only help with questions about the show.",
+      used: [],
+      confident: true,
+      handover: "none",
+      topic: "Off topic",
+    };
   }
   const hit = bestPassage(question, passages);
   if (!hit) {
-    return { answer: "I don't have that information yet.", used: [], confident: false, handover: "unknown", topic: "Unknown" };
+    return {
+      answer: "I don't have that information yet.",
+      used: [],
+      confident: false,
+      handover: "unknown",
+      topic: "Unknown",
+    };
   }
-  return { answer: hit.sentences, used: [hit.index + 1], confident: true, handover: "none", topic: passages[hit.index].sourceTitle.slice(0, 40) };
+  return {
+    answer: hit.sentences,
+    used: [hit.index + 1],
+    confident: true,
+    handover: "none",
+    topic: passages[hit.index].sourceTitle.slice(0, 40),
+  };
 }
 
 const EMAIL_TOPIC_RULES: [EmailTagJson["topic"], RegExp][] = [
@@ -109,7 +144,10 @@ function fakeTag(ctx: Extract<FakeContext, { purpose: "email_tag" }>): EmailTagJ
 function fakeDraft(ctx: Extract<FakeContext, { purpose: "email_draft" }>): EmailDraftJson {
   const first = ctx.email.fromName.trim().split(/\s+/)[0] || "there";
   // The subject says what the email is about; the body adds detail.
-  const hit = bestPassage(`${ctx.email.subject} ${ctx.email.subject} ${ctx.email.body}`, ctx.passages);
+  const hit = bestPassage(
+    `${ctx.email.subject} ${ctx.email.subject} ${ctx.email.body}`,
+    ctx.passages,
+  );
   if (!hit) {
     return {
       draft: "",

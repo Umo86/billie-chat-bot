@@ -17,7 +17,14 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   // File readers run on the server only; keep them out of the bundler.
-  serverExternalPackages: ["unpdf", "exceljs", "mammoth", "linkedom", "@mozilla/readability", "pino"],
+  serverExternalPackages: [
+    "unpdf",
+    "exceljs",
+    "mammoth",
+    "linkedom",
+    "@mozilla/readability",
+    "pino",
+  ],
   experimental: {
     serverActions: {
       // Small files go straight through a server action; big ones go to Blob first.

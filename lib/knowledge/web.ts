@@ -60,7 +60,8 @@ export function checkUrl(raw: string): URL {
   if (url.protocol !== "https:" && url.protocol !== "http:") {
     throw new UnsafeUrlError("Only http and https addresses can be added.");
   }
-  if (url.username || url.password) throw new UnsafeUrlError("Addresses with a password can't be added.");
+  if (url.username || url.password)
+    throw new UnsafeUrlError("Addresses with a password can't be added.");
   if (url.port && !["80", "443"].includes(url.port)) {
     throw new UnsafeUrlError("Only standard web ports (80 and 443) are allowed.");
   }
@@ -78,7 +79,11 @@ export function checkUrl(raw: string): URL {
 function safeLookup(
   hostname: string,
   options: object,
-  callback: (err: NodeJS.ErrnoException | null, address: string | { address: string; family: number }[], family?: number) => void,
+  callback: (
+    err: NodeJS.ErrnoException | null,
+    address: string | { address: string; family: number }[],
+    family?: number,
+  ) => void,
 ) {
   dnsLookup(hostname, { ...options, all: true }, (err, addresses) => {
     if (err) return callback(err, "");
@@ -93,7 +98,9 @@ function safeLookup(
 
 type Fetched = { url: string; contentType: string; body: string };
 
-function getOnce(url: URL): Promise<{ status: number; location?: string; contentType: string; body: Buffer }> {
+function getOnce(
+  url: URL,
+): Promise<{ status: number; location?: string; contentType: string; body: Buffer }> {
   return new Promise((resolve, reject) => {
     const mod = url.protocol === "https:" ? https : http;
     const req = mod.get(
@@ -110,7 +117,12 @@ function getOnce(url: URL): Promise<{ status: number; location?: string; content
         const status = res.statusCode ?? 0;
         if (status >= 300 && status < 400 && res.headers.location) {
           res.resume();
-          return resolve({ status, location: res.headers.location, contentType: "", body: Buffer.alloc(0) });
+          return resolve({
+            status,
+            location: res.headers.location,
+            contentType: "",
+            body: Buffer.alloc(0),
+          });
         }
         const chunks: Buffer[] = [];
         let size = 0;
@@ -123,15 +135,23 @@ function getOnce(url: URL): Promise<{ status: number; location?: string; content
           chunks.push(c);
         });
         res.on("end", () =>
-          resolve({ status, contentType: String(res.headers["content-type"] ?? ""), body: Buffer.concat(chunks) }),
+          resolve({
+            status,
+            contentType: String(res.headers["content-type"] ?? ""),
+            body: Buffer.concat(chunks),
+          }),
         );
         res.on("error", reject);
       },
     );
     req.on("timeout", () => req.destroy(new UnsafeUrlError("That page took too long to load.")));
     req.on("error", (err: NodeJS.ErrnoException) => {
-      if (err.code === "EBLOCKED") reject(new UnsafeUrlError("That address isn't on the public web."));
-      else reject(err instanceof UnsafeUrlError ? err : new UnsafeUrlError("That page couldn't be loaded."));
+      if (err.code === "EBLOCKED")
+        reject(new UnsafeUrlError("That address isn't on the public web."));
+      else
+        reject(
+          err instanceof UnsafeUrlError ? err : new UnsafeUrlError("That page couldn't be loaded."),
+        );
     });
   });
 }
@@ -144,7 +164,8 @@ export async function fetchPage(raw: string): Promise<Fetched> {
       url = checkUrl(new URL(res.location, url).toString());
       continue;
     }
-    if (res.status >= 400) throw new UnsafeUrlError(`That page answered with an error (${res.status}).`);
+    if (res.status >= 400)
+      throw new UnsafeUrlError(`That page answered with an error (${res.status}).`);
     if (!/text\/html|application\/xhtml|text\/plain/i.test(res.contentType)) {
       throw new UnsafeUrlError("That address isn't a web page. Upload the file itself instead.");
     }

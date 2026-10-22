@@ -9,9 +9,13 @@ import { enqueue, pruneJobs, runDueJobs, type Handlers } from "./queue";
  * in what it needs (a WhatsApp message doesn't load the PDF reader).
  */
 const handlers: Handlers = {
-  ingest_source: async (p) => (await import("@/lib/knowledge/ingest")).ingestSource(String(p.sourceId)),
+  ingest_source: async (p) =>
+    (await import("@/lib/knowledge/ingest")).ingestSource(String(p.sourceId)),
   notify_handover: async (p) =>
-    (await import("@/lib/alerts/notify")).notifyHandover(String(p.conversationId), p.kind === "ticket" ? "ticket" : "live"),
+    (await import("@/lib/alerts/notify")).notifyHandover(
+      String(p.conversationId),
+      p.kind === "ticket" ? "ticket" : "live",
+    ),
   send_staff_reply: async (p) =>
     (await import("@/lib/conversations/delivery")).deliverStaffReply(
       String(p.messageId),
@@ -19,10 +23,18 @@ const handlers: Handlers = {
     ),
   whatsapp_inbound: async (p) => {
     const { handleWhatsAppInbound } = await import("@/lib/channels/whatsapp-inbound");
-    const m = p.message as { id: string; from: string; profileName: string; timestamp: string; text: string; buttonId: string | null };
+    const m = p.message as {
+      id: string;
+      from: string;
+      profileName: string;
+      timestamp: string;
+      text: string;
+      buttonId: string | null;
+    };
     await handleWhatsAppInbound({ ...m, timestamp: new Date(m.timestamp) });
   },
-  process_email: async (p) => (await import("@/lib/emails/process")).processEmail(String(p.emailId)),
+  process_email: async (p) =>
+    (await import("@/lib/emails/process")).processEmail(String(p.emailId)),
   outlook_sync: async () => {
     await (await import("@/lib/channels/outlook")).syncMailbox();
   },
@@ -56,7 +68,8 @@ export async function queueWebRefresh(now = new Date()): Promise<number> {
       ),
     )
     .limit(200);
-  for (const s of due) await enqueue("ingest_source", { sourceId: s.id }, { dedupeKey: `ingest:${s.id}` });
+  for (const s of due)
+    await enqueue("ingest_source", { sourceId: s.id }, { dedupeKey: `ingest:${s.id}` });
   return due.length;
 }
 
@@ -73,7 +86,11 @@ export async function dailyTick(now = new Date()) {
   await enqueue("retention", {}, { dedupeKey: `retention:${day}` });
   await enqueue("refresh_web_sources", {}, { dedupeKey: `web:${day}` });
   // Mondays (UK): last week's summary.
-  if (new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "short" }).format(now) === "Mon") {
+  if (
+    new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "short" }).format(
+      now,
+    ) === "Mon"
+  ) {
     await enqueue("weekly_summary", {}, { dedupeKey: `summary:${day}` });
   }
   const pruned = await pruneJobs(now);

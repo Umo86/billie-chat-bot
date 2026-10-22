@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { describeHours, withinHours, validTime } from "@/lib/conversations/hours";
-import { afterAnswer, afterRating, handoverRoute, handoverLine } from "@/lib/conversations/handover";
+import {
+  afterAnswer,
+  afterRating,
+  handoverRoute,
+  handoverLine,
+} from "@/lib/conversations/handover";
 import { londonParts } from "@/lib/time";
 
 const weekdays = { days: [1, 2, 3, 4, 5], start: "09:00", end: "17:30" };
@@ -22,15 +27,21 @@ describe("team hours (UK time)", () => {
   });
 
   it("treats broken times as closed", () => {
-    expect(withinHours({ days: [3], start: "nonsense", end: "17:00" }, new Date("2026-01-14T12:00:00Z"))).toBe(false);
+    expect(
+      withinHours({ days: [3], start: "nonsense", end: "17:00" }, new Date("2026-01-14T12:00:00Z")),
+    ).toBe(false);
     expect(validTime("09:00")).toBe(true);
     expect(validTime("24:00")).toBe(false);
   });
 
   it("describes runs of days", () => {
     expect(describeHours(weekdays)).toBe("Mon–Fri, 09:00–17:30");
-    expect(describeHours({ days: [1, 3, 6], start: "10:00", end: "16:00" })).toBe("Mon, Wed, Sat, 10:00–16:00");
-    expect(describeHours({ days: [6, 0], start: "10:00", end: "16:00" })).toBe("Sat, Sun, 10:00–16:00");
+    expect(describeHours({ days: [1, 3, 6], start: "10:00", end: "16:00" })).toBe(
+      "Mon, Wed, Sat, 10:00–16:00",
+    );
+    expect(describeHours({ days: [6, 0], start: "10:00", end: "16:00" })).toBe(
+      "Sat, Sun, 10:00–16:00",
+    );
     expect(describeHours({ days: [], start: "10:00", end: "16:00" })).toBe("");
   });
 });

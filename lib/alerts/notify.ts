@@ -35,7 +35,9 @@ export function alertText(a: HandoverAlert): { title: string; lines: string[] } 
     `Question: ${a.question || "(not given)"}`,
     `Why: ${a.reason}`,
     ...(who ? [`From: ${who}`] : []),
-    a.kind === "live" ? "Answer it now in the Inbox." : "Reply from the Inbox; it goes back by email.",
+    a.kind === "live"
+      ? "Answer it now in the Inbox."
+      : "Reply from the Inbox; it goes back by email.",
   ];
   return { title, lines };
 }
@@ -73,22 +75,31 @@ async function postTeams(a: HandoverAlert): Promise<void> {
   if (!res.ok && res.status !== 202) throw new Error(`Teams webhook answered ${res.status}`);
 }
 
-export async function notifyHandover(conversationId: string, kind: "live" | "ticket"): Promise<void> {
-  const conv = await db.query.conversations.findFirst({ where: eq(conversations.id, conversationId) });
+export async function notifyHandover(
+  conversationId: string,
+  kind: "live" | "ticket",
+): Promise<void> {
+  const conv = await db.query.conversations.findFirst({
+    where: eq(conversations.id, conversationId),
+  });
   if (!conv) return;
   const bot = await db.query.bots.findFirst({ where: eq(bots.id, conv.botId) });
   const alert: HandoverAlert = {
     kind,
     botName: bot?.name ?? "Billie",
     question: conv.firstQuestion,
-    reason: conv.handoverReason ? REASON_LABEL[conv.handoverReason as HandoverReason] : "Needs a person",
+    reason: conv.handoverReason
+      ? REASON_LABEL[conv.handoverReason as HandoverReason]
+      : "Needs a person",
     contact: conv.contact as ContactDetails,
     link: `${appUrl()}/inbox?c=${conv.id}`,
   };
 
   const failures: string[] = [];
   if (teamsConfigured()) {
-    await postTeams(alert).catch((err) => failures.push(err instanceof Error ? err.message : String(err)));
+    await postTeams(alert).catch((err) =>
+      failures.push(err instanceof Error ? err.message : String(err)),
+    );
   }
   const settings = await getSettings();
   const to = settings.alertEmails
@@ -97,8 +108,8 @@ export async function notifyHandover(conversationId: string, kind: "live" | "tic
     .filter((x) => x.includes("@"));
   if (emailConfigured() && to.length) {
     const { title, lines } = alertText(alert);
-    await sendEmail({ to, subject: title, text: `${lines.join("\n")}\n\n${alert.link}` }).catch((err) =>
-      failures.push(err instanceof Error ? err.message : String(err)),
+    await sendEmail({ to, subject: title, text: `${lines.join("\n")}\n\n${alert.link}` }).catch(
+      (err) => failures.push(err instanceof Error ? err.message : String(err)),
     );
   }
   if (failures.length) throw new Error(failures.join("; "));

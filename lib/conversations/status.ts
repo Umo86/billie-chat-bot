@@ -5,13 +5,7 @@
  * tests/unit/conversation-status.test.ts.
  */
 export type ConversationStatus =
-  | "bot"
-  | "waiting"
-  | "live"
-  | "collecting"
-  | "ticket"
-  | "replied"
-  | "closed";
+  "bot" | "waiting" | "live" | "collecting" | "ticket" | "replied" | "closed";
 
 export type ConversationEvent =
   /** Billie (or the person) wants the team and someone is available: live chat. */
@@ -85,7 +79,9 @@ export const NEEDS_PERSON: readonly ConversationStatus[] = ["waiting", "ticket"]
 
 /** While here, Billie doesn't answer the person's messages (a person is on it or about to be). */
 export function botPaused(status: ConversationStatus): boolean {
-  return status === "waiting" || status === "live" || status === "collecting" || status === "ticket";
+  return (
+    status === "waiting" || status === "live" || status === "collecting" || status === "ticket"
+  );
 }
 
 export const STATUS_LABEL: Record<ConversationStatus, string> = {

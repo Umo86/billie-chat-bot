@@ -6,7 +6,15 @@ import {
   type ConversationStatus,
 } from "@/lib/conversations/status";
 
-const STATUSES: ConversationStatus[] = ["bot", "waiting", "live", "collecting", "ticket", "replied", "closed"];
+const STATUSES: ConversationStatus[] = [
+  "bot",
+  "waiting",
+  "live",
+  "collecting",
+  "ticket",
+  "replied",
+  "closed",
+];
 const EVENTS: ConversationEvent[] = [
   "handover_live",
   "handover_offline",

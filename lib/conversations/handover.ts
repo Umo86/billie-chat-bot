@@ -7,11 +7,7 @@ import type { HandoverKind } from "@/lib/types";
  * reached. "offer" asks the person first; "now" hands straight over.
  */
 export type HandoverReason =
-  | "unknown"
-  | "always_human"
-  | "asked_for_person"
-  | "thumbs_down"
-  | "ai_unavailable";
+  "unknown" | "always_human" | "asked_for_person" | "thumbs_down" | "ai_unavailable";
 
 export type HandoverDecision =
   | { kind: "none" }

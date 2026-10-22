@@ -3,8 +3,19 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { emailThreads } from "@/lib/db/schema";
 import { AiError, structured } from "@/lib/ai/provider";
-import { emailDraftJsonSchema, emailDraftSchema, emailTagJsonSchema, emailTagSchema } from "@/lib/ai/schemas";
-import { emailDraftSystem, emailDraftUser, emailTagSystem, emailTagUser, knowledgeBlock } from "@/lib/ai/prompts";
+import {
+  emailDraftJsonSchema,
+  emailDraftSchema,
+  emailTagJsonSchema,
+  emailTagSchema,
+} from "@/lib/ai/schemas";
+import {
+  emailDraftSystem,
+  emailDraftUser,
+  emailTagSystem,
+  emailTagUser,
+  knowledgeBlock,
+} from "@/lib/ai/prompts";
 import { fallbackFor, modelFor } from "@/lib/ai/models";
 import { citeSources } from "@/lib/ai/answer";
 import { capReached, recordUsage } from "@/lib/ai/usage";
@@ -28,15 +39,28 @@ export async function processEmail(emailId: string): Promise<void> {
   const email = await db.query.emailThreads.findFirst({ where: eq(emailThreads.id, emailId) });
   if (!email) throw new PermanentJobError("Email not found");
   if (["sent", "dismissed"].includes(email.status)) return;
-  await db.update(emailThreads).set({ status: "working", error: null }).where(eq(emailThreads.id, emailId));
+  await db
+    .update(emailThreads)
+    .set({ status: "working", error: null })
+    .where(eq(emailThreads.id, emailId));
 
   try {
-    if (await capReached()) throw new AiError("cap_reached", "Today's answer limit has been reached");
+    if (await capReached())
+      throw new AiError("cap_reached", "Today's answer limit has been reached");
     const settings = await getSettings();
-    const bot = email.botId ? await botById(email.botId) : settings.emailBotId ? await botById(settings.emailBotId) : null;
+    const bot = email.botId
+      ? await botById(email.botId)
+      : settings.emailBotId
+        ? await botById(settings.emailBotId)
+        : null;
     const alwaysHuman = bot?.rules.alwaysHuman ?? ALWAYS_HUMAN_DEFAULT;
     const show = bot?.showName ?? "";
-    const prompt = { fromName: email.fromName, fromEmail: email.fromEmail, subject: email.subject, body: email.body };
+    const prompt = {
+      fromName: email.fromName,
+      fromEmail: email.fromEmail,
+      subject: email.subject,
+      body: email.body,
+    };
 
     const tagged = await structured({
       purpose: "email_tag",
@@ -60,7 +84,15 @@ export async function processEmail(emailId: string): Promise<void> {
     if (tag.always_human) {
       await db
         .update(emailThreads)
-        .set({ status: "needs_you", tags, summary: tag.summary.slice(0, 300), needsYouReason: "This topic always goes to a person.", draft: "", draftSources: [], botId: bot?.id ?? null })
+        .set({
+          status: "needs_you",
+          tags,
+          summary: tag.summary.slice(0, 300),
+          needsYouReason: "This topic always goes to a person.",
+          draft: "",
+          draftSources: [],
+          botId: bot?.id ?? null,
+        })
         .where(eq(emailThreads.id, emailId));
       await tagInOutlook(email.source, email.externalId, ["Billie: needs you", tag.topic]);
       return;
@@ -72,7 +104,11 @@ export async function processEmail(emailId: string): Promise<void> {
       purpose: "email_draft",
       model: modelFor("thorough"),
       fallbackModel: fallbackFor("thorough"),
-      system: emailDraftSystem({ show, tone: bot?.tone ?? "friendly", signature: settings.emailSignature }),
+      system: emailDraftSystem({
+        show,
+        tone: bot?.tone ?? "friendly",
+        signature: settings.emailSignature,
+      }),
       knowledge: knowledgeBlock(passages),
       user: emailDraftUser(prompt),
       schema: emailDraftJsonSchema,
@@ -96,14 +132,21 @@ export async function processEmail(emailId: string): Promise<void> {
         status: ok ? "draft_ready" : "needs_you",
         tags,
         summary: tag.summary.slice(0, 300),
-        needsYouReason: ok ? null : d.missing.trim() ? `Not in the knowledge base: ${d.missing.trim().slice(0, 300)}` : "Billie wasn't sure of the answer.",
+        needsYouReason: ok
+          ? null
+          : d.missing.trim()
+            ? `Not in the knowledge base: ${d.missing.trim().slice(0, 300)}`
+            : "Billie wasn't sure of the answer.",
         draft: text,
         draftSources: ok ? citeSources(d.used, passages) : [],
         outlookDraftId,
         botId: bot?.id ?? null,
       })
       .where(eq(emailThreads.id, emailId));
-    await tagInOutlook(email.source, email.externalId, [ok ? "Billie: draft ready" : "Billie: needs you", tag.topic]);
+    await tagInOutlook(email.source, email.externalId, [
+      ok ? "Billie: draft ready" : "Billie: needs you",
+      tag.topic,
+    ]);
   } catch (err) {
     const message =
       err instanceof AiError && err.code === "not_configured"
@@ -111,7 +154,10 @@ export async function processEmail(emailId: string): Promise<void> {
         : err instanceof AiError && err.code === "cap_reached"
           ? "Today's answer limit was reached. Billie will try again later."
           : "Billie couldn't draft this one. It will try again.";
-    await db.update(emailThreads).set({ status: "failed", error: message }).where(eq(emailThreads.id, emailId));
+    await db
+      .update(emailThreads)
+      .set({ status: "failed", error: message })
+      .where(eq(emailThreads.id, emailId));
     if (err instanceof AiError && err.code === "not_configured") return;
     throw err;
   }

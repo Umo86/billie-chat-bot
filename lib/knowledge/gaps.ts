@@ -3,7 +3,18 @@
  * creche" are the same gap. The key is the lower-case wording without
  * accents, punctuation, filler words or a trailing question mark.
  */
-const FILLER = new Set(["please", "hi", "hello", "hey", "thanks", "thank", "you", "a", "an", "the"]);
+const FILLER = new Set([
+  "please",
+  "hi",
+  "hello",
+  "hey",
+  "thanks",
+  "thank",
+  "you",
+  "a",
+  "an",
+  "the",
+]);
 
 export function questionKey(question: string): string {
   return (

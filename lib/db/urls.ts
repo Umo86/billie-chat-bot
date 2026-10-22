@@ -31,7 +31,8 @@ export function normaliseSsl(url: string): string {
   try {
     const u = new URL(url);
     const mode = u.searchParams.get("sslmode");
-    if (mode && ["require", "prefer", "verify-ca"].includes(mode)) u.searchParams.set("sslmode", "verify-full");
+    if (mode && ["require", "prefer", "verify-ca"].includes(mode))
+      u.searchParams.set("sslmode", "verify-full");
     return u.toString();
   } catch {
     return url;

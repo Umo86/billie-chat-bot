@@ -1,6 +1,11 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { formatAnswer, parseInbound, verifySignature, withinReplyWindow } from "@/lib/channels/whatsapp";
+import {
+  formatAnswer,
+  parseInbound,
+  verifySignature,
+  withinReplyWindow,
+} from "@/lib/channels/whatsapp";
 import { checkUrl, isPrivateAddress } from "@/lib/knowledge/web";
 import { capSegments, fileKind, webPageSegments } from "@/lib/knowledge/extract";
 import { alertText, teamsCard } from "@/lib/alerts/notify";
@@ -30,8 +35,23 @@ describe("WhatsApp webhook", () => {
               value: {
                 contacts: [{ wa_id: "447700900123", profile: { name: "Pat" } }],
                 messages: [
-                  { id: "wamid.1", from: "447700900123", timestamp: "1790000000", type: "text", text: { body: " Hi there " } },
-                  { id: "wamid.2", from: "447700900123", timestamp: "1790000001", type: "interactive", interactive: { type: "button_reply", button_reply: { id: "exhibitor", title: "Exhibiting" } } },
+                  {
+                    id: "wamid.1",
+                    from: "447700900123",
+                    timestamp: "1790000000",
+                    type: "text",
+                    text: { body: " Hi there " },
+                  },
+                  {
+                    id: "wamid.2",
+                    from: "447700900123",
+                    timestamp: "1790000001",
+                    type: "interactive",
+                    interactive: {
+                      type: "button_reply",
+                      button_reply: { id: "exhibitor", title: "Exhibiting" },
+                    },
+                  },
                   { id: "wamid.3", from: "447700900123", timestamp: "1790000002", type: "image" },
                 ],
               },
@@ -43,7 +63,13 @@ describe("WhatsApp webhook", () => {
     };
     const got = parseInbound(payload);
     expect(got).toHaveLength(2);
-    expect(got[0]).toMatchObject({ id: "wamid.1", from: "447700900123", profileName: "Pat", text: "Hi there", buttonId: null });
+    expect(got[0]).toMatchObject({
+      id: "wamid.1",
+      from: "447700900123",
+      profileName: "Pat",
+      text: "Hi there",
+      buttonId: null,
+    });
     expect(got[1]).toMatchObject({ text: "Exhibiting", buttonId: "exhibitor" });
     expect(parseInbound({ object: "page" })).toEqual([]);
   });
@@ -53,24 +79,39 @@ describe("WhatsApp webhook", () => {
     expect(withinReplyWindow(new Date("2027-05-10T13:00:00Z"), now)).toBe(true);
     expect(withinReplyWindow(new Date("2027-05-10T11:00:00Z"), now)).toBe(false);
     expect(withinReplyWindow(null, now)).toBe(false);
-    expect(formatAnswer("Build-up starts at 08:00.", [{ title: "Exhibitor manual", label: "p. 4" }])).toBe(
-      "Build-up starts at 08:00.\n\nSource: Exhibitor manual, p. 4",
-    );
+    expect(
+      formatAnswer("Build-up starts at 08:00.", [{ title: "Exhibitor manual", label: "p. 4" }]),
+    ).toBe("Build-up starts at 08:00.\n\nSource: Exhibitor manual, p. 4");
   });
 });
 
 describe("web pages for the knowledge base", () => {
   it("refuses private, local and metadata addresses", () => {
-    for (const ip of ["127.0.0.1", "10.1.2.3", "172.20.0.1", "192.168.1.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "::1", "fd00::1", "fe80::1", "::ffff:127.0.0.1"]) {
+    for (const ip of [
+      "127.0.0.1",
+      "10.1.2.3",
+      "172.20.0.1",
+      "192.168.1.1",
+      "169.254.169.254",
+      "100.64.0.1",
+      "0.0.0.0",
+      "::1",
+      "fd00::1",
+      "fe80::1",
+      "::ffff:127.0.0.1",
+    ]) {
       expect(isPrivateAddress(ip), ip).toBe(true);
     }
-    for (const ip of ["8.8.8.8", "151.101.1.69", "2a00:1450:4009:81f::200e"]) expect(isPrivateAddress(ip), ip).toBe(false);
+    for (const ip of ["8.8.8.8", "151.101.1.69", "2a00:1450:4009:81f::200e"])
+      expect(isPrivateAddress(ip), ip).toBe(false);
     expect(() => checkUrl("http://localhost/admin")).toThrow(/public web/);
     expect(() => checkUrl("http://169.254.169.254/latest/meta-data")).toThrow(/public web/);
     expect(() => checkUrl("file:///etc/passwd")).toThrow(/http and https/);
     expect(() => checkUrl("https://user:pw@example.com")).toThrow(/password/);
     expect(() => checkUrl("https://example.com:8443/")).toThrow(/ports/);
-    expect(checkUrl("https://www.ukconstructionweek.com/visit").hostname).toBe("www.ukconstructionweek.com");
+    expect(checkUrl("https://www.ukconstructionweek.com/visit").hostname).toBe(
+      "www.ukconstructionweek.com",
+    );
   });
 
   it("keeps the article and drops navigation", () => {
@@ -91,7 +132,10 @@ describe("web pages for the knowledge base", () => {
     expect(fileKind("Manual.PDF", "")).toBe("pdf");
     expect(fileKind("notes.md", null)).toBe("text");
     expect(fileKind("photo.jpg", "image/jpeg")).toBeNull();
-    const { segments, truncated } = capSegments([{ text: "x".repeat(1_500_000), label: "a" }, { text: "y".repeat(1_000_000), label: "b" }]);
+    const { segments, truncated } = capSegments([
+      { text: "x".repeat(1_500_000), label: "a" },
+      { text: "y".repeat(1_000_000), label: "b" },
+    ]);
     expect(truncated).toBe(true);
     expect(segments.reduce((n, s) => n + s.text.length, 0)).toBe(2_000_000);
   });
@@ -112,12 +156,22 @@ describe("alerts and the weekly summary", () => {
     expect(title).toBe("Exhibitor Help: a question needs a reply");
     expect(lines).toContain("From: Pat Example, Example Signs, stand N3-210");
     const card = teamsCard(alert);
-    expect(card.attachments[0].content.actions[0]).toMatchObject({ type: "Action.OpenUrl", url: alert.link });
+    expect(card.attachments[0].content.actions[0]).toMatchObject({
+      type: "Action.OpenUrl",
+      url: alert.link,
+    });
   });
 
   it("summarises the week", () => {
     const text = summaryText({
-      k: { chats: 120, answeredAlonePct: 82, handedOver: 22, emailsDrafted: 40, openGaps: 6, helpfulPct: 91 },
+      k: {
+        chats: 120,
+        answeredAlonePct: 82,
+        handedOver: 22,
+        emailsDrafted: 40,
+        openGaps: 6,
+        helpfulPct: 91,
+      },
       top: [{ question: "When does build-up start?", times: 18 }],
       link: "https://billie.example/reports",
     });

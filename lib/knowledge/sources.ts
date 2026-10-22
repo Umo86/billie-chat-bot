@@ -39,11 +39,17 @@ export async function addSource(actor: Actor, kbId: string, input: NewSource): P
     switch (input.kind) {
       case "text":
         return {
-          title: input.title.trim().slice(0, 200) || input.body.trim().split("\n")[0].slice(0, 60) || "Pasted text",
+          title:
+            input.title.trim().slice(0, 200) ||
+            input.body.trim().split("\n")[0].slice(0, 60) ||
+            "Pasted text",
           body: input.body.slice(0, 2_000_000),
         };
       case "qa":
-        return { title: input.question.trim().slice(0, 200), body: qaBody(input.question, input.answer) };
+        return {
+          title: input.question.trim().slice(0, 200),
+          body: qaBody(input.question, input.answer),
+        };
       case "web": {
         const url = checkUrl(input.url).toString();
         return { title: url, url, refreshWeekly: input.refreshWeekly };
@@ -62,7 +68,13 @@ export async function addSource(actor: Actor, kbId: string, input: NewSource): P
   const id = await db.transaction(async (tx) => {
     const [row] = await tx
       .insert(sources)
-      .values({ knowledgeBaseId: kb.id, kind: input.kind, status: "queued", addedBy: actor.id, ...values })
+      .values({
+        knowledgeBaseId: kb.id,
+        kind: input.kind,
+        status: "queued",
+        addedBy: actor.id,
+        ...values,
+      })
       .returning({ id: sources.id, title: sources.title });
     await writeAudit(tx, {
       actorUserId: actor.id,

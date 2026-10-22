@@ -7,7 +7,11 @@ import { createHmac, timingSafeEqual } from "node:crypto";
  * client. One number serves both bots: the first reply asks "Visiting or
  * exhibiting?" (lib/channels/whatsapp-inbound.ts routes the answer).
  */
-export function verifySignature(rawBody: string, header: string | null, appSecret: string): boolean {
+export function verifySignature(
+  rawBody: string,
+  header: string | null,
+  appSecret: string,
+): boolean {
   if (!header?.startsWith("sha256=")) return false;
   const expected = createHmac("sha256", appSecret).update(rawBody, "utf8").digest();
   let given: Buffer;
@@ -59,7 +63,9 @@ export function parseInbound(payload: unknown): InboundMessage[] {
   for (const entry of p.entry ?? []) {
     for (const change of entry.changes ?? []) {
       if (change.field !== "messages" || !change.value) continue;
-      const names = new Map((change.value.contacts ?? []).map((c) => [c.wa_id ?? "", c.profile?.name ?? ""]));
+      const names = new Map(
+        (change.value.contacts ?? []).map((c) => [c.wa_id ?? "", c.profile?.name ?? ""]),
+      );
       for (const m of change.value.messages ?? []) {
         if (!m.id || !m.from) continue;
         let text = "";
@@ -113,7 +119,10 @@ async function post(body: Record<string, unknown>): Promise<string | null> {
     body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", ...body }),
     signal: AbortSignal.timeout(15_000),
   });
-  const json = (await res.json().catch(() => ({}))) as { messages?: { id?: string }[]; error?: { message?: string } };
+  const json = (await res.json().catch(() => ({}))) as {
+    messages?: { id?: string }[];
+    error?: { message?: string };
+  };
   if (!res.ok) throw new Error(`WhatsApp ${res.status}: ${json.error?.message ?? "send failed"}`);
   return json.messages?.[0]?.id ?? null;
 }
@@ -122,14 +131,22 @@ export function sendText(to: string, text: string): Promise<string | null> {
   return post({ to, type: "text", text: { body: text.slice(0, 4096), preview_url: false } });
 }
 
-export function sendButtons(to: string, text: string, buttons: { id: string; title: string }[]): Promise<string | null> {
+export function sendButtons(
+  to: string,
+  text: string,
+  buttons: { id: string; title: string }[],
+): Promise<string | null> {
   return post({
     to,
     type: "interactive",
     interactive: {
       type: "button",
       body: { text: text.slice(0, 1024) },
-      action: { buttons: buttons.slice(0, 3).map((b) => ({ type: "reply", reply: { id: b.id, title: b.title.slice(0, 20) } })) },
+      action: {
+        buttons: buttons
+          .slice(0, 3)
+          .map((b) => ({ type: "reply", reply: { id: b.id, title: b.title.slice(0, 20) } })),
+      },
     },
   });
 }
