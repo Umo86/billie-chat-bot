@@ -1,6 +1,6 @@
 import "server-only";
 import { sql } from "drizzle-orm";
-import { db } from "@/lib/db/client";
+import { db, query } from "@/lib/db/client";
 import type { PromptPassage } from "@/lib/ai/prompts";
 import { embedQuery } from "./embed";
 import { fuseRankings, searchTerms } from "./rank";
@@ -44,7 +44,7 @@ export function orQuery(question: string): string | null {
 
 export async function knowledgeSize(kbIds: string[]): Promise<number> {
   if (!kbIds.length) return 0;
-  const rows = await db.execute<{ chars: string | null }>(sql`
+  const rows = await query<{ chars: string | null }>(db, sql`
     SELECT sum(length(p.text))::bigint AS chars
     FROM passages p
     JOIN sources s ON s.id = p.source_id
@@ -53,13 +53,13 @@ export async function knowledgeSize(kbIds: string[]): Promise<number> {
   return Number(rows[0]?.chars ?? 0);
 }
 
-export async function retrieve(kbIds: string[], query: string): Promise<PromptPassage[]> {
+export async function retrieve(kbIds: string[], question: string): Promise<PromptPassage[]> {
   if (!kbIds.length) return [];
   const size = await knowledgeSize(kbIds);
   if (size === 0) return [];
 
   if (size <= SEND_ALL_CHARS) {
-    const rows = await db.execute<Row>(sql`
+    const rows = await query<Row>(db, sql`
       SELECT p.id, p.source_id, s.title AS source_title, s.kind, p.label, p.text
       FROM passages p
       JOIN sources s ON s.id = p.source_id
@@ -69,10 +69,10 @@ export async function retrieve(kbIds: string[], query: string): Promise<PromptPa
     return rows.map(toPrompt);
   }
 
-  const tsq = orQuery(query);
+  const tsq = orQuery(question);
   const [keyword, vector] = await Promise.all([
     tsq
-      ? db.execute<Row & { rank: number }>(sql`
+      ? query<Row & { rank: number }>(db, sql`
           SELECT p.id, p.source_id, s.title AS source_title, s.kind, p.label, p.text,
                  ts_rank_cd(p.search, to_tsquery('english', ${tsq})) AS rank
           FROM passages p
@@ -83,10 +83,10 @@ export async function retrieve(kbIds: string[], query: string): Promise<PromptPa
           LIMIT ${CANDIDATES}`)
       : Promise.resolve([] as (Row & { rank: number })[]),
     (async () => {
-      const q = await embedQuery(query);
+      const q = await embedQuery(question);
       if (!q) return [] as Row[];
       const vec = `[${q.join(",")}]`;
-      return db.execute<Row>(sql`
+      return query<Row>(db, sql`
         SELECT p.id, p.source_id, s.title AS source_title, s.kind, p.label, p.text
         FROM passages p
         JOIN sources s ON s.id = p.source_id

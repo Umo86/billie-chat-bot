@@ -8,6 +8,7 @@ export default defineConfig({
   test: {
     include: ["tests/unit/**/*.test.ts"],
     globalSetup: ["tests/global-setup.ts"],
+    setupFiles: ["tests/setup-env.ts"],
     environment: "node",
     // DB-backed tests use TEST_DATABASE_URL and skip themselves when it isn't set.
     testTimeout: 30_000,

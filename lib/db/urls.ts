@@ -22,7 +22,22 @@ export function migrationDatabaseUrl(env: Env = process.env): string | null {
   );
 }
 
-/** Neon (or any pooled host) needs prepared statements off and few connections per instance. */
+/**
+ * node-postgres treats sslmode=require (what Neon's strings carry) as
+ * verify-full and warns about it on every start; say verify-full outright.
+ * Neon's certificates are publicly trusted, so full verification works.
+ */
+export function normaliseSsl(url: string): string {
+  try {
+    const u = new URL(url);
+    const mode = u.searchParams.get("sslmode");
+    if (mode && ["require", "prefer", "verify-ca"].includes(mode)) u.searchParams.set("sslmode", "verify-full");
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
 export function isNeon(url: string): boolean {
   try {
     return new URL(url).hostname.endsWith(".neon.tech");

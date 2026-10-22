@@ -114,3 +114,25 @@ export const gaps = pgTable(
     index("gaps_answered_source_idx").on(t.answeredSourceId),
   ],
 );
+
+/**
+ * WhatsApp numbers that have written in: which bot they chose ("Visiting or
+ * exhibiting?"), the question waiting for that choice, and the last time
+ * they wrote (free-form replies are allowed for 24 hours after it).
+ */
+export const whatsappContacts = pgTable(
+  "whatsapp_contacts",
+  {
+    waId: text("wa_id").primaryKey(),
+    profileName: text("profile_name").notNull().default(""),
+    botId: uuid("bot_id").references(() => bots.id, { onDelete: "set null" }),
+    pendingText: text("pending_text"),
+    lastInboundAt: timestamp("last_inbound_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [index("whatsapp_contacts_bot_idx").on(t.botId)],
+);

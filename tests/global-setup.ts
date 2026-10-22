@@ -4,19 +4,20 @@
  * Never point TEST_DATABASE_URL at real data: it is wiped.
  */
 import "dotenv/config";
-import postgres from "postgres";
+import { Client } from "pg";
 import { runMigrations } from "../lib/db/migrate";
 
 export default async function setup() {
   const url = process.env.TEST_DATABASE_URL;
   if (!url) return;
-  const sql = postgres(url, { max: 1, onnotice: () => {} });
+  const client = new Client({ connectionString: url });
+  await client.connect();
   try {
-    await sql.unsafe(`DROP SCHEMA IF EXISTS public CASCADE;
+    await client.query(`DROP SCHEMA IF EXISTS public CASCADE;
       DROP SCHEMA IF EXISTS drizzle CASCADE;
       CREATE SCHEMA public;`);
   } finally {
-    await sql.end();
+    await client.end();
   }
   await runMigrations(url);
 }

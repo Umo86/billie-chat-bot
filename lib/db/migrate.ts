@@ -1,20 +1,22 @@
 import "dotenv/config";
-import { drizzle } from "drizzle-orm/postgres-js";
-import { migrate } from "drizzle-orm/postgres-js/migrator";
-import postgres from "postgres";
-import { describeDatabase, migrationDatabaseUrl } from "./urls";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
+import { Client } from "pg";
+import { describeDatabase, migrationDatabaseUrl, normaliseSsl } from "./urls";
 
 /**
  * `pnpm db:migrate` and the Vercel build (`vercel-build`): applies any
- * migrations the database hasn't had, over the direct connection. Safe to
- * run on every deploy; prints the host, never the credentials.
+ * migrations the database hasn't had, over the direct (unpooled)
+ * connection, recording each in drizzle.__drizzle_migrations. Safe to run on
+ * every deploy; prints the host, never the credentials.
  */
 export async function runMigrations(url: string, folder = "lib/db/migrations"): Promise<void> {
-  const sql = postgres(url, { max: 1, prepare: false, onnotice: () => {}, connect_timeout: 30 });
+  const client = new Client({ connectionString: normaliseSsl(url), connectionTimeoutMillis: 30_000 });
+  await client.connect();
   try {
-    await migrate(drizzle(sql), { migrationsFolder: folder });
+    await migrate(drizzle({ client }), { migrationsFolder: folder });
   } finally {
-    await sql.end({ timeout: 5 });
+    await client.end();
   }
 }
 
