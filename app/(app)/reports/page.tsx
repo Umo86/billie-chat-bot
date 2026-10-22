@@ -4,6 +4,7 @@ import { PageHeader, Panel } from "@/components/ui/bits";
 import { TabsNav } from "@/components/ui/tabs-nav";
 import { requireActor } from "@/lib/auth/actor";
 import { busiestHours, kpis, perBot, topQuestions, usageSince } from "@/lib/reports/queries";
+import { daysAgo } from "@/lib/time";
 
 export const metadata: Metadata = { title: "Reports" };
 
@@ -18,7 +19,7 @@ export default async function ReportsPage({
   await requireActor("reports.view");
   const sp = await searchParams;
   const days = PERIODS.find((p) => String(p) === sp.days) ?? 30;
-  const since = new Date(Date.now() - days * 86_400_000);
+  const since = daysAgo(days);
   const [k, top, hours, bots, usage] = await Promise.all([
     kpis(since),
     topQuestions(since, 10),

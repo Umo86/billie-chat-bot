@@ -62,3 +62,8 @@ export function timeAgo(d: Date | string, now: Date = new Date()): string {
   if (ms < 86_400_000) return `${Math.round(ms / 3_600_000)} h ago`;
   return formatDateTime(d);
 }
+
+/** The moment `days` days before now. */
+export function daysAgo(days: number, now: Date = new Date()): Date {
+  return new Date(now.getTime() - days * 86_400_000);
+}
