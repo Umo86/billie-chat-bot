@@ -61,3 +61,17 @@ test("general settings save, connections and reports render", async ({ page }) =
   await expect(page.getByText("By bot")).toBeVisible();
   await shot(page, "reports");
 });
+
+test("a privacy request: find a visitor's chat and delete it", async ({ page }) => {
+  await signInAsAdmin(page);
+  await page.goto("/settings?tab=privacy");
+  await page.getByLabel("Email or phone number").fill("priya@acme-stands.test");
+  await page.getByRole("button", { name: "Find" }).click();
+  await expect(page.getByText(/Found 1 chat and 0 emails/)).toBeVisible();
+  await page.getByRole("button", { name: "Delete all of it" }).click();
+  await page.getByRole("button", { name: "Delete for good" }).click();
+  await expect(page.getByText("Deleted 1 chats and 0 emails.")).toBeVisible();
+  await page.getByLabel("Email or phone number").fill("priya@acme-stands.test");
+  await page.getByRole("button", { name: "Find" }).click();
+  await expect(page.getByText("Nothing found for priya@acme-stands.test.")).toBeVisible();
+});

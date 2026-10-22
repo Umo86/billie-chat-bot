@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { runAction } from "@/lib/actions/run";
 import { updateSettings } from "@/lib/settings";
+import { deletePerson, findPerson } from "@/lib/privacy/requests";
 import { changeRole, createInvitation, revokeInvitation, setSuspended } from "@/lib/team/accounts";
 
 const role = z.enum(["admin", "editor", "agent"]);
@@ -89,4 +90,27 @@ export async function revokeInviteAction(input: unknown) {
     await revokeInvitation(actor, d.id);
     revalidatePath("/settings");
   });
+}
+
+export async function findPersonAction(input: unknown) {
+  return runAction(
+    "data.export",
+    z.object({ q: z.string().trim().min(3).max(200) }),
+    input,
+    async (_a, d) => findPerson(d.q),
+  );
+}
+
+export async function deletePersonAction(input: unknown) {
+  return runAction(
+    "data.delete",
+    z.object({ q: z.string().trim().min(3).max(200) }),
+    input,
+    async (actor, d) => {
+      const done = await deletePerson(actor, d.q);
+      revalidatePath("/inbox");
+      revalidatePath("/emails");
+      return done;
+    },
+  );
 }

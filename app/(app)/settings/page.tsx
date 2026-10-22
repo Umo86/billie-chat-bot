@@ -5,6 +5,7 @@ import { TabsNav } from "@/components/ui/tabs-nav";
 import { CopyButton } from "@/components/ui/copy-button";
 import { GeneralForm } from "@/components/settings/general-form";
 import { Team } from "@/components/settings/team";
+import { Privacy } from "@/components/settings/privacy";
 import { requireActor } from "@/lib/auth/actor";
 import { authMode } from "@/lib/auth/config";
 import { getSettings } from "@/lib/settings";
@@ -24,7 +25,7 @@ import { appDatabaseUrl, describeDatabase, isNeon } from "@/lib/db/urls";
 
 export const metadata: Metadata = { title: "Settings" };
 
-type Tab = "general" | "team" | "connections";
+type Tab = "general" | "team" | "privacy" | "connections";
 
 export default async function SettingsPage({
   searchParams,
@@ -33,7 +34,8 @@ export default async function SettingsPage({
 }) {
   const actor = await requireActor("settings.manage");
   const sp = await searchParams;
-  const tab: Tab = sp.tab === "team" || sp.tab === "connections" ? sp.tab : "general";
+  const tab: Tab =
+    sp.tab === "team" || sp.tab === "privacy" || sp.tab === "connections" ? sp.tab : "general";
 
   let body: React.ReactNode;
   if (tab === "general") {
@@ -64,6 +66,9 @@ export default async function SettingsPage({
         invitations={invitations.map((i) => ({ ...i, expiresAt: i.expiresAt.toISOString() }))}
       />
     );
+  } else if (tab === "privacy") {
+    const s = await getSettings();
+    body = <Privacy retentionMonths={s.retentionMonths} />;
   } else {
     const base = appUrl();
     const dbUrl = appDatabaseUrl();
@@ -208,6 +213,7 @@ export default async function SettingsPage({
         tabs={[
           { key: "general", href: "/settings", label: "General" },
           { key: "team", href: "/settings?tab=team", label: "Team" },
+          { key: "privacy", href: "/settings?tab=privacy", label: "Privacy requests" },
           { key: "connections", href: "/settings?tab=connections", label: "Connections" },
         ]}
       />
