@@ -1,0 +1,233 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/*
+ * Billie's look: an ops console. Quiet surfaces, one teal accent, and status
+ * shown the way venue signage shows it: short words on solid chips. Every
+ * colour is a token; dark mode follows the system setting.
+ */
+:root {
+  --radius: 0.75rem;
+  --background: #f3f5f4;
+  --foreground: #132220;
+  --card: #ffffff;
+  --card-foreground: #132220;
+  --popover: #ffffff;
+  --popover-foreground: #132220;
+  --primary: #0d6a5b;
+  --primary-foreground: #ffffff;
+  --secondary: #e8eeec;
+  --secondary-foreground: #132220;
+  --muted: #e8eeec;
+  --muted-foreground: #566661;
+  --accent: #d8eee8;
+  --accent-foreground: #0b3f37;
+  --destructive: #b23a28;
+  --destructive-foreground: #ffffff;
+  --border: #d4dedb;
+  --input: #c9d5d1;
+  --ring: #1f5fd8;
+  --signal: #f2c230;
+  --signal-foreground: #2a2000;
+  --good: #1b7548;
+  --good-soft: #dbf0e3;
+  --warn: #8f5c00;
+  --warn-soft: #f8ebcd;
+  --bad: #b23a28;
+  --bad-soft: #f7dfd9;
+  --info: #1f4fd8;
+  --info-soft: #dfe8fb;
+  --scrim: rgb(10 20 18 / 45%);
+  --shadow-panel: 0 1px 2px rgb(19 34 32 / 6%), 0 10px 28px rgb(19 34 32 / 9%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: #0d1412;
+    --foreground: #e5edea;
+    --card: #141d1b;
+    --card-foreground: #e5edea;
+    --popover: #141d1b;
+    --popover-foreground: #e5edea;
+    --primary: #48baa7;
+    --primary-foreground: #03201b;
+    --secondary: #1b2624;
+    --secondary-foreground: #e5edea;
+    --muted: #1b2624;
+    --muted-foreground: #9aaaa5;
+    --accent: #173a34;
+    --accent-foreground: #cdeee6;
+    --destructive: #ef8069;
+    --destructive-foreground: #200704;
+    --border: #283633;
+    --input: #32423f;
+    --ring: #7da9ff;
+    --good: #5ec58f;
+    --good-soft: #15382a;
+    --warn: #e4b05a;
+    --warn-soft: #3a2b10;
+    --bad: #ef8069;
+    --bad-soft: #3e1e18;
+    --info: #8fb0ff;
+    --info-soft: #1a2747;
+    --scrim: rgb(0 0 0 / 60%);
+    --shadow-panel: 0 1px 2px rgb(0 0 0 / 40%), 0 10px 28px rgb(0 0 0 / 38%);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --background: #0d1412;
+  --foreground: #e5edea;
+  --card: #141d1b;
+  --card-foreground: #e5edea;
+  --popover: #141d1b;
+  --popover-foreground: #e5edea;
+  --primary: #48baa7;
+  --primary-foreground: #03201b;
+  --secondary: #1b2624;
+  --secondary-foreground: #e5edea;
+  --muted: #1b2624;
+  --muted-foreground: #9aaaa5;
+  --accent: #173a34;
+  --accent-foreground: #cdeee6;
+  --destructive: #ef8069;
+  --destructive-foreground: #200704;
+  --border: #283633;
+  --input: #32423f;
+  --ring: #7da9ff;
+  --good: #5ec58f;
+  --good-soft: #15382a;
+  --warn: #e4b05a;
+  --warn-soft: #3a2b10;
+  --bad: #ef8069;
+  --bad-soft: #3e1e18;
+  --info: #8fb0ff;
+  --info-soft: #1a2747;
+  --scrim: rgb(0 0 0 / 60%);
+  --shadow-panel: 0 1px 2px rgb(0 0 0 / 40%), 0 10px 28px rgb(0 0 0 / 38%);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-sans: "Archivo Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Archivo Variable", "Arial Narrow", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-signal: var(--signal);
+  --color-signal-foreground: var(--signal-foreground);
+  --color-good: var(--good);
+  --color-good-soft: var(--good-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --shadow-panel: var(--shadow-panel);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/60;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-stretch: 116%;
+    line-height: 1.15;
+    text-wrap: balance;
+  }
+  h1 {
+    font-size: clamp(1.45rem, 1.15rem + 1.1vw, 1.95rem);
+    font-weight: 780;
+    letter-spacing: -0.01em;
+  }
+  h2 {
+    font-size: 1.12rem;
+    font-weight: 730;
+  }
+  h3 {
+    font-size: 0.98rem;
+    font-weight: 700;
+  }
+  code,
+  kbd,
+  pre {
+    font-family: var(--font-mono);
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Small uppercase section label, e.g. "SOURCES". */
+  .label-caps {
+    font-size: 0.74rem;
+    font-weight: 680;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+  }
+  /* The brand mark: a speech bubble with a yellow signal dot. */
+  .brand-mark {
+    width: 22px;
+    height: 22px;
+    border-radius: 7px 7px 7px 2px;
+    background: var(--primary);
+    position: relative;
+    flex: none;
+  }
+  .brand-mark::after {
+    content: "";
+    position: absolute;
+    right: -4px;
+    top: -4px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--signal);
+    border: 2px solid var(--card);
+  }
+  .brand-word {
+    font-family: var(--font-display);
+    font-stretch: 125%;
+    font-weight: 830;
+    font-size: 1.55rem;
+    letter-spacing: -0.015em;
+    line-height: 1;
+  }
+}

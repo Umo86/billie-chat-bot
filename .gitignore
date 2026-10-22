@@ -1,0 +1,27 @@
+# dependencies
+node_modules/
+
+# next.js
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# environment: never commit real values
+.env
+.env.*
+!.env.example
+
+# tests
+test-results/
+playwright-report/
+coverage/
+tests/e2e/.files/
+
+# local file storage when Vercel Blob isn't set up
+.uploads/
+
+# misc
+.DS_Store
+*.pem
+.vercel
