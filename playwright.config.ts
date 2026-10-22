@@ -34,6 +34,8 @@ export default defineConfig({
     url: `http://localhost:${PORT}/api/health`,
     reuseExistingServer: false,
     timeout: 120_000,
+    stdout: "pipe",
+    stderr: "pipe",
     env: {
       E2E_DATABASE_URL: DB,
       DATABASE_URL: DB,

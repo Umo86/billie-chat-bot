@@ -86,7 +86,13 @@ export function ConversationView({
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             {botName} ·{" "}
-            {channel === "whatsapp" ? "WhatsApp" : channel === "hosted" ? "Chat page" : channel === "try" ? "Try page" : "Website"}
+            {channel === "whatsapp"
+              ? "WhatsApp"
+              : channel === "hosted"
+                ? "Chat page"
+                : channel === "try"
+                  ? "Try page"
+                  : "Website"}
             {assignedName ? ` · with ${assignedName}` : ""}
           </p>
           <dl className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-sm">
@@ -133,7 +139,10 @@ export function ConversationView({
         </div>
       </div>
 
-      <ol className="flex flex-1 flex-col gap-2.5 overflow-y-auto px-4 py-4 sm:px-5" aria-label="Messages">
+      <ol
+        className="flex flex-1 flex-col gap-2.5 overflow-y-auto px-4 py-4 sm:px-5"
+        aria-label="Messages"
+      >
         {lines.map((l) => (
           <li
             key={l.id}
@@ -160,21 +169,25 @@ export function ConversationView({
                 l.role === "visitor" && "rounded-tl-sm bg-muted",
                 l.role === "bot" && "rounded-tl-sm border border-border bg-card",
                 l.role === "agent" && "rounded-tr-sm bg-primary text-primary-foreground",
-                l.role === "system" && "bg-transparent px-0 py-0 text-center text-sm text-muted-foreground",
+                l.role === "system" &&
+                  "bg-transparent px-0 py-0 text-center text-sm text-muted-foreground",
               )}
             >
               {l.text}
             </p>
             {l.role === "bot" && l.sources.length ? (
               <span className="text-[0.74rem] text-muted-foreground">
-                Source: {l.sources.map((s) => `${s.title}${s.label ? ` (${s.label})` : ""}`).join("; ")}
+                Source:{" "}
+                {l.sources.map((s) => `${s.title}${s.label ? ` (${s.label})` : ""}`).join("; ")}
               </span>
             ) : null}
             {l.role === "visitor" && canTeach && kbs.length ? (
               <button
                 type="button"
                 className="cursor-pointer text-[0.75rem] font-semibold text-primary hover:underline"
-                onClick={() => setTeach({ question: l.text.slice(0, 300), answer: "", kbId: kbs[0].id })}
+                onClick={() =>
+                  setTeach({ question: l.text.slice(0, 300), answer: "", kbId: kbs[0].id })
+                }
               >
                 <BookmarkPlus className="mr-1 inline size-3.5" aria-hidden />
                 Save an answer for this
@@ -201,9 +214,14 @@ export function ConversationView({
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) e.currentTarget.form?.requestSubmit();
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey))
+                e.currentTarget.form?.requestSubmit();
             }}
-            placeholder={status === "bot" ? "Write to step in. Billie stops answering this chat." : "Write a reply…"}
+            placeholder={
+              status === "bot"
+                ? "Write to step in. Billie stops answering this chat."
+                : "Write a reply…"
+            }
             className="min-h-20"
             maxLength={4000}
           />
@@ -265,7 +283,11 @@ export function ConversationView({
                 <DialogClose asChild>
                   <Button>Cancel</Button>
                 </DialogClose>
-                <Button type="submit" variant="primary" disabled={teachRun.pending || !teach.answer.trim()}>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  disabled={teachRun.pending || !teach.answer.trim()}
+                >
                   Save answer
                 </Button>
               </div>

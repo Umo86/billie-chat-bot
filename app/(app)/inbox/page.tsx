@@ -118,7 +118,12 @@ export default async function InboxPage({
             className={cn("flex flex-col gap-1.5", picked && "hidden lg:flex")}
           >
             {rows.map((r) => {
-              const Icon = r.channel === "whatsapp" ? Smartphone : r.channel === "hosted" ? MessageCircle : Globe;
+              const Icon =
+                r.channel === "whatsapp"
+                  ? Smartphone
+                  : r.channel === "hosted"
+                    ? MessageCircle
+                    : Globe;
               return (
                 <li key={r.id}>
                   <Link
@@ -132,24 +137,52 @@ export default async function InboxPage({
                   >
                     <span className="flex items-center gap-2">
                       {r.unread ? (
-                        <span className="size-2 shrink-0 rounded-full bg-signal" aria-label="New messages" />
+                        <span
+                          className="size-2 shrink-0 rounded-full bg-signal"
+                          aria-label="New messages"
+                        />
                       ) : null}
                       <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
                       <span className="min-w-0 flex-1 truncate font-semibold">
                         {r.contact.name || (r.waId ? `+${r.waId}` : "Visitor")}
                         {r.contact.company ? ` · ${r.contact.company}` : ""}
                       </span>
-                      <span className="shrink-0 text-xs text-muted-foreground">{timeAgo(r.lastMessageAt)}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {timeAgo(r.lastMessageAt)}
+                      </span>
                     </span>
                     {r.firstQuestion ? (
                       <span className="line-clamp-1 text-sm">&ldquo;{r.firstQuestion}&rdquo;</span>
                     ) : null}
                     {r.lastText && r.lastText !== r.firstQuestion ? (
-                      <span className="line-clamp-1 text-sm text-muted-foreground">{r.lastText}</span>
+                      <span className="line-clamp-1 text-sm text-muted-foreground">
+                        {r.lastText}
+                      </span>
                     ) : null}
                     <span className="flex flex-wrap items-center gap-1.5">
-                      <Chip className="h-5 text-[0.7rem]" tone={r.status === "waiting" || r.status === "ticket" ? "warn" : r.status === "live" ? "good" : "neutral"}>
-                        {r.status === "waiting" ? "Waiting" : r.status === "ticket" ? "Needs a reply" : r.status === "live" ? "Live" : r.status === "collecting" ? "Taking details" : r.status === "bot" ? "Billie" : r.status === "replied" ? "Replied" : "Closed"}
+                      <Chip
+                        className="h-5 text-[0.7rem]"
+                        tone={
+                          r.status === "waiting" || r.status === "ticket"
+                            ? "warn"
+                            : r.status === "live"
+                              ? "good"
+                              : "neutral"
+                        }
+                      >
+                        {r.status === "waiting"
+                          ? "Waiting"
+                          : r.status === "ticket"
+                            ? "Needs a reply"
+                            : r.status === "live"
+                              ? "Live"
+                              : r.status === "collecting"
+                                ? "Taking details"
+                                : r.status === "bot"
+                                  ? "Billie"
+                                  : r.status === "replied"
+                                    ? "Replied"
+                                    : "Closed"}
                       </Chip>
                       <span className="text-xs text-muted-foreground">{r.botName}</span>
                       {r.channel === "try" ? <Chip className="h-5 text-[0.7rem]">TEST</Chip> : null}
@@ -162,7 +195,10 @@ export default async function InboxPage({
           {detail ? (
             <div className="flex min-w-0 flex-col gap-2">
               {picked ? (
-                <Link href={`/inbox?tab=${tab}`} className="inline-flex items-center gap-1 text-sm font-semibold text-primary lg:hidden">
+                <Link
+                  href={`/inbox?tab=${tab}`}
+                  className="inline-flex items-center gap-1 text-sm font-semibold text-primary lg:hidden"
+                >
                   <ArrowLeft className="size-4" aria-hidden /> All chats
                 </Link>
               ) : null}

@@ -86,7 +86,12 @@ export async function inboxCounts(): Promise<Record<InboxTab, number>> {
         WHERE status IN ('waiting','ticket','live','collecting') GROUP BY status`,
   );
   const n = (s: ConversationStatus) => rows.find((r) => r.status === s)?.n ?? 0;
-  return { needs: n("waiting") + n("ticket"), live: n("live") + n("collecting"), billie: 0, done: 0 };
+  return {
+    needs: n("waiting") + n("ticket"),
+    live: n("live") + n("collecting"),
+    billie: 0,
+    done: 0,
+  };
 }
 
 export type TranscriptLine = {
@@ -130,20 +135,18 @@ export async function conversationDetail(id: string) {
     conversation: conv,
     bot,
     assignedName: assigned?.fullName ?? null,
-    lines: rows.map(
-      (m): TranscriptLine => ({
-        id: m.id,
-        role: m.role,
-        text: m.text,
-        author: m.authorId ? (names.get(m.authorId) ?? null) : null,
-        sources: (m.sources as { title: string; label: string }[]).map((s) => ({
-          title: s.title,
-          label: s.label,
-        })),
-        rating: m.rating,
-        createdAt: m.createdAt.toISOString(),
-      }),
-    ),
+    lines: rows.map((m): TranscriptLine => ({
+      id: m.id,
+      role: m.role,
+      text: m.text,
+      author: m.authorId ? (names.get(m.authorId) ?? null) : null,
+      sources: (m.sources as { title: string; label: string }[]).map((s) => ({
+        title: s.title,
+        label: s.label,
+      })),
+      rating: m.rating,
+      createdAt: m.createdAt.toISOString(),
+    })),
   };
 }
 

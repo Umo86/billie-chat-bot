@@ -205,7 +205,9 @@ test("live handover: the team replies from the Inbox and hands back", async ({ p
 
   await chat.getByLabel("Your message").fill("Where do we unload on build-up day?");
   await chat.getByLabel("Your message").press("Enter");
-  await expect(page.getByText("Where do we unload on build-up day?")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Where do we unload on build-up day?")).toBeVisible({
+    timeout: 15_000,
+  });
   await shot(page, "inbox");
 
   // Teach Billie from the chat, then hand back.
@@ -221,4 +223,30 @@ test("live handover: the team replies from the Inbox and hands back", async ({ p
   await page.getByRole("switch", { name: "Available for live chats" }).click();
   await expect(page.getByText("You're not taking live chats")).toBeVisible();
   await visitor.close();
+});
+
+test("an exhibitor email gets a draft reply from the knowledge", async ({ page }) => {
+  await signInAsAdmin(page);
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Emails" })
+    .click();
+  await page.getByRole("button", { name: "Paste an email" }).click();
+  await page.getByLabel("From (name)").fill("Sam Carter");
+  await page.getByLabel("From (email)").fill("sam@stands.example");
+  await page.getByLabel("Subject").fill("Build-up question");
+  await page
+    .getByLabel("Email", { exact: true })
+    .fill("Hi, when does build-up start for exhibitors? Thanks, Sam");
+  await page.getByRole("button", { name: "Write a draft" }).click();
+
+  await expect(page.getByLabel("Draft reply")).toHaveValue(/8am/, { timeout: 30_000 });
+  await expect(page.getByText(/Draft ready/).first()).toBeVisible();
+  await shot(page, "emails");
+  await page.getByRole("button", { name: "Mark as sent" }).click();
+  await expect(page.getByText("Marked as sent.")).toBeVisible();
+  await page.getByRole("link", { name: "Done" }).click();
+  await expect(
+    page.getByTestId("email-row").filter({ hasText: "Build-up question" }),
+  ).toBeVisible();
 });
