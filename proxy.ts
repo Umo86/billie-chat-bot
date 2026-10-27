@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { authMode, authProblem } from "@/lib/auth/config";
 import { cspWithAncestors } from "@/lib/csp";
 import { frameMark } from "@/lib/chat/frame-mark";
 
@@ -7,7 +8,9 @@ import { frameMark } from "@/lib/chat/frame-mark";
  *
  * - Staff pages: Neon Auth's middleware checks the session and refreshes its
  *   cookies, sending signed-out people to /login. The pages then decide what
- *   the person may do (lib/auth/actor.ts).
+ *   the person may do (lib/auth/actor.ts), so this step is a convenience,
+ *   never the lock: when sign-in isn't fully set up or Neon Auth fails, the
+ *   request goes on and the page shows what's wrong instead of an error.
  * - The chat frame (/embed/<bot>): its Content-Security-Policy says which
  *   websites may show it (frame-ancestors), from the bot's allowed websites.
  */
@@ -23,12 +26,19 @@ type Middleware = (request: NextRequest) => Promise<NextResponse>;
 let neonMiddleware: Middleware | undefined;
 
 async function staffSession(request: NextRequest): Promise<NextResponse> {
-  if (!process.env.NEON_AUTH_BASE_URL?.trim()) return NextResponse.next();
-  if (!neonMiddleware) {
-    const { neonAuth } = await import("@/lib/auth/neon");
-    neonMiddleware = neonAuth().middleware({ loginUrl: "/login" });
+  // Not set up yet (e.g. NEON_AUTH_COOKIE_SECRET missing): the sign-in pages say what to add.
+  if (authMode() !== "neon" || authProblem()) return NextResponse.next();
+  let response: NextResponse;
+  try {
+    if (!neonMiddleware) {
+      const { neonAuth } = await import("@/lib/auth/neon");
+      neonMiddleware = neonAuth().middleware({ loginUrl: "/login" });
+    }
+    response = await neonMiddleware(request);
+  } catch (err) {
+    console.error("session refresh failed", err instanceof Error ? err.message : err);
+    return NextResponse.next();
   }
-  const response = await neonMiddleware(request);
   // A form posted after the session ended gets the action's own "sign in
   // again" message, not a redirect it can't follow.
   if (response.headers.get("location") && request.headers.get("next-action"))

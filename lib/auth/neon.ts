@@ -19,10 +19,7 @@ export function neonAuth(): NeonAuth {
   const baseUrl = neonAuthBaseUrl();
   const secret = neonCookieSecret();
   if (!baseUrl) throw new Error("NEON_AUTH_BASE_URL is missing or isn't an https address.");
-  if (!secret)
-    throw new Error(
-      "Set CRON_SECRET (or NEON_AUTH_COOKIE_SECRET, 32+ characters) to sign sessions.",
-    );
+  if (!secret) throw new Error("NEON_AUTH_COOKIE_SECRET is missing or shorter than 32 characters.");
   instance = createNeonAuth({
     baseUrl,
     cookies: { secret, sameSite: "lax" },
