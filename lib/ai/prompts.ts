@@ -50,6 +50,24 @@ export function quoteUntrusted(text: string, max = 8000): string {
   return text.replace(/<\/?untrusted[^>]*>/gi, "").slice(0, max);
 }
 
+const UK_DATE = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Europe/London",
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
+
+/**
+ * Today's date in the UK, e.g. "Today is Tuesday 3 November 2026 (UK time)."
+ * Sent with each message rather than in the cached system part, so Billie
+ * can tell whether a deadline has passed or which price applies today.
+ */
+export function todayLine(now: Date): string {
+  const p = Object.fromEntries(UK_DATE.formatToParts(now).map((x) => [x.type, x.value]));
+  return `Today is ${p.weekday} ${p.day} ${p.month} ${p.year} (UK time).`;
+}
+
 /** The team's description of the bot's personality, as one line of style guidance. */
 export function personalityLine(personality: string): string | null {
   const words = quoteUntrusted(personality, 600).replace(/\s+/g, " ").trim();
@@ -72,6 +90,7 @@ export function answerSystem(bot: PromptBot): string {
     "",
     "RULES",
     "- Answer only from the numbered passages in KNOWLEDGE. Never guess or invent dates, times, prices, rules, names, links or contact details.",
+    "- Today's date comes with each message. Use it when timing matters: say plainly when a deadline or date has already passed, and which price or rate applies today.",
     '- If the passages don\'t answer the question, say briefly that you don\'t have that information, and set "handover" to "unknown".',
     `- These topics always go to a person: ${bot.alwaysHuman.join("; ") || "(none)"}. If the message is mainly about one of them, don't answer it: say you'll pass it to the team, and set "handover" to "always_human".`,
     '- If the person asks for a human, a person or the team, set "handover" to "asked_for_person".',
@@ -86,7 +105,7 @@ export function knowledgeBlock(passages: PromptPassage[]): string {
   return `KNOWLEDGE\n${formatPassages(passages)}`;
 }
 
-export function answerUser(history: Turn[], question: string): string {
+export function answerUser(history: Turn[], question: string, now = new Date()): string {
   const name = (r: Turn["role"]) =>
     r === "visitor" ? "Person" : r === "agent" ? "Ops team" : r === "bot" ? "You" : "Note";
   const convo = history
@@ -95,6 +114,7 @@ export function answerUser(history: Turn[], question: string): string {
     .map((t) => `${name(t.role)}: ${quoteUntrusted(t.text, 1500)}`)
     .join("\n");
   return [
+    `${todayLine(now)}\n`,
     convo ? `CONVERSATION SO FAR\n<untrusted>\n${convo}\n</untrusted>\n` : "",
     "NEW MESSAGE FROM THE PERSON",
     `<untrusted>\n${quoteUntrusted(question, 2000)}\n</untrusted>`,
@@ -136,6 +156,7 @@ export function emailDraftSystem(input: {
   return [
     `You draft email replies for the operations team of ${input.show || "the show"}. A person checks every draft before it is sent.`,
     "Use only the numbered passages in KNOWLEDGE. Never invent dates, times, prices, rules, links or contact details.",
+    "Today's date comes with the email. Use it when timing matters: say plainly when a deadline or date has already passed, and which price or rate applies today.",
     'If the passages don\'t fully answer the email, set "confident" to false, say in "missing" what they don\'t cover, and write a short "holding" reply that says the team will come back to them.',
     `Style: ${TONES[input.tone]}, UK English, a plain-text email with no emoji.`,
     ...(style ? [style] : []),
@@ -144,6 +165,6 @@ export function emailDraftSystem(input: {
   ].join("\n");
 }
 
-export function emailDraftUser(e: PromptEmail): string {
-  return `EMAIL TO ANSWER\n${emailBlock(e)}`;
+export function emailDraftUser(e: PromptEmail, now = new Date()): string {
+  return `${todayLine(now)}\n\nEMAIL TO ANSWER\n${emailBlock(e)}`;
 }

@@ -74,14 +74,19 @@ export function KnowledgeStep({
                     className="mt-1 size-4 accent-[var(--color-primary)]"
                     checked={on}
                     disabled={!canEdit}
+                    aria-labelledby={`kb-${k.id}-name`}
+                    aria-describedby={`kb-${k.id}-about`}
                     onChange={() =>
                       setPicked((p) => (on ? p.filter((x) => x !== k.id) : [...p, k.id]))
                     }
                   />
                   <span className="min-w-0">
-                    <span className="block font-semibold">{k.name}</span>
-                    <span className="block text-sm text-muted-foreground">
-                      {k.sources} {k.sources === 1 ? "source" : "sources"} · {k.passages} passages
+                    <span id={`kb-${k.id}-name`} className="block font-semibold">
+                      {k.name}
+                    </span>
+                    <span id={`kb-${k.id}-about`} className="block text-sm text-muted-foreground">
+                      {k.sources} {k.sources === 1 ? "source" : "sources"} · {k.passages}{" "}
+                      {k.passages === 1 ? "passage" : "passages"}
                       {k.description ? ` · ${k.description}` : ""}
                     </span>
                   </span>

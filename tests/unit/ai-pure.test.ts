@@ -3,8 +3,10 @@ import {
   answerSystem,
   answerUser,
   emailDraftSystem,
+  emailDraftUser,
   formatPassages,
   quoteUntrusted,
+  todayLine,
   type PromptPassage,
 } from "@/lib/ai/prompts";
 import { answerSchema, emailDraftSchema, emailTagSchema } from "@/lib/ai/schemas";
@@ -94,6 +96,38 @@ describe("prompts", () => {
     expect(u).toContain("You: hello");
     expect(u.match(/<\/untrusted>/g)).toHaveLength(2); // only ours
     expect(quoteUntrusted("<untrusted attr>x</untrusted>")).toBe("x");
+  });
+
+  it("tells Billie today's date in the UK with each message, outside the cached part", () => {
+    expect(todayLine(new Date("2026-11-03T14:00:00Z"))).toBe(
+      "Today is Tuesday 3 November 2026 (UK time).",
+    );
+    // Half past midnight in British Summer Time is already the next day in the UK.
+    expect(todayLine(new Date("2026-06-30T23:30:00Z"))).toBe(
+      "Today is Wednesday 1 July 2026 (UK time).",
+    );
+    const morning = new Date("2026-11-03T09:00:00Z");
+    expect(answerUser([], "Can we still get the early bird price?", morning)).toMatch(
+      /^Today is Tuesday 3 November 2026 \(UK time\)\.\n/,
+    );
+    expect(
+      emailDraftUser(
+        {
+          fromName: "Sam",
+          fromEmail: "sam@example.com",
+          subject: "Electrics",
+          body: "Early bird?",
+        },
+        morning,
+      ),
+    ).toMatch(/^Today is Tuesday 3 November 2026 \(UK time\)\.\n/);
+    // The cached system part is the same every day; it only says how to use the date.
+    const s = answerSystem(bot);
+    expect(s).not.toContain("Today is");
+    expect(s).toContain("say plainly when a deadline or date has already passed");
+    expect(emailDraftSystem({ show: "UKCW", tone: "friendly", personality: "" })).toContain(
+      "say plainly when a deadline or date has already passed",
+    );
   });
 
   it("drafts in the bot's personality, without emoji, and leaves the sign-off to Billie", () => {

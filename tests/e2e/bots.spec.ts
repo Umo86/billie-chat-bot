@@ -55,6 +55,7 @@ test("build knowledge, then a bot that answers from it", async ({ page }) => {
   // Step 1: look.
   await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Home" }).click();
   await page.getByRole("link", { name: "New bot" }).first().click();
+  await expect(page.getByText(/^Seven short steps/)).toBeVisible();
   await page.getByLabel("Bot name").fill("Exhibitor Help");
   await page.getByLabel("Show name").fill("UK Construction Week 2027");
   await page.getByRole("button", { name: "Suggest a welcome message" }).click();
@@ -76,7 +77,10 @@ test("build knowledge, then a bot that answers from it", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Which knowledge should it answer from?" }),
   ).toBeVisible();
-  await page.getByLabel(/Exhibitor knowledge/).check();
+  // The tick box is named after the knowledge base, with its contents as the description.
+  const kb = page.getByRole("checkbox", { name: "Exhibitor knowledge", exact: true });
+  await kb.check();
+  await expect(kb).toBeChecked();
   await page.getByRole("button", { name: "Save and continue" }).click();
 
   // Step 4: rules (defaults are fine).

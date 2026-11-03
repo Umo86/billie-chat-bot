@@ -158,6 +158,13 @@ them, and hand over when unsure, for "always a person" topics, or when
 asked. Every handover lands in the Inbox; email drafts are never sent
 automatically. A daily answer cap is a spending safety net.
 
+Each question and each email to draft comes with today's date in the UK
+("Today is Tuesday 3 November 2026 (UK time)."). Exhibitor knowledge is
+full of deadlines and prices that change by date, and without the date
+the bot could only say "if that date hasn't passed". The date goes in the
+message, not the system part, so the cached rules and knowledge stay the
+same all day.
+
 ## Chats belong to whoever holds the token
 
 Visitors are anonymous. A chat's random token lives in the visitor's
