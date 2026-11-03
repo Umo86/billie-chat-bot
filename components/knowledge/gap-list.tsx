@@ -47,7 +47,8 @@ function GapItem({ gap, canEdit }: { gap: GapRow; canEdit: boolean }) {
   const { pending, run } = useRunner();
 
   return (
-    <li>
+    // The weekly Teams post links straight to each question.
+    <li id={`gap-${gap.id}`} className="scroll-mt-4">
       <Panel className="flex flex-col gap-3" data-testid="gap-row">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 flex-1 basis-64">

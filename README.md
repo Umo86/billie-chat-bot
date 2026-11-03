@@ -34,6 +34,10 @@ Chatbots, live handover and an email assistant for Media10 shows.
 - **Knowledge check**: one button and Claude reads all of a bot's knowledge,
   listing contradictions, dates that have passed and contact details that
   don't match, with Edit next to each pasted text or typed answer involved.
+- **A Monday post in each event's Teams channel**: last week's chats, the
+  share Billie answered alone, emails drafted, the most asked questions,
+  new questions it couldn't answer (each a link to answer it) and an
+  estimate of the hours saved.
 - **Nudges**: a chat passed to the team, or an email that needs a person,
   with no reply after 4 of the bot's working hours gets a Teams message to
   whoever handles it; after 8, admins get one too (Settings → General).

@@ -77,7 +77,12 @@ const handlers: Handlers = {
     await (await import("@/lib/alerts/nudge")).runNudges();
   },
   weekly_summary: async () => {
+    // Each event's own channel first (queued once each), then the company email.
+    await (await import("@/lib/reports/bot-week")).queueBotWeeks();
     await (await import("@/lib/reports/summary")).sendWeeklySummary();
+  },
+  weekly_bot_summary: async (p) => {
+    await (await import("@/lib/reports/bot-week")).postBotWeek(String(p.botId));
   },
 };
 

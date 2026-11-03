@@ -152,6 +152,19 @@ Each bot's tone, personality (in the team's own words), emoji choice and
 email sign-off go into its prompts as style. The prompt says the rules win,
 answers still come only from the knowledge, and emails never get emoji.
 
+## The weekly post goes to each event's own channel
+
+The knowledge only improves if someone sees the questions Billie couldn't
+answer, so every Monday each bot with its own Teams channel (live, or with
+chats last week) gets a post: chats, the share answered alone, emails
+drafted, the five most asked questions, new unanswered questions (each a
+link straight to it on the Knowledge page) and hours saved. Hours saved is
+an estimate and the card says how it's counted (4 minutes per chat Billie
+answered alone, 8 per email it drafted), so nobody mistakes it for a
+measurement. One job per bot, queued once per day, so a retry never posts
+twice; the company-wide email summary is unchanged. Everything people wrote
+goes in as plain text runs, never Markdown, as with the other Teams posts.
+
 ## Nudges count the bot's working hours, and go once
 
 The bot promises people the team will come back to them, so a chat passed

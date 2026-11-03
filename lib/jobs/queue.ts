@@ -29,7 +29,8 @@ export type JobKind =
   | "retention"
   | "weekly_summary"
   | "suggest_reply"
-  | "nudge_waiting";
+  | "nudge_waiting"
+  | "weekly_bot_summary";
 
 export type Job = typeof jobs.$inferSelect;
 
