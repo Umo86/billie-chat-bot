@@ -59,7 +59,7 @@ export default async function RequestsPage({
       <AutoRefresh active every={15000} />
       <PageHeader
         title="Requests"
-        lede="Requests people made through a bot's chat, such as extra build-up hours. Each one has a reference the person can follow, and they're emailed when it changes."
+        lede="Requests people made through a bot's chat, such as extra build-up hours. Each one has a reference and a page the person can follow, and once email is set up they're emailed when it changes."
       />
       <TabsNav
         label="Request sections"
