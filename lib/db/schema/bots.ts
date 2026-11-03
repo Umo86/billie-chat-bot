@@ -67,6 +67,11 @@ export const bots = pgTable(
     domains: jsonb("domains").$type<string[]>().notNull().default([]),
     rules: jsonb("rules").$type<BotRules>().notNull(),
     tests: jsonb("tests").$type<TestQuestion[]>().notNull().default([]),
+    /**
+     * Exhibitors can sign in from the chat (a code to their email) and get
+     * answers from their own row of the exhibitor list (lib/exhibitors).
+     */
+    personalAnswers: boolean("personal_answers").notNull().default(false),
     /** Requests the bot takes through the chat, as forms (lib/requests/rules.ts). */
     requestTypes: jsonb("request_types").$type<RequestType[]>().notNull().default([]),
     lastTestRun: jsonb("last_test_run").$type<TestRun | null>(),

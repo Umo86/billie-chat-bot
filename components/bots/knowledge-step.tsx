@@ -15,10 +15,13 @@ export function KnowledgeStep({
   botId,
   quality: initialQuality,
   canEdit,
+  next,
 }: {
   botId: string;
   quality: Quality;
   canEdit: boolean;
+  /** The step after Knowledge (Exhibitors on exhibitor bots, otherwise Rules). */
+  next: string;
 }) {
   const router = useRouter();
   const [quality, setQuality] = useState<Quality>(initialQuality);
@@ -26,7 +29,7 @@ export function KnowledgeStep({
 
   function save() {
     run(() => updateBotAction({ id: botId, quality }), {
-      done: () => router.push(`/bots/${botId}?step=rules`),
+      done: () => router.push(`/bots/${botId}?step=${next}`),
     });
   }
 

@@ -3,6 +3,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { bots, knowledgeBases } from "@/lib/db/schema";
 import type { AnswerBot } from "@/lib/ai/answer";
+import { signInOpen } from "@/lib/exhibitors/service";
 
 export type BotRow = typeof bots.$inferSelect;
 
@@ -42,5 +43,7 @@ export async function answerBotFor(bot: BotRow): Promise<AnswerBot> {
     rules: bot.rules,
     knowledgeBaseIds: await knowledgeBaseIdsFor(bot.id),
     requestTypes: bot.requestTypes,
+    // Only when the chat really shows "Your stand" (the prompt tells people to use it).
+    personal: await signInOpen(bot),
   };
 }

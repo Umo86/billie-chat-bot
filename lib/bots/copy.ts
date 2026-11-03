@@ -46,6 +46,8 @@ export async function copyBot(
         emoji: from.emoji,
         emailSignOff: from.emailSignOff,
         quality: from.quality,
+        // The setting comes across; the exhibitor list doesn't (each show has its own).
+        personalAnswers: from.personalAnswers,
         status: "draft",
         rules: from.rules,
         tests: from.tests,

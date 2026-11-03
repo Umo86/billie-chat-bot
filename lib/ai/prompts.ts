@@ -25,6 +25,8 @@ export type PromptBot = {
   alwaysHuman: string[];
   /** Requests the bot can take through the chat as a form (web and the chat page only). */
   requests?: { id: string; name: string; when: string }[];
+  /** Exhibitors can sign in for answers from their own record (web and the chat page only). */
+  personal?: boolean;
 };
 
 export type Turn = { role: "visitor" | "bot" | "agent" | "system"; text: string };
@@ -101,6 +103,15 @@ export function answerSystem(bot: PromptBot): string {
     "- Keep it short: one to four sentences, or a short list. Plain text, no headings, no markdown. Don't mention passages or their numbers.",
     '- "used" lists the numbers of the passages your answer relies on; "confident" is false if they only partly answer it.',
     ...requestLines(bot.requests ?? []),
+    ...(bot.personal
+      ? [
+          "",
+          "EXHIBITORS' OWN RECORDS",
+          '- Exhibitors can sign in to this chat with the "Your stand" button to get answers about their own stand. When someone is signed in, their own record comes with their message as the last numbered passage.',
+          "- Use their record only for questions about their own stand, orders, plans and times, and only for them. Never guess about another exhibitor's stand.",
+          '- If they ask about their own stand, order, plan or times and no record comes with the message, say they can sign in with the "Your stand" button above the chat to get that answer, and set "handover" to "none" with "used" empty.',
+        ]
+      : []),
   ].join("\n");
 }
 
@@ -121,7 +132,13 @@ export function knowledgeBlock(passages: PromptPassage[]): string {
   return `KNOWLEDGE\n${formatPassages(passages)}`;
 }
 
-export function answerUser(history: Turn[], question: string, now = new Date()): string {
+export function answerUser(
+  history: Turn[],
+  question: string,
+  now = new Date(),
+  /** A signed-in exhibitor's own record, numbered after the knowledge passages. */
+  record?: { n: number; text: string },
+): string {
   const name = (r: Turn["role"]) =>
     r === "visitor" ? "Person" : r === "agent" ? "Ops team" : r === "bot" ? "You" : "Note";
   const convo = history
@@ -131,6 +148,13 @@ export function answerUser(history: Turn[], question: string, now = new Date()):
     .join("\n");
   return [
     `${todayLine(now)}\n`,
+    ...(record
+      ? [
+          `SIGNED IN: this person is signed in. Their own exhibitor record is passage [${record.n}].`,
+          `[${record.n}] Source: their own exhibitor record`,
+          `${quoteUntrusted(record.text, 4000)}\n`,
+        ]
+      : []),
     convo ? `CONVERSATION SO FAR\n<untrusted>\n${convo}\n</untrusted>\n` : "",
     "NEW MESSAGE FROM THE PERSON",
     `<untrusted>\n${quoteUntrusted(question, 2000)}\n</untrusted>`,
@@ -202,13 +226,16 @@ export function suggestReplySystem(bot: PromptBot): string {
   ].join("\n");
 }
 
-export function suggestReplyUser(history: Turn[], now = new Date()): string {
+export function suggestReplyUser(history: Turn[], now = new Date(), recordN?: number): string {
   const who = { visitor: "Person", bot: "Billie", agent: "Team", system: "Note" } as const;
   const lines = history
     .slice(-20)
     .map((t) => `${who[t.role]}: ${quoteUntrusted(t.text, 2000)}`)
     .join("\n");
-  return `${todayLine(now)}\n\nCHAT SO FAR\n<untrusted>\n${lines}\n</untrusted>\n\nDraft the team's next reply.`;
+  const signedIn = recordN
+    ? `\n\nSIGNED IN: the person signed in as an exhibitor with a code sent to their email. Passage [${recordN}] is their own row of the exhibitor list. Use it for questions about their own stand.`
+    : "";
+  return `${todayLine(now)}${signedIn}\n\nCHAT SO FAR\n<untrusted>\n${lines}\n</untrusted>\n\nDraft the team's next reply.`;
 }
 
 /**

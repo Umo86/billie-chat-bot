@@ -67,12 +67,42 @@ test("build a bot with its own knowledge, test it and put it live", async ({ pag
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Save and continue" }).click();
 
-  // Step 4: rules (defaults are fine).
+  // Step 4 (exhibitor bots only): the exhibitor list, and answers about their own stand.
+  const list = page.getByTestId("exhibitor-list");
+  await expect(list.getByRole("heading", { name: "Exhibitor list" })).toBeVisible();
+  await expect(list.getByText("No list yet.")).toBeVisible();
+  await page
+    .locator("#exhibitor-file")
+    .setInputFiles(path.join(__dirname, "..", "fixtures", "exhibitors.csv"));
+  await list.getByRole("button", { name: "Upload list" }).click();
+  await expect(
+    page.getByText("Uploaded 3 exhibitors. 1 row without an email address left out."),
+  ).toBeVisible();
+  await expect(list).toContainText(
+    "exhibitors.csv: 3 exhibitors, uploaded just now by Umit Bozdag.",
+  );
+  await expect(list.getByRole("cell", { name: "Acme Displays Ltd" })).toBeVisible();
+  await expect(list.getByRole("cell", { name: "jo@bolt-co.test, ops@bolt-co.test" })).toBeVisible();
+  // Signing in needs email sending for the codes, which isn't set up in tests.
+  const personal = page.getByTestId("personal-answers");
+  await personal.getByRole("switch", { name: "Answers about their own stand" }).click();
+  await expect(page.getByText("Saved.").first()).toBeVisible();
+  await expect(personal).toContainText("Not yet");
+  await expect(personal).toContainText("Signing in needs email sending set up");
+  await shot(page, "bot-exhibitors");
+  // Removing the list asks first, on the page.
+  await list.getByRole("button", { name: "Remove list" }).click();
+  await expect(list.getByText(/Remove the list\?/)).toBeVisible();
+  await list.getByRole("button", { name: "Keep it" }).click();
+  await expect(list.getByRole("cell", { name: "Acme Displays Ltd" })).toBeVisible();
+  await page.getByRole("link", { name: "Continue to Rules" }).click();
+
+  // Step 5: rules (defaults are fine).
   await expect(page.getByRole("heading", { name: "Always pass these to a person" })).toBeVisible();
   await shot(page, "bot-rules");
   await page.getByRole("button", { name: "Save and continue" }).click();
 
-  // Step 5: people. Priya (an agent) works on this bot; admins are on every bot.
+  // Step 6: people. Priya (an agent) works on this bot; admins are on every bot.
   const people = page.getByTestId("people-step");
   await expect(people.getByRole("heading", { name: "Who works on Exhibitor Help" })).toBeVisible();
   await expect(people).toContainText("Always on it, as admins: Umit Bozdag.");
@@ -88,7 +118,7 @@ test("build a bot with its own knowledge, test it and put it live", async ({ pag
   await shot(page, "bot-people");
   await page.getByRole("link", { name: "Continue to Email" }).click();
 
-  // Step 6: the event's mailbox and Teams channel (Microsoft 365 isn't connected in tests).
+  // Step 7: the event's mailbox and Teams channel (Microsoft 365 isn't connected in tests).
   await expect(page.getByRole("heading", { name: "Event mailbox" })).toBeVisible();
   await expect(page.getByText(/Microsoft 365 isn't connected yet/)).toBeVisible();
   await page.getByLabel("Mailbox address").fill("UKCW-Exhibitors@media-ten.test");
@@ -119,7 +149,7 @@ test("build a bot with its own knowledge, test it and put it live", async ({ pag
   await expect(page.getByLabel("Teams Workflows link")).toBeVisible();
   await page.getByRole("link", { name: "Continue to Test" }).click();
 
-  // Step 7: test.
+  // Step 8: test.
   await expect(page.getByRole("heading", { name: "Try it" })).toBeVisible();
   await page.getByLabel("Question", { exact: true }).fill("When does build-up start?");
   await page.getByRole("button", { name: "Ask" }).click();
@@ -136,7 +166,7 @@ test("build a bot with its own knowledge, test it and put it live", async ({ pag
 
   await shot(page, "bot-test");
 
-  // Step 8: go live.
+  // Step 9: go live.
   await page.getByRole("button", { name: "Continue to Go live" }).click();
   await expect(page.locator("#embed-code")).toContainText('data-bot="exhibitor-help"');
   await page

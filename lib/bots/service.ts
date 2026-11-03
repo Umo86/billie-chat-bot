@@ -41,6 +41,7 @@ export type BotPatch = Partial<
     domains: string[];
     tests: TestQuestion[];
     requestTypes: RequestType[];
+    personalAnswers: boolean;
   }
 >;
 

@@ -55,6 +55,7 @@ export function ConversationView({
   replyHint,
   suggestion,
   lastAskedId,
+  signedIn = null,
 }: {
   id: string;
   status: Status;
@@ -72,6 +73,8 @@ export function ConversationView({
   suggestion: ReplySuggestion | null;
   /** The person's last message, to tell when the suggestion is out of date. */
   lastAskedId: string | null;
+  /** The exhibitor they signed in as, with a code sent to their email. */
+  signedIn?: { name: string; company: string; stand: string } | null;
 }) {
   const [text, setText] = useState("");
   const [teach, setTeach] = useState<{ question: string; answer: string; kbId: string } | null>(
@@ -90,6 +93,7 @@ export function ConversationView({
             <h2 className="text-[1.05rem]">{contact.name || (waId ? `+${waId}` : "Visitor")}</h2>
             <Chip tone={STATUS[status].tone}>{STATUS[status].label}</Chip>
             {channel === "try" ? <Chip>TEST</Chip> : null}
+            {signedIn ? <Chip tone="info">Signed in</Chip> : null}
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             {botName} ·{" "}
@@ -111,6 +115,16 @@ export function ConversationView({
                 </div>
               ) : null,
             )}
+            {signedIn ? (
+              <div className="flex gap-1">
+                <dt className="text-muted-foreground">Signed in as:</dt>
+                <dd>
+                  {[signedIn.company, signedIn.stand && `stand ${signedIn.stand}`]
+                    .filter(Boolean)
+                    .join(", ") || "an exhibitor on the list"}
+                </dd>
+              </div>
+            ) : null}
             {pageUrl ? (
               <div className="flex min-w-0 gap-1">
                 <dt className="text-muted-foreground">Page:</dt>

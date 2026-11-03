@@ -3,6 +3,7 @@ import { getActor } from "@/lib/auth/actor";
 import { can } from "@/lib/authz";
 import { botBySlug, type BotRow } from "@/lib/bots/load";
 import { getSettings } from "@/lib/settings";
+import { signInOpen } from "@/lib/exhibitors/sign-in";
 import { bearer } from "./token";
 import { normaliseDomain } from "./domains";
 import {
@@ -30,6 +31,8 @@ export type PublicBot = {
   collect: ContactField[];
   promise: string;
   live: boolean;
+  /** Exhibitors can sign in for answers about their own stand. */
+  signIn: boolean;
 };
 
 export async function publicBot(bot: BotRow): Promise<PublicBot> {
@@ -47,6 +50,8 @@ export async function publicBot(bot: BotRow): Promise<PublicBot> {
     collect: bot.rules.collect,
     promise: bot.rules.promise,
     live: bot.status === "live",
+    // The "Your stand" button: exhibitors sign in for answers from their own record.
+    signIn: await signInOpen(bot),
   };
 }
 

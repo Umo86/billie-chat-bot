@@ -51,6 +51,12 @@ Chatbots, live handover and an email assistant for Media10 shows.
 - **Copy a bot for the next show**: the look, personality, rules, requests,
   test questions, people and all the knowledge come across to a draft, with
   every date in it listed to check.
+- **Answers about their own stand**: an exhibitor bot can have the
+  exhibitor list (a spreadsheet uploaded on its Exhibitors step). Exhibitors
+  tap "Your stand" in the chat, get a six-digit code at the email they
+  booked with, and Billie then answers from their own row: their stand,
+  orders, stand plan and build-up times. The Inbox shows who is signed in.
+  Needs email sending (Resend).
 - **People on each bot**: admins choose who works on each bot. Editors run
   their bots; agents answer their bots' Inbox, requests and emails. Each
   person sees only their bots, with a filter for one bot's Inbox.

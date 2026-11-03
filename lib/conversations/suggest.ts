@@ -6,12 +6,19 @@ import { enqueue, PermanentJobError } from "@/lib/jobs/queue";
 import { kickJobs } from "@/lib/jobs/kick";
 import { AiError, structured } from "@/lib/ai/provider";
 import { fallbackFor, modelFor } from "@/lib/ai/models";
-import { knowledgeBlock, suggestReplySystem, suggestReplyUser, type Turn } from "@/lib/ai/prompts";
+import {
+  knowledgeBlock,
+  suggestReplySystem,
+  suggestReplyUser,
+  type PromptPassage,
+  type Turn,
+} from "@/lib/ai/prompts";
 import { emailDraftJsonSchema, emailDraftSchema } from "@/lib/ai/schemas";
 import { capReached, recordUsage } from "@/lib/ai/usage";
 import { citeSources } from "@/lib/ai/answer";
 import { answerBotFor, botById } from "@/lib/bots/load";
 import { retrieve } from "@/lib/knowledge/search";
+import { exhibitorById, exhibitorRecord } from "@/lib/exhibitors/service";
 import type { ReplySuggestion } from "@/lib/types";
 
 /**
@@ -85,7 +92,22 @@ export async function writeSuggestion(
     if (await capReached("staff"))
       return void (await save(failed("Today's answer limit has been reached.")));
     const answerBot = await answerBotFor(bot);
-    const passages = await retrieve(answerBot.knowledgeBaseIds, asked.slice(0, 4000));
+    const found = await retrieve(answerBot.knowledgeBaseIds, asked.slice(0, 4000));
+    // A signed-in exhibitor's own row of the exhibitor list goes last.
+    const ex =
+      answerBot.personal && conv.exhibitorId ? await exhibitorById(conv.exhibitorId) : null;
+    const passages: PromptPassage[] = ex
+      ? [
+          ...found,
+          {
+            sourceId: "",
+            sourceTitle: "Their exhibitor record",
+            label: "",
+            text: exhibitorRecord(ex),
+            kind: "text",
+          },
+        ]
+      : found;
     const result = await structured({
       purpose: "reply_suggestion",
       model: modelFor(bot.quality),
@@ -100,7 +122,7 @@ export async function writeSuggestion(
         alwaysHuman: bot.rules.alwaysHuman,
       }),
       knowledge: knowledgeBlock(passages),
-      user: suggestReplyUser(history),
+      user: suggestReplyUser(history, new Date(), ex ? passages.length : undefined),
       schema: emailDraftJsonSchema,
       maxTokens: 800,
       fake: { purpose: "reply_suggestion", history, passages },

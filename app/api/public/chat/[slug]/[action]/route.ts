@@ -20,6 +20,7 @@ import {
   handover,
   rateMessage,
   requestOffered,
+  startConversation,
   submitDetails,
   submitRequest,
   visitorMessage,
@@ -27,6 +28,14 @@ import {
 } from "@/lib/conversations/service";
 import type { HandoverReason } from "@/lib/conversations/handover";
 import { cleanAnswers, REQUEST_CONTACT } from "@/lib/requests/rules";
+import {
+  dropEmptyConversation,
+  requestCode,
+  SignInError,
+  signInOpen,
+  signOut,
+  verifyCode,
+} from "@/lib/exhibitors/sign-in";
 
 /**
  * The public chat API, used by the chat frame (/embed/…) and the chat page
@@ -40,6 +49,9 @@ import { cleanAnswers, REQUEST_CONTACT } from "@/lib/requests/rules";
  *   POST cancel            close the details form
  *   POST rating            { messageId, rating: 1 | -1 }
  *   POST request           { typeId, answers, contact } from a request form
+ *   POST sign-in           { email } an exhibitor asks for a code to sign in
+ *   POST verify            { code } the code from their email
+ *   POST sign-out          stop using their record in this chat
  *
  * A chat belongs to whoever holds its token (Authorization: Bearer …). No
  * cookies, no visitor accounts. Every write is rate limited.
@@ -50,6 +62,7 @@ export const maxDuration = 60;
 type Ctx = { params: Promise<{ slug: string; action: string }> };
 
 function failure(err: unknown): Response {
+  if (err instanceof SignInError) return problem(400, err.message);
   if (err instanceof ChatError) {
     const status = { not_found: 404, invalid: 400, closed: 409, not_allowed: 403 }[err.code];
     return problem(status, err.message);
@@ -117,6 +130,12 @@ const requestBody = z.object({
   answers: z.record(z.string(), z.unknown()),
   contact: z.record(z.string(), z.unknown()),
 });
+const signInBody = z.object({ email: z.email().max(200) });
+const badEmail = () =>
+  problem(400, "That email address doesn't look right.", {
+    fieldErrors: { email: "That email address doesn't look right." },
+  });
+const verifyBody = z.object({ code: z.string().min(6).max(12) });
 const ratingBody = z.object({
   messageId: z.uuid(),
   rating: z.union([z.literal(1), z.literal(-1)]),
@@ -124,7 +143,19 @@ const ratingBody = z.object({
 
 export async function POST(request: Request, ctx: Ctx): Promise<Response> {
   const { slug, action } = await ctx.params;
-  if (!["messages", "handover", "details", "cancel", "rating", "request"].includes(action))
+  if (
+    ![
+      "messages",
+      "handover",
+      "details",
+      "cancel",
+      "rating",
+      "request",
+      "sign-in",
+      "verify",
+      "sign-out",
+    ].includes(action)
+  )
     return problem(404, "Not found.");
   let body: unknown = {};
   try {
@@ -142,7 +173,18 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
     if (found instanceof Response) return found;
     const { bot, channel } = found;
     const ip = clientKey(ipFrom(await headers()));
-    const conversation = await callerConversation(request, bot);
+    let conversation = await callerConversation(request, bot);
+    let token: string | undefined;
+    // Signing in can be the first thing someone does: it starts the chat.
+    if (action === "sign-in" && !conversation && channel !== "whatsapp") {
+      if (!(await signInOpen(bot))) return problem(404, "Signing in isn't available in this chat.");
+      if (!signInBody.safeParse(body).success) return badEmail();
+      if (!(await allow(`chat:start:${ip}`, LIMITS.chatStart)))
+        return problem(429, "Too many new chats. Wait a few minutes, then try again.");
+      const started = await startConversation({ bot, channel });
+      conversation = started.conversation;
+      token = started.token ?? undefined;
+    }
 
     if (action === "messages") {
       const parsed = messageBody.safeParse(body);
@@ -175,6 +217,44 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
       return json(await handover(bot, conversation.id, reason));
     }
     if (action === "cancel") return json(await cancelDetails(conversation.id));
+    if (action === "sign-in" || action === "verify" || action === "sign-out") {
+      if (channel === "whatsapp" || !(await signInOpen(bot)))
+        return problem(404, "Signing in isn't available in this chat.");
+      if (conversation.status === "closed")
+        return problem(409, "This chat has ended. Start a new one.");
+      if (action === "sign-out") {
+        await signOut(conversation.id);
+        return json(await visitorUpdates(bot, { ...conversation, exhibitorId: null }, null));
+      }
+      if (action === "sign-in") {
+        const parsed = signInBody.safeParse(body);
+        if (!parsed.success) return badEmail();
+        if (
+          !(await allow(`chat:sign-in:conv:${conversation.id}`, LIMITS.chatSignIn)) ||
+          !(await allow(`chat:sign-in:${ip}`, LIMITS.chatSignInIp))
+        )
+          return problem(
+            429,
+            "You've asked for a lot of codes. Wait a few minutes, then try again.",
+          );
+        let message: string;
+        try {
+          message = await requestCode(bot, conversation.id, parsed.data.email);
+        } catch (err) {
+          // Don't leave behind an empty chat this request started.
+          if (token) await dropEmptyConversation(conversation.id);
+          throw err;
+        }
+        return json({ message, ...(token ? { token, conversationId: conversation.id } : {}) });
+      }
+      const parsed = verifyBody.safeParse(body);
+      if (!parsed.success) return problem(400, "Type the six-digit code from the email.");
+      if (!(await allow(`chat:verify:${conversation.id}`, LIMITS.chatVerify)))
+        return problem(429, "Too many tries. Wait a few minutes, then ask for a new code.");
+      await verifyCode(bot, conversation.id, parsed.data.code);
+      const fresh = await callerConversation(request, bot);
+      return json(await visitorUpdates(bot, fresh ?? conversation, null));
+    }
     if (action === "request") {
       const parsed = requestBody.safeParse(body);
       if (!parsed.success) return problem(400, "Check the form.");

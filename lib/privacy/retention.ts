@@ -7,6 +7,9 @@ import {
   conversations,
   emailThreads,
   emailTombstones,
+  exhibitorCodes,
+  exhibitorLists,
+  exhibitors,
   knowledgeBases,
   sources,
 } from "@/lib/db/schema";
@@ -16,9 +19,10 @@ import { deleteStoredFile } from "@/lib/storage";
 
 /**
  * UK GDPR housekeeping (daily job): chats and emails older than the
- * retention setting are deleted with their messages; anything in the bin
- * for more than 30 days is removed for good, files included. Each run writes
- * one audit row with the counts, never the content.
+ * retention setting are deleted with their messages, and so are exhibitor
+ * lists nobody has uploaded again in that time; anything in the bin for more
+ * than 30 days is removed for good, files included. Each run writes one
+ * audit row with the counts, never the content.
  */
 export const BIN_DAYS = 30;
 /** How long erased Outlook emails are remembered (longer than the sync's one-week window). */
@@ -47,6 +51,25 @@ export async function runRetention(now = new Date()): Promise<Record<string, num
     .delete(chatRequests)
     .where(lt(chatRequests.updatedAt, cutoff))
     .returning({ id: chatRequests.id });
+  // A list for a show that's long over: its exhibitors go with it.
+  const oldLists = await db.transaction(async (tx) => {
+    const gone = await tx
+      .delete(exhibitorLists)
+      .where(lt(exhibitorLists.uploadedAt, cutoff))
+      .returning({ botId: exhibitorLists.botId });
+    if (gone.length)
+      await tx.delete(exhibitors).where(
+        inArray(
+          exhibitors.botId,
+          gone.map((l) => l.botId),
+        ),
+      );
+    return gone;
+  });
+  // Sign-in codes last ten minutes; keep a day, for the attempts count.
+  await db
+    .delete(exhibitorCodes)
+    .where(lt(exhibitorCodes.createdAt, new Date(now.getTime() - 86_400_000)));
   // Erased Outlook emails only need remembering while the sync could still take them (a week).
   await db
     .delete(emailTombstones)
@@ -88,6 +111,7 @@ export async function runRetention(now = new Date()): Promise<Record<string, num
     chats: chats.length,
     emails: emails.length,
     requests: requests.length,
+    exhibitorLists: oldLists.length,
     sources: oldSources.length,
     bots: oldBots.length,
     knowledgeBases: oldKbs.length,
@@ -97,7 +121,7 @@ export async function runRetention(now = new Date()): Promise<Record<string, num
       actorType: "system",
       entityType: "retention",
       action: "purge",
-      summary: `Retention: deleted ${counts.chats} chats, ${counts.emails} emails and ${counts.requests} requests older than ${s.retentionMonths} months; emptied ${counts.sources + counts.bots + counts.knowledgeBases} items from the bin`,
+      summary: `Retention: deleted ${counts.chats} chats, ${counts.emails} emails, ${counts.requests} requests and ${counts.exhibitorLists} exhibitor lists older than ${s.retentionMonths} months; emptied ${counts.sources + counts.bots + counts.knowledgeBases} items from the bin`,
       after: counts,
     });
   }

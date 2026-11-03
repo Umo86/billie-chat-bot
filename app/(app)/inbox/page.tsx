@@ -17,6 +17,7 @@ import {
 } from "@/lib/conversations/inbox";
 import { agentsAvailable, extendIfAvailable, isAvailable } from "@/lib/conversations/presence";
 import { markRead } from "@/lib/conversations/service";
+import { signedInAs } from "@/lib/exhibitors/service";
 import { directLink } from "@/lib/alerts/direct";
 import { knowledgeBaseOf } from "@/lib/knowledge/bases";
 import { withinReplyWindow } from "@/lib/channels/whatsapp";
@@ -243,6 +244,7 @@ export default async function InboxPage({
                 lastAskedId={
                   [...detail.lines].reverse().find((l) => l.role === "visitor")?.id ?? null
                 }
+                signedIn={await signedInAs(detail.conversation.exhibitorId)}
                 replyHint={replyHint(
                   detail.conversation.status,
                   detail.conversation.channel,

@@ -39,7 +39,9 @@ type Turn = {
   offer: { reason: string } | null;
   form: { fields: ContactField[]; promise: string } | null;
   request?: RequestOffer | null;
+  signedIn?: SignedIn | null;
 };
+type SignedIn = { name: string; company: string; stand: string };
 
 const POLL_MS = 3000;
 const POLL_IDLE_MS = 15_000;
@@ -118,6 +120,10 @@ export function ChatApp({
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [restored, setRestored] = useState(false);
+  // "Your stand": exhibitors sign in with a code from their email.
+  const [signedIn, setSignedIn] = useState<SignedIn | null>(null);
+  const [standOpen, setStandOpen] = useState(false);
+  const [codeSent, setCodeSent] = useState<string | null>(null);
   const list = useRef<HTMLOListElement>(null);
   const tokenRef = useRef<string | null>(null);
   const lastAt = useRef<string | null>(null);
@@ -157,6 +163,7 @@ export function ChatApp({
       });
       setStatus(turn.status);
       setForm(turn.form);
+      if (turn.signedIn !== undefined) setSignedIn(turn.signedIn);
       if (replaceOffer) {
         setOffer(turn.offer);
         setRequest(turn.request ?? null);
@@ -175,6 +182,7 @@ export function ChatApp({
     setOffer(null);
     setForm(null);
     setRequest(null);
+    setSignedIn(null);
   }, [key]);
 
   // Carry on a chat this browser already has.
@@ -317,6 +325,37 @@ export function ChatApp({
     if (turn) absorb(turn as Turn);
   }
 
+  async function askForCode(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setFieldErrors({});
+    const email = String(new FormData(e.currentTarget).get("email") ?? "");
+    const body = await post("sign-in", { email });
+    if (!body) return;
+    if (body.token) {
+      tokenRef.current = body.token;
+      setToken(body.token);
+      writeToken(key, body.token);
+    }
+    setCodeSent(body.message ?? "Check your email for a six-digit code.");
+  }
+
+  async function signInWithCode(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setFieldErrors({});
+    const code = String(new FormData(e.currentTarget).get("code") ?? "");
+    const turn = await post("verify", { code });
+    if (!turn) return;
+    absorb(turn as Turn);
+    setStandOpen(false);
+    setCodeSent(null);
+  }
+
+  async function signOutOfStand() {
+    const turn = await post("sign-out");
+    if (turn) absorb(turn as Turn);
+    setStandOpen(false);
+  }
+
   async function leaveDetails(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setFieldErrors({});
@@ -359,6 +398,18 @@ export function ChatApp({
         {channel === "try" ? (
           <span className="rounded-md bg-black/20 px-2 py-0.5 text-[0.72rem] font-bold">TEST</span>
         ) : null}
+        {bot.signIn && status !== "closed" ? (
+          <button
+            type="button"
+            onClick={() => setStandOpen((o) => !o)}
+            aria-expanded={standOpen}
+            aria-controls="your-stand"
+            className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full bg-black/15 px-3 py-1.5 text-[0.8rem] font-bold hover:bg-black/25"
+          >
+            <UserRound className="size-4" aria-hidden />
+            {signedIn ? (signedIn.stand ? `Stand ${signedIn.stand}` : "Signed in") : "Your stand"}
+          </button>
+        ) : null}
         {mode === "widget" ? (
           <button
             type="button"
@@ -370,6 +421,103 @@ export function ChatApp({
           </button>
         ) : null}
       </header>
+
+      {standOpen ? (
+        <div
+          id="your-stand"
+          className="flex shrink-0 flex-col gap-2 border-b border-border bg-muted px-4 py-3 text-[0.88rem]"
+          data-testid="your-stand"
+        >
+          {signedIn ? (
+            <>
+              <p>
+                Signed in as{" "}
+                <strong>{[signedIn.name, signedIn.company].filter(Boolean).join(", ")}</strong>
+                {signedIn.stand ? ` (stand ${signedIn.stand})` : ""}. Billie answers about your own
+                stand from the exhibitor list.
+              </p>
+              <div>
+                <button
+                  type="button"
+                  onClick={signOutOfStand}
+                  disabled={busy}
+                  className="cursor-pointer font-semibold underline"
+                >
+                  Sign out
+                </button>
+              </div>
+            </>
+          ) : codeSent ? (
+            <form onSubmit={signInWithCode} className="flex flex-col gap-2">
+              <p>{codeSent}</p>
+              <label htmlFor="stand-code" className="font-semibold">
+                Six-digit code
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="stand-code"
+                  name="code"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={12}
+                  required
+                  className="min-w-0 flex-1 rounded-[10px] border border-border bg-card px-3 py-2"
+                />
+                <button
+                  type="submit"
+                  disabled={busy}
+                  className="cursor-pointer rounded-[10px] px-3.5 py-2 font-bold"
+                  style={{ background: bot.color, color: on }}
+                >
+                  Sign in
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCodeSent(null)}
+                className="self-start cursor-pointer text-[0.8rem] underline"
+              >
+                Use another email
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={askForCode} className="flex flex-col gap-2">
+              <p>
+                Sign in to ask about your own stand: your stand type, orders, plans and build-up
+                times.
+              </p>
+              <label htmlFor="stand-email" className="font-semibold">
+                The email you booked with
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="stand-email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  maxLength={200}
+                  required
+                  aria-invalid={!!fieldErrors.email}
+                  className="min-w-0 flex-1 rounded-[10px] border border-border bg-card px-3 py-2"
+                />
+                <button
+                  type="submit"
+                  disabled={busy}
+                  className="cursor-pointer rounded-[10px] px-3.5 py-2 font-bold"
+                  style={{ background: bot.color, color: on }}
+                >
+                  Send me a code
+                </button>
+              </div>
+            </form>
+          )}
+          {error ? (
+            <p role="alert" className="text-[0.82rem] text-bad">
+              {error}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       <ol
         ref={list}
@@ -468,7 +616,7 @@ export function ChatApp({
             </li>
           ),
         )}
-        {busy && !form ? (
+        {busy && !form && !standOpen ? (
           <li
             className="flex items-center gap-1 px-2 py-1"
             role="status"

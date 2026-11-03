@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import QRCode from "qrcode";
 import { Chip, Note, PageHeader, Panel } from "@/components/ui/bits";
 import { BotAvatar } from "@/components/bots/bot-avatar";
-import { STEPS, WizardSteps, type StepKey } from "@/components/bots/wizard-steps";
+import { nextStep, stepsFor, WizardSteps, type StepKey } from "@/components/bots/wizard-steps";
 import { LookForm } from "@/components/bots/look-form";
 import { PersonalityStep } from "@/components/bots/personality-step";
 import { KnowledgeStep } from "@/components/bots/knowledge-step";
@@ -14,6 +14,8 @@ import { RequestsPanel } from "@/components/bots/requests-panel";
 import { EmailStep } from "@/components/bots/email-step";
 import { TestStep } from "@/components/bots/test-step";
 import { LiveStep } from "@/components/bots/live-step";
+import { ExhibitorsStep } from "@/components/bots/exhibitors-step";
+import { listSummary } from "@/lib/exhibitors/service";
 import { requireActor } from "@/lib/auth/actor";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -27,7 +29,13 @@ import { PeopleStep } from "@/components/bots/people-step";
 import { can } from "@/lib/authz";
 import { botById } from "@/lib/bots/load";
 import { knowledgeBaseOf } from "@/lib/knowledge/bases";
-import { appUrl, microsoftConfigured, teamsConfigured, whatsappConfigured } from "@/lib/config";
+import {
+  appUrl,
+  emailConfigured,
+  microsoftConfigured,
+  teamsConfigured,
+  whatsappConfigured,
+} from "@/lib/config";
 import { botEmailSetup, mailboxManagers } from "@/lib/emails/mailboxes";
 import { getSettings } from "@/lib/settings";
 import { timeAgo } from "@/lib/time";
@@ -58,7 +66,8 @@ export default async function BotPage({
         </Note>
       </>
     );
-  const step: StepKey = STEPS.some((s) => s.key === sp.step) ? (sp.step as StepKey) : "look";
+  const steps = stepsFor(bot.audience);
+  const step: StepKey = steps.some((s) => s.key === sp.step) ? (sp.step as StepKey) : "look";
   const canEdit = await mayOnBot(actor, "bots.edit", bot.id);
 
   let body: React.ReactNode;
@@ -111,7 +120,12 @@ export default async function BotPage({
           {canTeach ? <ReplaceDialog kbId={kb.id} kbName={bot.name} /> : null}
         </Panel>
         <KnowledgeWorkspace kbId={kb.id} canEdit={canTeach} />
-        <KnowledgeStep botId={bot.id} quality={bot.quality} canEdit={canEdit} />
+        <KnowledgeStep
+          botId={bot.id}
+          quality={bot.quality}
+          canEdit={canEdit}
+          next={nextStep("knowledge", bot.audience)}
+        />
       </div>
     );
     // A copy for the next show lists every date in it until someone says they're checked.
@@ -135,6 +149,30 @@ export default async function BotPage({
         </div>
       );
     }
+  } else if (step === "exhibitors") {
+    const list = await listSummary(bot.id);
+    const next = nextStep("exhibitors", bot.audience);
+    body = (
+      <ExhibitorsStep
+        botId={bot.id}
+        botName={bot.name}
+        list={
+          list && {
+            fileName: list.fileName,
+            rows: list.rows,
+            skipped: list.skipped,
+            columns: list.columns,
+            uploaded: `${timeAgo(list.uploadedAt)}${list.uploadedBy ? ` by ${list.uploadedBy}` : ""}`,
+            sample: list.sample,
+          }
+        }
+        personalAnswers={bot.personalAnswers}
+        emailReady={emailConfigured()}
+        canEdit={canEdit}
+        next={next}
+        nextLabel={steps.find((s) => s.key === next)!.label}
+      />
+    );
   } else if (step === "rules") {
     const people = await mailboxManagers(bot.id);
     body = (
@@ -261,9 +299,12 @@ export default async function BotPage({
           Copied. Its knowledge, rules, requests, test questions and people came across. Check the
           dates below, then run the test questions. Add its websites and mailbox when you&apos;re
           ready.
+          {bot.audience === "exhibitors"
+            ? " The exhibitor list stays with the old show: upload this show's list on the Exhibitors step."
+            : ""}
         </Note>
       ) : null}
-      <WizardSteps current={step} botId={bot.id} />
+      <WizardSteps current={step} botId={bot.id} audience={bot.audience} />
       {body}
     </>
   );

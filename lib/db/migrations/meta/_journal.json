@@ -120,6 +120,13 @@
       "when": 1793729133119,
       "tag": "0016_learn_from_sent",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793729937009,
+      "tag": "0017_exhibitor_lists",
+      "breakpoints": true
     }
   ]
 }

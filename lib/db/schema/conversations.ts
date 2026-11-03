@@ -1,4 +1,5 @@
 import {
+  boolean,
   index,
   integer,
   jsonb,
@@ -12,6 +13,7 @@ import {
 import type { AnswerMeta, ContactDetails, MessageSource, ReplySuggestion } from "@/lib/types";
 import { channel, conversationStatus, gapStatus, handoverReason, messageRole } from "./enums";
 import { bots, sources } from "./bots";
+import { exhibitors } from "./exhibitors";
 import { users } from "./users";
 
 export const conversations = pgTable(
@@ -39,6 +41,8 @@ export const conversations = pgTable(
     pageUrl: text("page_url"),
     /** Billie's suggested reply for the team (lib/conversations/suggest.ts). */
     suggestion: jsonb("suggestion").$type<ReplySuggestion | null>(),
+    /** The exhibitor who signed in with a code from their email (lib/exhibitors/sign-in.ts). */
+    exhibitorId: uuid("exhibitor_id").references(() => exhibitors.id, { onDelete: "set null" }),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }).notNull().defaultNow(),
     /** Last message from the person (WhatsApp's 24-hour reply window counts from here). */
     lastVisitorAt: timestamp("last_visitor_at", { withTimezone: true }),
@@ -58,6 +62,7 @@ export const conversations = pgTable(
     index("conversations_wa_idx").on(t.waId),
     uniqueIndex("conversations_visitor_token_unique").on(t.visitorTokenHash),
     index("conversations_last_message_idx").on(t.lastMessageAt),
+    index("conversations_exhibitor_idx").on(t.exhibitorId),
   ],
 );
 
@@ -137,4 +142,30 @@ export const whatsappContacts = pgTable(
       .$onUpdate(() => new Date()),
   },
   (t) => [index("whatsapp_contacts_bot_idx").on(t.botId)],
+);
+
+/**
+ * A sign-in code sent to an exhibitor's email from a chat: six digits, kept
+ * only as a hash, for ten minutes and five tries.
+ */
+export const exhibitorCodes = pgTable(
+  "exhibitor_codes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    exhibitorId: uuid("exhibitor_id")
+      .notNull()
+      .references(() => exhibitors.id, { onDelete: "cascade" }),
+    codeHash: text("code_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    used: boolean("used").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("exhibitor_codes_conversation_idx").on(t.conversationId, t.createdAt),
+    index("exhibitor_codes_exhibitor_idx").on(t.exhibitorId),
+  ],
 );

@@ -1,0 +1,5 @@
+Company,Stand,Contact name,Email,Stand type,Stand plan approved,Electrics ordered
+Acme Displays Ltd,B12,Sam Patel,sam@acme-displays.test,Shell scheme,No,Yes
+Bolt & Co,C4,Jo Bloggs,"jo@bolt-co.test; ops@bolt-co.test",Space only,Yes,No
+Northwind Stands,D7,Alex Kim,alex@northwind-stands.test,Space only,No,No
+Contoso Build,A1,Lee Grant,,Shell scheme,Yes,Yes

@@ -23,6 +23,10 @@ export const LIMITS = {
   /** Requests sent from a chat's form: per chat, and per visitor address (venue Wi-Fi is shared). */
   chatRequestConversation: { window: 3600, max: 8 },
   chatRequest: { window: 3600, max: 120 },
+  /** Exhibitor sign-in codes: a few per chat, and per address (a venue shares one). */
+  chatSignIn: { window: 900, max: 3 },
+  chatSignInIp: { window: 3600, max: 40 },
+  chatVerify: { window: 900, max: 10 },
   /** WhatsApp, per sender. */
   whatsappSender: { window: 3600, max: 40 },
   whatsappSenderDaily: { window: 86_400, max: 200 },

@@ -1,11 +1,14 @@
 import "server-only";
-import { and, asc, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { db, query } from "@/lib/db/client";
 import {
+  bots,
   chatRequests,
   conversations,
   emailThreads,
   emailTombstones,
+  exhibitorLists,
+  exhibitors,
   messages,
   whatsappContacts,
 } from "@/lib/db/schema";
@@ -15,9 +18,10 @@ import type { Actor } from "@/lib/authz";
 
 /**
  * UK GDPR requests about one person: find what Billie holds (chats they left
- * details in, WhatsApp chats from their number, emails from their address,
- * requests they sent from a chat's form),
- * give them a copy, or delete it. Searches by email address or phone number.
+ * details in or signed in to, WhatsApp chats from their number, emails from
+ * their address, requests they sent from a chat's form, their rows on
+ * exhibitor lists), give them a copy, or delete it. Searches by email address
+ * or phone number.
  */
 export type PersonQuery = { kind: "email"; value: string } | { kind: "phone"; value: string };
 
@@ -61,23 +65,59 @@ async function matchingIds(q: PersonQuery) {
           sql`SELECT id FROM chat_requests
               WHERE regexp_replace(regexp_replace(coalesce(contact->>'phone', ''), '\\D', '', 'g'), '^0', '44') = ${q.value}`,
         );
+  // Exhibitor lists hold email addresses (lower case); chats signed in with a row are theirs too.
+  const listed =
+    q.kind === "email"
+      ? await query<{ id: string }>(
+          db,
+          sql`SELECT id FROM exhibitors WHERE emails @> ARRAY[${q.value}]::text[]`,
+        )
+      : [];
+  const exhibitorIds = listed.map((r) => r.id);
+  const signedIn = exhibitorIds.length
+    ? await db
+        .select({ id: conversations.id })
+        .from(conversations)
+        .where(inArray(conversations.exhibitorId, exhibitorIds))
+    : [];
   return {
-    chatIds: chats.map((r) => r.id),
+    chatIds: [...new Set([...chats, ...signedIn].map((r) => r.id))],
     emailIds: emails.map((r) => r.id),
     requestIds: requests.map((r) => r.id),
+    exhibitorIds,
   };
 }
 
 export async function findPerson(raw: string) {
   const q = parsePersonQuery(raw);
-  const { chatIds, emailIds, requestIds } = await matchingIds(q);
-  return { query: q, chats: chatIds.length, emails: emailIds.length, requests: requestIds.length };
+  const { chatIds, emailIds, requestIds, exhibitorIds } = await matchingIds(q);
+  return {
+    query: q,
+    chats: chatIds.length,
+    emails: emailIds.length,
+    requests: requestIds.length,
+    exhibitors: exhibitorIds.length,
+  };
 }
 
 /** Everything Billie holds about the person, for a subject access request. */
 export async function exportPerson(actor: Actor, raw: string) {
   const q = parsePersonQuery(raw);
-  const { chatIds, emailIds, requestIds } = await matchingIds(q);
+  const { chatIds, emailIds, requestIds, exhibitorIds } = await matchingIds(q);
+  const listed = exhibitorIds.length
+    ? await db
+        .select({
+          bot: bots.name,
+          company: exhibitors.company,
+          stand: exhibitors.stand,
+          name: exhibitors.name,
+          emails: exhibitors.emails,
+          fields: exhibitors.fields,
+        })
+        .from(exhibitors)
+        .innerJoin(bots, eq(bots.id, exhibitors.botId))
+        .where(inArray(exhibitors.id, exhibitorIds))
+    : [];
   const requests = requestIds.length
     ? await db
         .select({
@@ -127,7 +167,7 @@ export async function exportPerson(actor: Actor, raw: string) {
     entityType: "privacy",
     entityId: null,
     action: "export",
-    summary: `Exported a person's data (${chats.length} chats, ${emails.length} emails, ${requests.length} requests)`,
+    summary: `Exported a person's data (${chats.length} chats, ${emails.length} emails, ${requests.length} requests, ${listed.length} exhibitor list rows)`,
   });
   return {
     generatedAt: new Date().toISOString(),
@@ -143,14 +183,32 @@ export async function exportPerson(actor: Actor, raw: string) {
     })),
     emails,
     requests: requests.map((r) => ({ ...r, ref: `R-${r.ref}` })),
+    exhibitorLists: listed,
   };
 }
 
-/** Deletes the person's chats (with their messages), emails and requests. The audit row keeps counts only. */
+/**
+ * Deletes the person's chats (with their messages), emails, requests and
+ * exhibitor list rows. The audit row keeps counts only.
+ */
 export async function deletePerson(actor: Actor, raw: string) {
   const q = parsePersonQuery(raw);
-  const { chatIds, emailIds, requestIds } = await matchingIds(q);
+  const { chatIds, emailIds, requestIds, exhibitorIds } = await matchingIds(q);
   await db.transaction(async (tx) => {
+    if (exhibitorIds.length) {
+      const gone = await tx
+        .delete(exhibitors)
+        .where(inArray(exhibitors.id, exhibitorIds))
+        .returning({ botId: exhibitors.botId });
+      // Keep each list's count right.
+      for (const botId of new Set(gone.map((g) => g.botId)))
+        await tx
+          .update(exhibitorLists)
+          .set({
+            rows: sql`(SELECT count(*)::int FROM ${exhibitors} WHERE ${exhibitors.botId} = ${botId})`,
+          })
+          .where(eq(exhibitorLists.botId, botId));
+    }
     if (requestIds.length)
       await tx.delete(chatRequests).where(inArray(chatRequests.id, requestIds));
     if (chatIds.length) await tx.delete(conversations).where(inArray(conversations.id, chatIds));
@@ -174,8 +232,13 @@ export async function deletePerson(actor: Actor, raw: string) {
       entityType: "privacy",
       entityId: null,
       action: "delete",
-      summary: `Deleted a person's data on request (${chatIds.length} chats, ${emailIds.length} emails, ${requestIds.length} requests)`,
+      summary: `Deleted a person's data on request (${chatIds.length} chats, ${emailIds.length} emails, ${requestIds.length} requests, ${exhibitorIds.length} exhibitor list rows)`,
     });
   });
-  return { chats: chatIds.length, emails: emailIds.length, requests: requestIds.length };
+  return {
+    chats: chatIds.length,
+    emails: emailIds.length,
+    requests: requestIds.length,
+    exhibitors: exhibitorIds.length,
+  };
 }

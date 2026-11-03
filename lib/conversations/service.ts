@@ -31,6 +31,7 @@ import {
 import { botPaused, nextStatus, type ConversationEvent, type ConversationStatus } from "./status";
 import { agentsAvailable } from "./presence";
 import { queueSuggestion } from "./suggest";
+import { exhibitorById, exhibitorRecord, signedInAs } from "@/lib/exhibitors/service";
 
 /**
  * One conversation engine for every channel. Visitors' turns come from the
@@ -65,6 +66,8 @@ export type Turn = {
   form: { fields: ContactField[]; promise: string } | null;
   /** Show a request form under Billie's answer (web and the chat page only). */
   request: RequestOffer | null;
+  /** The exhibitor signed in to this chat, if any (lib/exhibitors/sign-in.ts). */
+  signedIn?: { name: string; company: string; stand: string } | null;
 };
 
 export class ChatError extends Error {
@@ -106,7 +109,7 @@ async function authorNames(rows: MessageRow[]): Promise<Map<string, string>> {
   return new Map(list.map((u) => [u.id, u.name]));
 }
 
-async function view(rows: MessageRow[]): Promise<VisitorMessage[]> {
+export async function view(rows: MessageRow[]): Promise<VisitorMessage[]> {
   const names = await authorNames(rows);
   return rows.map((m) => toVisitor(m, m.authorId ? names.get(m.authorId) : null));
 }
@@ -121,7 +124,7 @@ async function lock(tx: Tx, id: string): Promise<ConversationRow> {
   return rows[0];
 }
 
-async function insertMessage(
+export async function insertMessage(
   tx: Tx,
   conversationId: string,
   values: Omit<typeof messages.$inferInsert, "conversationId">,
@@ -261,12 +264,18 @@ export async function visitorMessage(input: {
   let answer;
   try {
     const answerBot = await answerBotFor(input.bot);
+    const person =
+      answerBot.personal && input.channel !== "whatsapp" ? await signedInRecord(convId) : null;
     answer = await answerQuestion({
-      // WhatsApp can't show a form, so requests are only offered on the web.
-      bot: input.channel === "whatsapp" ? { ...answerBot, requestTypes: [] } : answerBot,
+      // WhatsApp can't show a form, or sign anyone in: both are only on the web.
+      bot:
+        input.channel === "whatsapp"
+          ? { ...answerBot, requestTypes: [], personal: false }
+          : answerBot,
       history,
       question: text,
       from: input.channel === "try" ? "staff" : "visitor",
+      person,
     });
   } catch (err) {
     console.error("answer failed", err instanceof Error ? `${err.name}: ${err.message}` : err);
@@ -630,7 +639,19 @@ export async function visitorUpdates(
     offer: null,
     form: conversation.status === "collecting" ? formFor(bot) : null,
     request: pending,
+    signedIn: after ? undefined : await signedInAs(conversation.exhibitorId),
   };
+}
+
+/** The signed-in exhibitor's record for Billie to answer from (none if nobody is). */
+async function signedInRecord(conversationId: string): Promise<{ record: string } | null> {
+  const c = await db.query.conversations.findFirst({
+    where: eq(conversations.id, conversationId),
+    columns: { exhibitorId: true },
+  });
+  if (!c?.exhibitorId) return null;
+  const ex = await exhibitorById(c.exhibitorId);
+  return ex ? { record: exhibitorRecord(ex) } : null;
 }
 
 /** Whether Billie offered this request's form in this chat (the only way to send one). */

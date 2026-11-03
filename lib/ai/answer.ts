@@ -28,6 +28,8 @@ export type AnswerBot = {
   knowledgeBaseIds: string[];
   /** Requests it can take as a form; empty where a form can't be shown (WhatsApp). */
   requestTypes: RequestType[];
+  /** Exhibitors can sign in for answers from their own record (not on WhatsApp). */
+  personal: boolean;
 };
 
 export type AnswerResult = {
@@ -66,6 +68,8 @@ export async function answerQuestion(input: {
   countUsage?: boolean;
   /** Who asked: visitors stop earlier, keeping some of the daily cap for the team. */
   from?: "visitor" | "staff";
+  /** A signed-in exhibitor's own record (lib/exhibitors). */
+  person?: { record: string } | null;
 }): Promise<AnswerResult> {
   const { bot, history, question } = input;
   if (input.countUsage !== false && (await capReached(input.from ?? "staff"))) {
@@ -78,7 +82,18 @@ export async function answerQuestion(input: {
     .slice(-2)
     .map((t) => t.text)
     .join(" ");
-  const passages = await retrieve(bot.knowledgeBaseIds, `${question} ${context}`.trim());
+  const found = await retrieve(bot.knowledgeBaseIds, `${question} ${context}`.trim());
+  // Their own record goes last, with the message (not in the cached knowledge).
+  const record: PromptPassage | null = input.person?.record
+    ? {
+        sourceId: "",
+        sourceTitle: "Your exhibitor record",
+        label: "",
+        text: input.person.record,
+        kind: "text",
+      }
+    : null;
+  const passages = record ? [...found, record] : found;
 
   const result = await structured({
     purpose: "answer",
@@ -93,9 +108,15 @@ export async function answerQuestion(input: {
       emoji: bot.emoji,
       alwaysHuman: bot.rules.alwaysHuman,
       requests: bot.requestTypes.map((r) => ({ id: r.id, name: r.name, when: r.when })),
+      personal: bot.personal,
     }),
-    knowledge: knowledgeBlock(passages),
-    user: answerUser(history, question),
+    knowledge: knowledgeBlock(found),
+    user: answerUser(
+      history,
+      question,
+      new Date(),
+      record ? { n: passages.length, text: record.text } : undefined,
+    ),
     schema: answerJsonSchema,
     maxTokens: bot.quality === "thorough" ? 1200 : 700,
     fake: {

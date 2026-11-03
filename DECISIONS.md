@@ -152,6 +152,34 @@ Each bot's tone, personality (in the team's own words), emoji choice and
 email sign-off go into its prompts as style. The prompt says the rules win,
 answers still come only from the knowledge, and emails never get emoji.
 
+## Exhibitors sign in with a code, and only ever see their own row
+
+Personal answers come from the team's own exhibitor list, uploaded on the
+bot's Exhibitors step (Excel or CSV, replaced whole by each upload). It's
+read inline rather than on the queue because it's small (4 MB, 5,000 rows)
+and whoever uploads it needs to see at once which columns Billie found. The
+Email column is required; Company, Stand and Contact are found by their
+headings and every other column is kept as it is.
+
+To sign in, an exhibitor types the email they booked with. The chat always
+says the same thing ("if that email is on the list, we've sent a code"),
+and the email goes out after the response, so neither the words, the
+timing nor a failed send tells anyone who is on the list. Codes are six
+digits, kept only as a hash tied to that chat, last ten minutes, work once
+and allow five tries (counted outside the transaction that rejects them, so
+a wrong try can't be rolled back). Asking for codes and trying them are rate
+limited per chat and per address. A signed-in chat is linked to the
+exhibitor's row; a new list or a privacy deletion signs it out.
+
+Their row goes to Claude as the last numbered passage, with the message
+rather than in the cached knowledge, and the prompt says to use it only for
+their own stand. Billie only tells people to sign in when the chat really
+shows the button (setting on, list uploaded, email sending set up). The
+team's suggested reply gets the row too. Not on WhatsApp: there's no way to
+show a code form there. The list is personal data: only people on the bot
+see it, it's in privacy requests (by email), it goes with the bot, and a
+list nobody has uploaded again within the retention time is deleted.
+
 ## Billie learns from sent drafts, but a person saves what it learns
 
 Message ids are immutable, so Billie's Outlook draft keeps its id once it's

@@ -5,6 +5,7 @@ export const STEPS = [
   { key: "look", label: "Look" },
   { key: "personality", label: "Personality" },
   { key: "knowledge", label: "Knowledge" },
+  { key: "exhibitors", label: "Exhibitors" },
   { key: "rules", label: "Rules" },
   { key: "people", label: "People" },
   { key: "email", label: "Email" },
@@ -13,13 +14,34 @@ export const STEPS = [
 ] as const;
 
 export type StepKey = (typeof STEPS)[number]["key"];
+type Audience = "visitors" | "exhibitors";
+
+/** The steps a bot has: only exhibitor bots have an exhibitor list. */
+export function stepsFor(audience?: Audience) {
+  return STEPS.filter((s) => s.key !== "exhibitors" || audience === "exhibitors");
+}
+
+/** The step after this one, for "Save and continue". */
+export function nextStep(current: StepKey, audience?: Audience): StepKey {
+  const steps = stepsFor(audience);
+  const i = steps.findIndex((s) => s.key === current);
+  return steps[Math.min(i + 1, steps.length - 1)].key;
+}
 
 /** The bot's steps; each is a link once the bot exists. */
-export function WizardSteps({ current, botId }: { current: StepKey; botId?: string }) {
+export function WizardSteps({
+  current,
+  botId,
+  audience,
+}: {
+  current: StepKey;
+  botId?: string;
+  audience?: Audience;
+}) {
   return (
     <nav aria-label="Steps" className="overflow-x-auto">
       <ol className="flex min-w-max gap-1.5">
-        {STEPS.map((s, i) => {
+        {stepsFor(audience).map((s, i) => {
           const on = s.key === current;
           const body = (
             <>
