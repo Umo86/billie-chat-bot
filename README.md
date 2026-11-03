@@ -21,6 +21,9 @@ Chatbots, live handover and an email assistant for Media10 shows.
   Teams chat with an "Open in Billie" button (one company-wide workflow, set
   up in Settings → Connections).
 - **Knowledge gaps**: questions the bots couldn't answer, fixed in one click.
+- **Knowledge you can change in place**: edit pasted text and typed answers,
+  and find and replace across a knowledge base (a new email address, say),
+  with every change shown before it's made.
 - **Roles** (admin, editor, agent), an audit log, UK GDPR retention.
 
 ## How it's built

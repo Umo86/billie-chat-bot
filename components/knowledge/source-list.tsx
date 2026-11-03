@@ -2,7 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Eye, FileText, Globe, MessageSquareText, RotateCw, Trash2, Type } from "lucide-react";
+import {
+  Eye,
+  FileText,
+  Globe,
+  MessageSquareText,
+  Pencil,
+  RotateCw,
+  Trash2,
+  Type,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Chip, EmptyState, Panel } from "@/components/ui/bits";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -15,6 +24,7 @@ import {
   restoreSourceAction,
 } from "@/app/actions/knowledge";
 import type { SourceRow } from "@/lib/knowledge/queries";
+import { EditSourceDialog } from "./edit-source";
 
 const KIND_ICON = { file: FileText, text: Type, qa: MessageSquareText, web: Globe } as const;
 const KIND_LABEL = {
@@ -36,6 +46,7 @@ function when(iso: string) {
 
 export function SourceList({ sources, canEdit }: { sources: SourceRow[]; canEdit: boolean }) {
   const [viewing, setViewing] = useState<SourceRow | null>(null);
+  const [editing, setEditing] = useState<SourceRow | null>(null);
   const busy = sources.some((s) => s.status === "queued" || s.status === "reading");
 
   if (!sources.length)
@@ -52,10 +63,17 @@ export function SourceList({ sources, canEdit }: { sources: SourceRow[]; canEdit
       <AutoRefresh active={busy} />
       <ul className="divide-y divide-border" aria-label="Sources">
         {sources.map((s) => (
-          <SourceItem key={s.id} source={s} canEdit={canEdit} onView={() => setViewing(s)} />
+          <SourceItem
+            key={s.id}
+            source={s}
+            canEdit={canEdit}
+            onView={() => setViewing(s)}
+            onEdit={() => setEditing(s)}
+          />
         ))}
       </ul>
       <Passages source={viewing} onClose={() => setViewing(null)} />
+      <EditSourceDialog source={editing} onClose={() => setEditing(null)} />
     </Panel>
   );
 }
@@ -64,10 +82,12 @@ function SourceItem({
   source: s,
   canEdit,
   onView,
+  onEdit,
 }: {
   source: SourceRow;
   canEdit: boolean;
   onView: () => void;
+  onEdit: () => void;
 }) {
   const { pending, run } = useRunner();
   const Icon = KIND_ICON[s.kind];
@@ -115,6 +135,17 @@ function SourceItem({
         {s.status === "ready" ? (
           <Button size="sm" variant="ghost" onClick={onView}>
             <Eye /> View
+          </Button>
+        ) : null}
+        {canEdit && (s.kind === "text" || s.kind === "qa") ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={pending}
+            onClick={onEdit}
+            aria-label={`Edit ${s.title}`}
+          >
+            <Pencil /> Edit
           </Button>
         ) : null}
         {canEdit && (s.status === "failed" || s.kind === "web" || s.kind === "file") ? (

@@ -77,7 +77,8 @@ export default async function KnowledgePage({
                 <span className="min-w-0">
                   <span className="block truncate font-semibold">{k.name}</span>
                   <span className="block text-sm text-muted-foreground">
-                    {k.sources} {k.sources === 1 ? "source" : "sources"} · {k.passages} passages
+                    {k.sources} {k.sources === 1 ? "source" : "sources"} · {k.passages}{" "}
+                    {k.passages === 1 ? "passage" : "passages"}
                   </span>
                 </span>
               </Link>

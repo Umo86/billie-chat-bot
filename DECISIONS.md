@@ -145,6 +145,18 @@ Each bot's tone, personality (in the team's own words), emoji choice and
 email sign-off go into its prompts as style. The prompt says the rules win,
 answers still come only from the knowledge, and emails never get emoji.
 
+## Knowledge is changed in place, never half-read
+
+Pasted text and typed answers can be edited, and a piece of text can be
+replaced across a whole knowledge base (when exhibitor questions move to a
+new address, every section must change on the same day). Files and web
+pages can't be changed by Billie: the preview lists them, to be changed at
+the source and read again. Each change queues a read with a key of its own
+for that version of the text, so it isn't blocked by a read of the old
+text still running; and a read only writes its passages if the text it
+read is still the text in the database. Bots keep answering from the old
+passages until the new ones are written, in one transaction.
+
 ## Search: hybrid full-text + vectors
 
 Postgres full-text (a generated `tsvector`) and Voyage embeddings (HNSW

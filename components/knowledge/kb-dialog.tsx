@@ -14,6 +14,7 @@ import {
   renameKbAction,
   restoreKbAction,
 } from "@/app/actions/knowledge";
+import { ReplaceDialog } from "./replace-dialog";
 
 type Kb = { id: string; name: string; description: string };
 
@@ -137,6 +138,7 @@ export function KbActions({ kb, usedBy }: { kb: Kb; usedBy: number }) {
           </Button>
         }
       />
+      <ReplaceDialog kbId={kb.id} kbName={kb.name} />
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
           <Button size="sm" variant="danger">

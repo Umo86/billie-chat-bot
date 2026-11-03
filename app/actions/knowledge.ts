@@ -8,6 +8,12 @@ import { getActor } from "@/lib/auth/actor";
 import { can } from "@/lib/authz";
 import { addSource, deleteSource, rereadSource, restoreSource } from "@/lib/knowledge/sources";
 import {
+  editSource,
+  previewReplace,
+  replaceInKnowledge,
+  sourceForEdit,
+} from "@/lib/knowledge/edit";
+import {
   answerGap,
   createKnowledgeBase,
   dismissGap,
@@ -227,6 +233,59 @@ export async function restoreSourceAction(input: unknown) {
 
 export async function passagesAction(input: unknown) {
   return runAction("knowledge.view", id, input, async (_actor, d) => passagesOf(d.id));
+}
+
+/** The text of a pasted text or typed answer, for the Edit dialog. */
+export async function sourceTextAction(input: unknown) {
+  return runAction("knowledge.edit", id, input, async (_actor, d) => sourceForEdit(d.id));
+}
+
+export async function editSourceAction(input: unknown) {
+  const schema = z.discriminatedUnion("kind", [
+    z.object({
+      id: z.uuid(),
+      kind: z.literal("text"),
+      title: z.string().trim().max(200),
+      body: z.string().trim().min(1, "Write some text.").max(2_000_000),
+    }),
+    z.object({
+      id: z.uuid(),
+      kind: z.literal("qa"),
+      question: z.string().trim().min(3, "Write the question.").max(300),
+      answer: z.string().trim().min(2, "Write the answer.").max(4000),
+    }),
+  ]);
+  return runAction("knowledge.edit", schema, input, async (actor, d) => {
+    const changed = await editSource(
+      actor,
+      d.id,
+      d.kind === "text"
+        ? { kind: "text", title: d.title, body: d.body }
+        : { kind: "qa", question: d.question, answer: d.answer },
+    );
+    if (changed) refresh();
+    return { changed };
+  });
+}
+
+const replaceSchema = z.object({
+  kbId: z.uuid(),
+  find: z.string().trim().min(2, "Type at least 2 characters to find.").max(200),
+  replace: z.string().trim().max(500),
+});
+
+export async function previewReplaceAction(input: unknown) {
+  return runAction("knowledge.edit", replaceSchema, input, async (_actor, d) =>
+    previewReplace(d.kbId, d.find, d.replace),
+  );
+}
+
+export async function replaceAction(input: unknown) {
+  return runAction("knowledge.edit", replaceSchema, input, async (actor, d) => {
+    const done = await replaceInKnowledge(actor, d.kbId, d.find, d.replace);
+    if (done.sources) refresh();
+    return done;
+  });
 }
 
 export async function answerGapAction(input: unknown) {

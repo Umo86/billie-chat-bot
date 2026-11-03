@@ -98,6 +98,15 @@ export async function ingestSource(sourceId: string): Promise<void> {
 
   const chars = chunks.reduce((n, c) => n + c.text.length, 0);
   await db.transaction(async (tx) => {
+    if (src.kind === "text" || src.kind === "qa") {
+      // Edited while this read was running: the read queued by the edit writes the new text.
+      const [now] = await tx
+        .select({ title: sources.title, body: sources.body })
+        .from(sources)
+        .where(eq(sources.id, sourceId))
+        .for("update");
+      if (!now || now.title !== src.title || now.body !== src.body) return;
+    }
     await tx.delete(passages).where(eq(passages.sourceId, sourceId));
     for (let i = 0; i < chunks.length; i += 200) {
       await tx.insert(passages).values(
