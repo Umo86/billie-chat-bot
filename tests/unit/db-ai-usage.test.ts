@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { aiUsage, auditLog, settings, usageDaily } from "@/lib/db/schema";
 import { answersToday, recordUsage } from "@/lib/ai/usage";
@@ -13,7 +13,7 @@ const DAY = new Date("2026-01-14T12:00:00Z");
 
 describe.skipIf(!hasDb)("Claude usage and cost", () => {
   afterAll(async () => {
-    await db.delete(aiUsage).where(eq(aiUsage.day, "2026-01-14"));
+    await db.delete(aiUsage).where(inArray(aiUsage.day, ["2026-01-14", "2026-01-15"]));
     await db.update(settings).set({ fastModel: null, thoroughModel: null });
   });
 
@@ -98,6 +98,33 @@ describe.skipIf(!hasDb)("Claude usage and cost", () => {
     ]);
     expect(week.days[3].cost).toBe(total);
     expect(week.days[0]).toMatchObject({ cost: 0, requests: 0 });
+  });
+
+  it("says which use was from before models were recorded", async () => {
+    // As migration 0019 copied it from usage_daily: tokens, no model, no cost.
+    await db.insert(aiUsage).values({
+      day: "2026-01-15",
+      scope: "check",
+      model: "",
+      requests: 2,
+      inputTokens: 5_000,
+      outputTokens: 900,
+    });
+    await recordUsage(
+      "check",
+      { inputTokens: 1_000, cachedTokens: 0, cacheWriteTokens: 0, outputTokens: 100 },
+      "claude-sonnet-5-5",
+      new Date("2026-01-15T12:00:00Z"),
+    );
+    const day = await aiUsageReport("today", new Date("2026-01-15T12:00:00Z"));
+    expect(day.unpriced).toBe(2);
+    expect(day.byScope).toEqual([
+      expect.objectContaining({ label: "Knowledge checks", requests: 3, unpriced: 2 }),
+    ]);
+    expect(day.byModel.map((m) => [m.model, m.requests])).toEqual([
+      ["claude-sonnet-5-5", 1],
+      ["", 2],
+    ]);
   });
 
   it("uses the models an admin chose, with the other as the backup, and audits it", async () => {

@@ -83,7 +83,11 @@ export async function aiUsageReport(period: Period, now = new Date()) {
       .groupBy(aiUsage.model)
       .orderBy(sql`sum(${aiUsage.costMicros}) DESC`, sql`sum(${aiUsage.requests}) DESC`),
     db
-      .select({ scope: aiUsage.scope, ...sums })
+      .select({
+        scope: aiUsage.scope,
+        ...sums,
+        unpriced: sql<number>`coalesce(sum(${aiUsage.requests}) FILTER (WHERE ${aiUsage.model} = ''), 0)::int`,
+      })
       .from(aiUsage)
       .where(inPeriod)
       .groupBy(aiUsage.scope)

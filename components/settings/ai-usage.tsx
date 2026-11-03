@@ -39,7 +39,7 @@ export function AiUsage({
     to: string;
     totals: Totals;
     byModel: (Totals & { model: string })[];
-    byScope: (Totals & { scope: string; label: string })[];
+    byScope: (Totals & { scope: string; label: string; unpriced: number })[];
     days: (Totals & { day: string })[];
     unpriced: number;
   };
@@ -47,7 +47,14 @@ export function AiUsage({
   const t = report.totals;
   const max = Math.max(...report.days.map((d) => d.cost), 0);
   const tiles = [
-    { label: "Cost (Claude credits)", value: usd(t.cost), lead: true },
+    {
+      label: "Cost (Claude credits)",
+      value: usd(t.cost),
+      lead: true,
+      sub: report.unpriced
+        ? `Not counting ${n(report.unpriced)} earlier ${report.unpriced === 1 ? "request" : "requests"}`
+        : null,
+    },
     { label: "Requests", value: n(t.requests) },
     {
       label: "Tokens in",
@@ -176,7 +183,12 @@ export function AiUsage({
       />
       <Breakdown
         title="By what it was for"
-        rows={report.byScope.map((s) => ({ key: s.scope, ...s, unpriced: false }))}
+        rows={report.byScope.map((s) => ({
+          key: s.scope,
+          ...s,
+          // Only use from before models were recorded: the cost isn't known.
+          unpriced: s.unpriced === s.requests,
+        }))}
         testId="ai-by-use"
       />
 
