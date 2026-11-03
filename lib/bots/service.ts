@@ -13,6 +13,7 @@ import { answerBotFor, botById } from "./load";
 import { addToBot } from "./people";
 import { defaultQuality, defaultRules } from "./defaults";
 import { uniqueSlug } from "./slug";
+import type { ShowDays } from "./show-days";
 
 /**
  * Bots: create, edit, test, put live. A bot can only go live once its saved
@@ -28,7 +29,15 @@ export type BotLook = {
   avatarUrl: string | null;
   welcome: string;
   starters: string[];
+  /** Build-up to breakdown; null clears them (lib/bots/show-days.ts). */
+  showDays?: ShowDays | null;
 };
+
+/** The show days as the bot's two columns. */
+function dayColumns(d: ShowDays | null | undefined) {
+  if (d === undefined) return {};
+  return { showStartsOn: d?.from ?? null, showEndsOn: d?.to ?? null };
+}
 
 export type BotPatch = Partial<
   BotLook & {
@@ -47,11 +56,13 @@ export type BotPatch = Partial<
 
 export async function createBot(actor: Actor, look: BotLook): Promise<string> {
   const taken = (await db.select({ slug: bots.slug }).from(bots)).map((r) => r.slug);
+  const { showDays, ...rest } = look;
   return db.transaction(async (tx) => {
     const [bot] = await tx
       .insert(bots)
       .values({
-        ...look,
+        ...rest,
+        ...dayColumns(showDays),
         slug: uniqueSlug(look.name, taken),
         rules: defaultRules(look.audience),
         quality: defaultQuality(look.audience),
@@ -73,7 +84,11 @@ export async function createBot(actor: Actor, look: BotLook): Promise<string> {
 }
 
 export async function updateBot(actor: Actor, id: string, patch: BotPatch): Promise<void> {
-  const values: BotPatch = { ...patch };
+  const { showDays, ...rest } = patch;
+  const values: Omit<BotPatch, "showDays"> & ReturnType<typeof dayColumns> = {
+    ...rest,
+    ...dayColumns(showDays),
+  };
   if (patch.domains) {
     values.domains = [
       ...new Set(

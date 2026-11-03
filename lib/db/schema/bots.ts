@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   customType,
+  date,
   index,
   integer,
   jsonb,
@@ -45,6 +46,9 @@ export const bots = pgTable(
     slug: text("slug").notNull(),
     audience: audience("audience").notNull().default("exhibitors"),
     showName: text("show_name").notNull().default(""),
+    /** The show's days, from the first of build-up to the last of breakdown (UK dates). */
+    showStartsOn: date("show_starts_on", { mode: "string" }),
+    showEndsOn: date("show_ends_on", { mode: "string" }),
     color: text("color").notNull().default("#0d6a5b"),
     avatarUrl: text("avatar_url"),
     welcome: text("welcome").notNull().default(""),

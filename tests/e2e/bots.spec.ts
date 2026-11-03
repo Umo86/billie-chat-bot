@@ -18,6 +18,8 @@ test("build a bot with its own knowledge, test it and put it live", async ({ pag
   await expect(page.getByText(/^Eight short steps/)).toBeVisible();
   await page.getByLabel("Bot name").fill("Exhibitor Help");
   await page.getByLabel("Show name").fill("UK Construction Week 2027");
+  await page.getByLabel("First day of build-up").fill("2027-03-08");
+  await page.getByLabel("Last day of breakdown").fill("2027-03-12");
   await page.getByRole("button", { name: "Suggest a welcome message" }).click();
   await expect(page.getByLabel("Welcome message")).toHaveValue(/Exhibitor Help/);
   await shot(page, "bot-look");
@@ -247,6 +249,16 @@ test("build a bot with its own knowledge, test it and put it live", async ({ pag
   await expect(page.getByLabel("Websites allowed to show it")).toHaveValue(
     "ukconstructionweek.com",
   );
+
+  // The show days from step 1 were kept; the last day can't be before the first.
+  await page.getByRole("navigation", { name: "Steps" }).getByRole("link", { name: /Look/ }).click();
+  await expect(page.getByLabel("First day of build-up")).toHaveValue("2027-03-08");
+  await expect(page.getByLabel("Last day of breakdown")).toHaveValue("2027-03-12");
+  await page.getByLabel("Last day of breakdown").fill("2027-03-01");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByText("The last day can't be before the first.")).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("Last day of breakdown")).toHaveValue("2027-03-12");
 });
 
 test("a visitor chats on the chat page: answer, rating, then the team", async ({ browser }) => {

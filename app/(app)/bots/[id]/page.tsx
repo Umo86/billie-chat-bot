@@ -79,6 +79,7 @@ export default async function BotPage({
     body = canEdit ? (
       <LookForm
         botId={bot.id}
+        hasTeamsChannel={Boolean(bot.teamsWebhookUrl?.trim())}
         initial={{
           name: bot.name,
           audience: bot.audience,
@@ -87,6 +88,8 @@ export default async function BotPage({
           avatarUrl: bot.avatarUrl,
           welcome: bot.welcome,
           starters: bot.starters,
+          showFrom: bot.showStartsOn ?? "",
+          showTo: bot.showEndsOn ?? "",
         }}
       />
     ) : (

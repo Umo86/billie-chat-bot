@@ -23,6 +23,9 @@ export type Look = {
   avatarUrl: string | null;
   welcome: string;
   starters: string[];
+  /** Show days, "YYYY-MM-DD" or "" for none. */
+  showFrom: string;
+  showTo: string;
 };
 
 /** Shrinks a picture to a 256px square (centre crop) as a WebP data URL. */
@@ -58,7 +61,16 @@ async function toAvatar(file: File): Promise<string> {
   }
 }
 
-export function LookForm({ botId, initial }: { botId?: string; initial?: Look }) {
+export function LookForm({
+  botId,
+  initial,
+  hasTeamsChannel = false,
+}: {
+  botId?: string;
+  initial?: Look;
+  /** The event's Teams channel is set (Email step): where the morning post goes. */
+  hasTeamsChannel?: boolean;
+}) {
   const router = useRouter();
   const [look, setLook] = useState<Look>(
     initial ?? {
@@ -69,6 +81,8 @@ export function LookForm({ botId, initial }: { botId?: string; initial?: Look })
       avatarUrl: null,
       welcome: "",
       starters: ["", "", ""],
+      showFrom: "",
+      showTo: "",
     },
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -77,10 +91,18 @@ export function LookForm({ botId, initial }: { botId?: string; initial?: Look })
   const set = <K extends keyof Look>(k: K, v: Look[K]) => setLook((l) => ({ ...l, [k]: v }));
   const starters = [...look.starters, "", "", ""].slice(0, 3);
 
+  // Updates nest the look ("look.name"); new bots don't ("name").
+  const err = (k: string) => errors[k] ?? errors[`look.${k}`];
+
   function save(e: React.FormEvent) {
     e.preventDefault();
     setErrors({});
-    const payload = { ...look, starters: starters.map((s) => s.trim()).filter(Boolean) };
+    const { showFrom, showTo, ...rest } = look;
+    const payload = {
+      ...rest,
+      starters: starters.map((s) => s.trim()).filter(Boolean),
+      showDays: showFrom || showTo ? { from: showFrom, to: showTo } : null,
+    };
     if (botId) {
       run(() => updateBotAction({ id: botId, look: payload }), {
         failed: (r) => !r.ok && setErrors(r.fieldErrors ?? {}),
@@ -101,7 +123,7 @@ export function LookForm({ botId, initial }: { botId?: string; initial?: Look })
           id="bot-name"
           label="Bot name"
           hint="What visitors see at the top of the chat, e.g. Exhibitor Help"
-          error={errors.name}
+          error={err("name")}
         >
           <Input
             id="bot-name"
@@ -109,7 +131,7 @@ export function LookForm({ botId, initial }: { botId?: string; initial?: Look })
             onChange={(e) => set("name", e.target.value)}
             maxLength={60}
             required
-            aria-invalid={!!errors.name}
+            aria-invalid={!!err("name")}
           />
         </Field>
         <div className="flex flex-col gap-1.5">
@@ -137,6 +159,34 @@ export function LookForm({ botId, initial }: { botId?: string; initial?: Look })
             maxLength={80}
           />
         </Field>
+        <fieldset className="flex flex-col gap-2" aria-describedby="bot-days-hint">
+          <legend className="mb-1 text-[0.9rem] font-semibold">Show days (optional)</legend>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field id="bot-show-from" label="First day of build-up" error={err("showDays.from")}>
+              <Input
+                id="bot-show-from"
+                type="date"
+                value={look.showFrom}
+                onChange={(e) => set("showFrom", e.target.value)}
+                aria-invalid={!!err("showDays.from")}
+              />
+            </Field>
+            <Field id="bot-show-to" label="Last day of breakdown" error={err("showDays.to")}>
+              <Input
+                id="bot-show-to"
+                type="date"
+                value={look.showTo}
+                onChange={(e) => set("showTo", e.target.value)}
+                aria-invalid={!!err("showDays.to")}
+              />
+            </Field>
+          </div>
+          <p id="bot-days-hint" className="text-sm text-muted-foreground">
+            {hasTeamsChannel
+              ? "Each of these mornings, and the day after the last, Billie posts yesterday's chats and what's still waiting in the event's Teams channel at 7:30am. The end-of-show report covers these days."
+              : "With the event's Teams channel set (Email step), Billie posts yesterday's chats and what's still waiting there at 7:30am each show day. The end-of-show report covers these days."}
+          </p>
+        </fieldset>
         <div className="flex flex-col gap-2">
           <span className="text-[0.9rem] font-semibold">Colour</span>
           <div className="flex flex-wrap items-center gap-2">
@@ -199,9 +249,9 @@ export function LookForm({ botId, initial }: { botId?: string; initial?: Look })
           <p className="text-sm text-muted-foreground">
             A logo or a friendly face, square works best. Without one, the bot shows its initials.
           </p>
-          {errors.avatarUrl ? <Note tone="bad">{errors.avatarUrl}</Note> : null}
+          {err("avatarUrl") ? <Note tone="bad">{err("avatarUrl")}</Note> : null}
         </div>
-        <Field id="bot-welcome" label="Welcome message" error={errors.welcome}>
+        <Field id="bot-welcome" label="Welcome message" error={err("welcome")}>
           <Textarea
             id="bot-welcome"
             value={look.welcome}

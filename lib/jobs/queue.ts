@@ -35,7 +35,9 @@ export type JobKind =
   | "learn_from_sent"
   | "deadline_reminders"
   | "draft_reminders"
-  | "send_reminders";
+  | "send_reminders"
+  | "show_days"
+  | "show_day_post";
 
 export type Job = typeof jobs.$inferSelect;
 

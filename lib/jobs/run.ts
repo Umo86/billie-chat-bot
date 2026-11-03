@@ -97,6 +97,12 @@ const handlers: Handlers = {
     (await import("@/lib/exhibitors/reminders")).writeReminders(String(p.batchId), {
       lastTry: job.attempts >= job.maxAttempts,
     }),
+  show_days: async () => {
+    await (await import("@/lib/reports/show-day")).queueShowDays();
+  },
+  show_day_post: async (p) => {
+    await (await import("@/lib/reports/show-day")).postShowDay(String(p.botId), String(p.today));
+  },
   send_reminders: async (p) => {
     await (
       await import("@/lib/exhibitors/reminders")
@@ -156,6 +162,13 @@ export async function minuteTick(now = new Date()) {
       "deadline_reminders",
       {},
       { dedupeKey: `deadlines:${uk.date}`, once: true, maxAttempts: 2 },
+    );
+  // Show week, from 07:30 UK time: the morning post in each event's channel.
+  if (uk.minutes >= 7 * 60 + 30)
+    await enqueue(
+      "show_days",
+      {},
+      { dedupeKey: `show-days:${uk.date}`, once: true, maxAttempts: 2 },
     );
   // Every 15 minutes: Teams nudges about chats and emails still waiting for a reply.
   await enqueue(

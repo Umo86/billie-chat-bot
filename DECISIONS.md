@@ -332,6 +332,22 @@ measurement. One job per bot, queued once per day, so a retry never posts
 twice; the company-wide email summary is unchanged. Everything people wrote
 goes in as plain text runs, never Markdown, as with the other Teams posts.
 
+## Show week gets a morning post, from the bot's own show days
+
+The Monday post is right for the months before a show; during it, the
+team needs yesterday and now. So a bot can have show days (from the first
+day of build-up to the last of breakdown, at most 31) on its Look step,
+and on each of them, plus the day after the last (for breakdown day
+itself), its Teams channel gets a post at 7:30 UK time. The minute tick
+queues the morning's work once a day from 07:30, which queues one post per
+bot, once, so a retry never posts twice; a bot whose days changed since
+then posts nothing. "Yesterday" is the UK day, worked out by Postgres
+(`AT TIME ZONE 'Europe/London'`) so the clocks changing can't move it. The
+post: chats and the share Billie answered alone, emails in, new requests,
+thumbs down, why chats went to the team, what's waiting now, and the
+questions to fix (not answered, marked unhelpful, most asked), each a link.
+Copying a bot doesn't copy its days: each show has its own.
+
 ## Nudges count the bot's working hours, and go once
 
 The bot promises people the team will come back to them, so a chat passed

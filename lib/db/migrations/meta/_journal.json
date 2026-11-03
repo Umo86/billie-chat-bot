@@ -162,6 +162,13 @@
       "when": 1793743224565,
       "tag": "0022_security_fixes",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1793744145446,
+      "tag": "0023_show_days",
+      "breakpoints": true
     }
   ]
 }

@@ -20,6 +20,7 @@ import { assertOnBot } from "@/lib/auth/bots";
 import { setBotPeople } from "@/lib/bots/people";
 import { copyBot, markDatesChecked } from "@/lib/bots/copy";
 import { MAX_REQUEST_FIELDS, MAX_REQUEST_TYPES } from "@/lib/requests/rules";
+import { showDaysProblem } from "@/lib/bots/show-days";
 
 const AVATAR = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
 
@@ -42,6 +43,16 @@ const look = z.object({
     .array(z.string().trim().max(80))
     .max(3)
     .transform((a) => a.filter(Boolean)),
+  /** Build-up to breakdown, or null for none. */
+  showDays: z
+    .object({ from: z.string().max(10), to: z.string().max(10) })
+    .superRefine((d, ctx) => {
+      const problem = showDaysProblem(d);
+      if (problem)
+        ctx.addIssue({ code: "custom", message: problem.message, path: [problem.field] });
+    })
+    .nullable()
+    .optional(),
 });
 
 const rules = z.object({

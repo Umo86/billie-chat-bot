@@ -46,6 +46,12 @@ Chatbots, live handover and an email assistant for Media10 shows.
   share Billie answered alone, emails drafted, the most asked questions,
   new questions it couldn't answer (each a link to answer it) and an
   estimate of the hours saved.
+- **A morning post during show week**: give a bot its show days (Look
+  step, first day of build-up to last day of breakdown) and each of those
+  mornings, and the day after the last, the event's Teams channel gets a
+  7:30am post: yesterday's chats, how many went to the team and why,
+  what's waiting right now (chats, emails, requests), and the questions
+  Billie couldn't answer or got a thumbs down, each a link to fix it.
 - **Nudges**: a chat passed to the team, or an email that needs a person,
   with no reply after 4 of the bot's working hours gets a Teams message to
   whoever handles it; after 8, admins get one too (Settings → General).
