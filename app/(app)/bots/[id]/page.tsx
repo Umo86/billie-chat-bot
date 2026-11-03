@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
+import { FileBarChart } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import QRCode from "qrcode";
 import { Chip, Note, PageHeader, Panel } from "@/components/ui/bits";
 import { BotAvatar } from "@/components/bots/bot-avatar";
@@ -322,7 +325,18 @@ export default async function BotPage({
           </span>
         }
         actions={
-          canEdit ? <CopyBot bot={{ id: bot.id, name: bot.name, showName: bot.showName }} /> : null
+          <span className="flex flex-wrap gap-2">
+            {can(actor, "reports.view") ? (
+              <Button asChild>
+                <Link href={`/bots/${bot.id}/report`}>
+                  <FileBarChart /> Show report
+                </Link>
+              </Button>
+            ) : null}
+            {canEdit ? (
+              <CopyBot bot={{ id: bot.id, name: bot.name, showName: bot.showName }} />
+            ) : null}
+          </span>
         }
       />
       {sp.created ? <Note tone="good">Bot created. Next, choose how it comes across.</Note> : null}

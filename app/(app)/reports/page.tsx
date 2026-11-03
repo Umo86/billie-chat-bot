@@ -182,6 +182,9 @@ export default async function ReportsPage({
               <th className="px-3 py-2 font-semibold">Passed to team</th>
               <th className="px-3 py-2 font-semibold">Unanswered</th>
               <th className="px-3 py-2 font-semibold">Last test</th>
+              <th className="px-3 py-2 font-semibold">
+                <span className="sr-only">End-of-show report</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -213,6 +216,15 @@ export default async function ReportsPage({
                 <td className="px-3 py-2.5 tabular-nums">{b.open_gaps}</td>
                 <td className="px-3 py-2.5 tabular-nums">
                   {b.last_test?.total ? `${b.last_test.passed}/${b.last_test.total}` : "–"}
+                </td>
+                <td className="px-3 py-2.5">
+                  <Link
+                    href={`/bots/${b.id}/report`}
+                    className="font-semibold whitespace-nowrap text-primary hover:underline"
+                    aria-label={`End-of-show report for ${b.name}`}
+                  >
+                    Show report
+                  </Link>
                 </td>
               </tr>
             ))}

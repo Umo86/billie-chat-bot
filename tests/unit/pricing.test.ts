@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { costMicros, modelInfo, modelName, MODELS, priceLine, usd } from "@/lib/ai/pricing";
+import {
+  costMicros,
+  modelInfo,
+  modelName,
+  MODELS,
+  priceLine,
+  usd,
+  usdFine,
+} from "@/lib/ai/pricing";
 import { periodDates } from "@/lib/ai/report";
 
 const one = { input: 1_000_000, cacheWrite: 0, cacheRead: 0, output: 0 };
@@ -71,5 +79,12 @@ describe("Claude prices", () => {
     expect(periodDates("last-month", now)).toEqual({ from: "2026-10-01", to: "2026-10-31" });
     // Just after midnight in summer time, it's already the next day in London.
     expect(periodDates("today", new Date("2026-06-30T23:30:00Z")).from).toBe("2026-07-01");
+  });
+
+  it("shows small amounts a chat with the detail they need", () => {
+    expect(usdFine(11_820)).toBe("$0.012");
+    expect(usdFine(460)).toBe("$0.0005");
+    expect(usdFine(0)).toBe("$0.00");
+    expect(usdFine(2_500_000)).toBe("$2.50");
   });
 });

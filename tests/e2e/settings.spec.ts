@@ -105,6 +105,25 @@ test("general settings save, connections and reports render", async ({ page }) =
   await expect(page.getByText(/Claude use in this period: .* about \$0\.00\./)).toBeVisible();
   await shot(page, "reports");
 
+  // A bot's end-of-show report, on the page and as a PDF.
+  await page.getByRole("link", { name: "End-of-show report for Exhibitor Help" }).click();
+  await expect(page.getByRole("heading", { name: "End-of-show report" })).toBeVisible();
+  await expect(page.getByText("The show days", { exact: true })).toBeVisible(); // its Look step
+  await expect(page.getByTestId("report-tiles")).toContainText("answered by Billie alone");
+  const [pdf] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("link", { name: "Download PDF" }).click(),
+  ]);
+  expect(pdf.suggestedFilename()).toBe("exhibitor-help-report-2027-03-08-to-2027-03-12.pdf");
+  const bytes = await (await pdf.createReadStream()).toArray();
+  expect(Buffer.concat(bytes).subarray(0, 5).toString()).toBe("%PDF-");
+  // Today instead: the chats from the tests so far.
+  const today = new Date().toISOString().slice(0, 10);
+  await page.goto(`${new URL(page.url()).pathname}?from=${today}&to=${today}`);
+  await expect(page.getByTestId("report-tiles")).toContainText(/[1-9]\d*chats/);
+  await shot(page, "show-report");
+  await page.goto("/reports");
+
   // AI: tokens and cost (the stand-in AI costs nothing), and which model does what.
   await page.getByRole("link", { name: "Details in Settings → AI" }).click();
   await expect(page.getByTestId("ai-totals")).toContainText("Cost (Claude credits)");

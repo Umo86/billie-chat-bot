@@ -59,6 +59,12 @@ Chatbots, live handover and an email assistant for Media10 shows.
   share Billie answered alone, emails drafted, the most asked questions,
   new questions it couldn't answer (each a link to answer it) and an
   estimate of the hours saved.
+- **End-of-show report**: one page per bot for its show days (or any
+  days): chats and emails, the share Billie answered alone, hours saved,
+  what Claude cost a chat (admins), chats each day, the most asked
+  questions, why chats went to the team, requests, and what to fix before
+  the next show. Download it as a PDF to send round (bot page → Show
+  report, or Reports).
 - **A morning post during show week**: give a bot its show days (Look
   step, first day of build-up to last day of breakdown) and each of those
   mornings, and the day after the last, the event's Teams channel gets a

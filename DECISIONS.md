@@ -358,6 +358,18 @@ measurement. One job per bot, queued once per day, so a retry never posts
 twice; the company-wide email summary is unchanged. Everything people wrote
 goes in as plain text runs, never Markdown, as with the other Teams posts.
 
+## The end-of-show report is a page and a PDF made on the server
+
+The report covers the bot's show days (or days chosen on the page, at most
+120), with UK midnights worked out by Postgres. The PDF is drawn with
+pdf-lib in the request (A4, Helvetica, no browser or headless Chrome on
+the server): the page can't be printed from an artifact-style frame, and a
+file is what gets emailed round after a show. Helvetica only draws Western
+European characters, so text is made safe first (ş to s, ı to i; anything
+it can't show is left out). Claude's cost per chat is for admins only, as
+everywhere else; email drafts aren't counted per bot (their use is "email"
+in Settings → AI), so the cost is for chat answers.
+
 ## Show week gets a morning post, from the bot's own show days
 
 The Monday post is right for the months before a show; during it, the

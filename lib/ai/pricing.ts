@@ -101,6 +101,12 @@ export function usd(micros: number): string {
   return `$${dollars.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+/** Small amounts with the detail they need: "$0.012" a chat rather than "$0.01". */
+export function usdFine(micros: number): string {
+  if (micros <= 0 || micros >= 1_000_000) return usd(micros);
+  return `$${(micros / 1_000_000).toFixed(micros < 1_000 ? 4 : 3)}`;
+}
+
 /** "$2 in, $10 out per million tokens" */
 export function priceLine(m: ModelInfo): string {
   const n = (x: number) =>
