@@ -13,7 +13,7 @@ import {
   visitorUpdates,
   cleanContact,
 } from "@/lib/conversations/service";
-import { addAndRead, hasDb, makeBot, makeUser, setAvailableAgent } from "../helpers/db";
+import { addAndRead, hasDb, makeBot, makeUser, putOnBot, setAvailableAgent } from "../helpers/db";
 
 async function readyBot() {
   const actor = await makeUser("editor");
@@ -97,6 +97,7 @@ describe.skipIf(!hasDb)("conversations (Postgres, stand-in Claude)", () => {
 
   it("someone online: live chat, staff reply, Billie paused, then handed back", async () => {
     const { bot, actor } = await readyBot();
+    await putOnBot(bot.id, actor.id);
     await setAvailableAgent(actor.id, true);
     const t = await visitorMessage({
       bot,

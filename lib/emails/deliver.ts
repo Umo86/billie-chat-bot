@@ -13,6 +13,7 @@ import {
 } from "@/lib/channels/outlook";
 import { postToTeams } from "@/lib/channels/teams";
 import { cardOf, queueDirect } from "@/lib/alerts/direct";
+import { worksOnBotSql } from "@/lib/auth/bots";
 import { safeError } from "@/lib/errors";
 import { draftFailureIsFinal, draftProblem } from "./mailbox-rules";
 import { emailTeamsCard, type EmailPost } from "./teams-card";
@@ -51,6 +52,7 @@ export async function deliverEmailDraft(
       id: botMailboxes.id,
       enabled: botMailboxes.enabled,
       assignedUserId: botMailboxes.assignedUserId,
+      botId: bots.id,
       botName: bots.name,
       teamsWebhookUrl: bots.teamsWebhookUrl,
     })
@@ -86,9 +88,14 @@ export async function deliverEmailDraft(
   ]).catch((err) => console.warn("categories not set:", safeError(err)));
 
   if (opts.quiet) return;
+  // The manager, if they still work on the bot (a link they couldn't open is no use).
   const assignee = box.assignedUserId
     ? await db.query.users.findFirst({
-        where: and(eq(users.id, box.assignedUserId), eq(users.status, "active")),
+        where: and(
+          eq(users.id, box.assignedUserId),
+          eq(users.status, "active"),
+          worksOnBotSql(box.botId),
+        ),
         columns: { fullName: true, email: true },
       })
     : null;

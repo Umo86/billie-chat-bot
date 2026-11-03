@@ -7,6 +7,7 @@ import { setAvailable } from "@/lib/conversations/presence";
 import { closeConversation, handBack, staffReply } from "@/lib/conversations/service";
 import { addSource } from "@/lib/knowledge/sources";
 import { UserError } from "@/lib/errors";
+import { assertOnBotOf } from "@/lib/auth/bots";
 
 const conv = z.object({ conversationId: z.uuid() });
 
@@ -25,6 +26,7 @@ export async function setAvailabilityAction(input: unknown) {
 export async function replyAction(input: unknown) {
   const schema = conv.extend({ text: z.string().trim().min(1, "Write a reply first.").max(4000) });
   return runAction("inbox.reply", schema, input, async (actor, d) => {
+    await assertOnBotOf(actor, "inbox.reply", "conversation", d.conversationId);
     await staffReply(actor, d.conversationId, d.text);
     refresh();
   });
@@ -36,6 +38,7 @@ export async function handBackAction(input: unknown) {
     conv,
     input,
     async (actor, d) => {
+      await assertOnBotOf(actor, "inbox.reply", "conversation", d.conversationId);
       await handBack(actor, d.conversationId);
       refresh();
     },
@@ -49,6 +52,7 @@ export async function closeChatAction(input: unknown) {
     conv,
     input,
     async (actor, d) => {
+      await assertOnBotOf(actor, "inbox.reply", "conversation", d.conversationId);
       await closeConversation(actor, d.conversationId);
       refresh();
     },
@@ -69,6 +73,8 @@ export async function saveAsAnswerAction(input: unknown) {
     input,
     async (actor, d) => {
       if (!d.kbId) throw new UserError("Choose a knowledge base.");
+      // Only into the knowledge of a bot this person works on.
+      await assertOnBotOf(actor, "knowledge.edit", "kb", d.kbId);
       await addSource(actor, d.kbId, { kind: "qa", question: d.question, answer: d.answer });
       revalidatePath("/knowledge");
     },

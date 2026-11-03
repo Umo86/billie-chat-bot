@@ -152,6 +152,24 @@ Each bot's tone, personality (in the team's own words), emoji choice and
 email sign-off go into its prompts as style. The prompt says the rules win,
 answers still come only from the knowledge, and emails never get emoji.
 
+## People work on bots; admins on all of them
+
+Each event has its own staff, so each bot has its own people (`bot_members`),
+chosen by an admin on the bot's People step, or when inviting someone.
+Whoever makes a bot is put on it. What someone may do still comes from
+their role (`MATRIX`); the bots they may do it on come from `bot_members`,
+and both are checked in one place: `canOnBot()` in `lib/authz.ts`, with the
+lookups in `lib/auth/bots.ts`. Admins work on every bot without a row.
+Every list (Home, Inbox, Requests, Emails, Knowledge, Try a bot, Reports and
+the nav counts) shows only the actor's bots, with a bot filter when they have
+more than one; every action that takes a chat, request, email, knowledge
+base, source or unanswered question checks the bot it belongs to. Something
+with no bot (an old shared knowledge base, an email pasted with no bot) is
+for admins only. Teams messages go only to people on the bot, a live
+handover counts only people on the bot as available, and a mailbox manager
+or request handler must be on the bot. Moving over (migration 0012), everyone
+already on the team was put on every bot that existed, so nobody lost access.
+
 ## Each bot has its own knowledge, never shared
 
 A bot is made with a knowledge base of its own, named after it

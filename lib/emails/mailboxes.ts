@@ -1,4 +1,5 @@
 import "server-only";
+import { worksOnBotSql } from "@/lib/auth/bots";
 import { and, asc, eq, isNull, ne } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { botMailboxes, bots, users } from "@/lib/db/schema";
@@ -68,6 +69,14 @@ export async function saveMailbox(
     });
     if (!person || person.status !== "active")
       throw new UserError("Choose someone on the team who can sign in.");
+    const [onBot] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.id, input.assignedUserId), worksOnBotSql(botId)));
+    if (!onBot)
+      throw new UserError(
+        "They don't work on this bot, so they couldn't open its emails. Add them on the People step first.",
+      );
   }
   const [taken] = await db
     .select({ botId: bots.id, name: bots.name, deletedAt: bots.deletedAt })
@@ -204,10 +213,11 @@ export async function mailboxOverview() {
 }
 
 /** People who can manage a mailbox: everyone on the team who can sign in. */
-export async function mailboxManagers() {
+/** Who can manage a bot's mailbox (and handle its requests): active people who work on the bot. */
+export async function mailboxManagers(botId: string) {
   return db
     .select({ id: users.id, name: users.fullName, email: users.email })
     .from(users)
-    .where(eq(users.status, "active"))
+    .where(and(eq(users.status, "active"), worksOnBotSql(botId)))
     .orderBy(asc(users.fullName));
 }

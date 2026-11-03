@@ -1,7 +1,8 @@
 import "server-only";
-import { and, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { db, type Tx } from "@/lib/db/client";
-import { invitations, users } from "@/lib/db/schema";
+import { bots, invitations, users } from "@/lib/db/schema";
+import { addToBot } from "@/lib/bots/people";
 import { writeAudit } from "@/lib/audit";
 import { hashToken, newToken } from "@/lib/chat/token";
 import { appUrl, emailConfigured } from "@/lib/config";
@@ -72,11 +73,21 @@ export function inviteLink(token: string): string {
 /** An invitation, or for someone already on the team, a fresh link to sign in with. */
 export async function createInvitation(
   actor: Actor,
-  input: { email: string; name: string; role: Role },
+  input: { email: string; name: string; role: Role; botIds?: string[] },
 ): Promise<{ link: string; emailed: boolean }> {
   const email = normaliseEmail(input.email);
   if (!EMAIL_PATTERN.test(email)) throw new AccountError("That email doesn't look right.");
   const existing = await db.query.users.findFirst({ where: eq(users.email, email) });
+  // The bots they'll work on once they join (only bots that exist).
+  const wanted = [...new Set(input.botIds ?? [])];
+  const botIds = wanted.length
+    ? (
+        await db
+          .select({ id: bots.id })
+          .from(bots)
+          .where(and(inArray(bots.id, wanted), isNull(bots.deletedAt)))
+      ).map((b) => b.id)
+    : [];
   const name = input.name.trim() || existing?.fullName || email.split("@")[0];
   const token = newToken();
   await db.transaction(async (tx) => {
@@ -95,6 +106,7 @@ export async function createInvitation(
       email,
       fullName: name,
       role: existing?.role ?? input.role,
+      botIds,
       tokenHash: hashToken(token),
       invitedBy: actor.id,
       expiresAt: new Date(Date.now() + INVITE_DAYS * 86_400_000),
@@ -205,6 +217,15 @@ export async function acceptInvitation(
         })
         .returning({ id: users.id });
       id = u.id;
+    }
+    // The bots the admin chose for them, if they still exist.
+    const chosen = (inv.botIds as string[]) ?? [];
+    if (chosen.length) {
+      const live = await tx
+        .select({ id: bots.id })
+        .from(bots)
+        .where(and(inArray(bots.id, chosen), isNull(bots.deletedAt)));
+      for (const b of live) await addToBot(tx, b.id, id, inv.invitedBy);
     }
     await writeAudit(tx, {
       actorUserId: id,

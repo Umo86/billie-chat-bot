@@ -8,6 +8,8 @@ import { PasteEmail } from "@/components/emails/paste-email";
 import { EmailView } from "@/components/emails/email-view";
 import { EMAIL_STATUS } from "@/lib/emails/status";
 import { requireActor } from "@/lib/auth/actor";
+import { botView, mayOnBot } from "@/lib/auth/bots";
+import { BotFilter } from "@/components/ui/bot-filter";
 import { emailDetail, emailList, type EmailTab } from "@/lib/emails/service";
 import { botCards } from "@/lib/bots/queries";
 import { getSettings } from "@/lib/settings";
@@ -23,18 +25,27 @@ export default async function EmailsPage({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  await requireActor("emails.view");
+  const actor = await requireActor("emails.view");
   const sp = await searchParams;
   const tab: EmailTab = sp.tab === "done" ? "done" : "check";
+  const view = await botView(actor, sp.bot);
   const [rows, bots, settings, mailboxes] = await Promise.all([
-    emailList(tab),
-    botCards(),
+    emailList(tab, view),
+    botCards(view.ids),
     getSettings(),
     microsoftConfigured() ? hasMailboxToSync() : Promise.resolve(false),
   ]);
   const picked = sp.e && /^[0-9a-f-]{36}$/i.test(sp.e) ? sp.e : null;
   const selected = picked ?? rows[0]?.id ?? null;
-  const email = selected ? await emailDetail(selected) : null;
+  const found = selected ? await emailDetail(selected) : null;
+  // Only emails of the bots this person works on.
+  const email = found && (await mayOnBot(actor, "emails.view", found.botId)) ? found : null;
+  const keep = (extra: Record<string, string> = {}) => {
+    const p = new URLSearchParams(extra);
+    if (view.only) p.set("bot", view.only);
+    const q = p.toString();
+    return q ? `/emails?${q}` : "/emails";
+  };
   const writing = rows.some((r) => r.status === "new" || r.status === "working");
   const exhibitorBots = bots.filter((b) => b.audience === "exhibitors");
   const choices = (exhibitorBots.length ? exhibitorBots : bots).map((b) => ({
@@ -49,7 +60,28 @@ export default async function EmailsPage({
         title="Emails"
         lede="Exhibitor emails with a draft reply from the bot's knowledge. You check every draft before it goes."
         actions={
-          <PasteEmail bots={choices} defaultBotId={settings.emailBotId ?? choices[0]?.id ?? null} />
+          <div className="flex flex-wrap items-center gap-2">
+            <BotFilter
+              bots={bots.map((b) => ({ id: b.id, name: b.name }))}
+              current={view.only ?? null}
+              path="/emails"
+              keep={tab === "done" ? { tab } : {}}
+              everyBot={view.ids === null}
+            />
+            {choices.length || view.ids === null ? (
+              <PasteEmail
+                bots={choices}
+                defaultBotId={
+                  view.only ??
+                  (choices.some((c) => c.id === settings.emailBotId)
+                    ? settings.emailBotId
+                    : null) ??
+                  choices[0]?.id ??
+                  null
+                }
+              />
+            ) : null}
+          </div>
         }
       />
       {!mailboxes ? (
@@ -63,8 +95,8 @@ export default async function EmailsPage({
         label="Email sections"
         current={tab}
         tabs={[
-          { key: "check", href: "/emails", label: "To check" },
-          { key: "done", href: "/emails?tab=done", label: "Done" },
+          { key: "check", href: keep(), label: "To check" },
+          { key: "done", href: keep({ tab: "done" }), label: "Done" },
         ]}
       />
       {!rows.length && !email ? (
@@ -82,7 +114,7 @@ export default async function EmailsPage({
             {rows.map((r) => (
               <li key={r.id}>
                 <Link
-                  href={`/emails?${tab === "done" ? "tab=done&" : ""}e=${r.id}`}
+                  href={keep(tab === "done" ? { tab: "done", e: r.id } : { e: r.id })}
                   aria-current={r.id === selected ? "page" : undefined}
                   data-testid="email-row"
                   className={cn(
@@ -121,7 +153,7 @@ export default async function EmailsPage({
             <div className="flex min-w-0 flex-col gap-2">
               {picked ? (
                 <Link
-                  href="/emails"
+                  href={keep(tab === "done" ? { tab: "done" } : {})}
                   className="inline-flex items-center gap-1 text-sm font-semibold text-primary lg:hidden"
                 >
                   <ArrowLeft className="size-4" aria-hidden /> All emails

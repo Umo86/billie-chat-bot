@@ -11,7 +11,14 @@ import { saveMailbox } from "@/lib/emails/mailboxes";
 import { syncAllMailboxes } from "@/lib/channels/outlook";
 import { processEmail } from "@/lib/emails/process";
 import { deliverEmailDraft } from "@/lib/emails/deliver";
-import { clearPresence, hasDb, makeBot, makeUser, setAvailableAgent } from "../helpers/db";
+import {
+  clearPresence,
+  hasDb,
+  makeBot,
+  makeUser,
+  putOnBot,
+  setAvailableAgent,
+} from "../helpers/db";
 import { DIRECT, fakeMicrosoft, message, TEAMS } from "../helpers/microsoft";
 
 const uid = () => randomUUID().slice(0, 8);
@@ -103,6 +110,7 @@ describe.skipIf(!hasDb)("Teams messages to people (Postgres, stand-in Teams)", (
     const manager = await makeUser("agent");
     await setDirectLink(admin, DIRECT);
     const { bot } = await makeBot();
+    await putOnBot(bot.id, manager.id);
     const address = `dm-${uid()}@media-ten.test`;
     await saveMailbox(admin, bot.id, { address, assignedUserId: manager.id, enabled: true });
     // As if Billie started reading this mailbox an hour ago.
@@ -144,6 +152,7 @@ describe.skipIf(!hasDb)("Teams messages to people (Postgres, stand-in Teams)", (
     const manager = await makeUser("agent");
     await setDirectLink(admin, DIRECT);
     const { bot } = await makeBot();
+    await putOnBot(bot.id, onDuty.id, manager.id);
     await saveMailbox(admin, bot.id, {
       address: `chat-${uid()}@media-ten.test`,
       assignedUserId: manager.id,

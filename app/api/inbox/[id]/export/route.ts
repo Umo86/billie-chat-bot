@@ -1,5 +1,6 @@
 import { getActor } from "@/lib/auth/actor";
 import { can } from "@/lib/authz";
+import { mayOnBot } from "@/lib/auth/bots";
 import { conversationDetail, transcriptText } from "@/lib/conversations/inbox";
 import { writeAudit } from "@/lib/audit";
 import { db } from "@/lib/db/client";
@@ -13,7 +14,9 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
   const { id } = await ctx.params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) return new Response("Not found", { status: 404 });
   const detail = await conversationDetail(id);
-  if (!detail) return new Response("Not found", { status: 404 });
+  // Only chats of the bots this person works on.
+  if (!detail || !(await mayOnBot(actor, "inbox.view", detail.conversation.botId)))
+    return new Response("Not found", { status: 404 });
   await writeAudit(db, {
     actorUserId: actor.id,
     entityType: "conversation",

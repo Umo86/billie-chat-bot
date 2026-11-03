@@ -15,6 +15,9 @@ import { EmailStep } from "@/components/bots/email-step";
 import { TestStep } from "@/components/bots/test-step";
 import { LiveStep } from "@/components/bots/live-step";
 import { requireActor } from "@/lib/auth/actor";
+import { mayOnBot } from "@/lib/auth/bots";
+import { botPeople } from "@/lib/bots/people";
+import { PeopleStep } from "@/components/bots/people-step";
 import { can } from "@/lib/authz";
 import { botById } from "@/lib/bots/load";
 import { knowledgeBaseOf } from "@/lib/knowledge/bases";
@@ -40,8 +43,17 @@ export default async function BotPage({
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const bot = await botById(id);
   if (!bot) notFound();
+  if (!(await mayOnBot(actor, "bots.view", bot.id)))
+    return (
+      <>
+        <PageHeader title={bot.name} />
+        <Note tone="warn">
+          You don&apos;t work on this bot. An admin can add you on its People step.
+        </Note>
+      </>
+    );
   const step: StepKey = STEPS.some((s) => s.key === sp.step) ? (sp.step as StepKey) : "look";
-  const canEdit = can(actor, "bots.edit");
+  const canEdit = await mayOnBot(actor, "bots.edit", bot.id);
 
   let body: React.ReactNode;
   if (step === "look") {
@@ -79,7 +91,7 @@ export default async function BotPage({
     );
   } else if (step === "knowledge") {
     const kb = await knowledgeBaseOf(bot.id);
-    const canTeach = can(actor, "knowledge.edit");
+    const canTeach = await mayOnBot(actor, "knowledge.edit", bot.id);
     body = (
       <div className="flex flex-col gap-4">
         <Panel className="flex flex-wrap items-start justify-between gap-3">
@@ -97,7 +109,7 @@ export default async function BotPage({
       </div>
     );
   } else if (step === "rules") {
-    const people = await mailboxManagers();
+    const people = await mailboxManagers(bot.id);
     body = (
       <div className="flex flex-col gap-4">
         <RulesStep botId={bot.id} initial={bot.rules} canEdit={canEdit} />
@@ -113,9 +125,18 @@ export default async function BotPage({
         />
       </div>
     );
+  } else if (step === "people") {
+    body = (
+      <PeopleStep
+        botId={bot.id}
+        botName={bot.name}
+        people={await botPeople(bot.id)}
+        canManage={can(actor, "team.manage")}
+      />
+    );
   } else if (step === "email") {
     const canManage = can(actor, "settings.manage");
-    const [setup, people] = await Promise.all([botEmailSetup(bot.id), mailboxManagers()]);
+    const [setup, people] = await Promise.all([botEmailSetup(bot.id), mailboxManagers(bot.id)]);
     const m = setup.mailbox;
     const microsoft = microsoftConfigured();
     body = (
@@ -182,8 +203,8 @@ export default async function BotPage({
         }}
         can={{
           edit: canEdit,
-          publish: can(actor, "bots.publish"),
-          delete: can(actor, "bots.delete"),
+          publish: await mayOnBot(actor, "bots.publish", bot.id),
+          delete: await mayOnBot(actor, "bots.delete", bot.id),
         }}
       />
     );

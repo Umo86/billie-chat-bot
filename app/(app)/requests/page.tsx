@@ -5,6 +5,8 @@ import { TabsNav } from "@/components/ui/tabs-nav";
 import { AutoRefresh } from "@/components/ui/auto-refresh";
 import { RequestView } from "@/components/requests/request-view";
 import { requireActor } from "@/lib/auth/actor";
+import { botView, mayOnBot, myBots } from "@/lib/auth/bots";
+import { BotFilter } from "@/components/ui/bot-filter";
 import { can } from "@/lib/authz";
 import {
   requestCounts,
@@ -35,8 +37,11 @@ export default async function RequestsPage({
 }) {
   const actor = await requireActor("inbox.view");
   const sp = await searchParams;
+  const view = await botView(actor, sp.bot);
   const picked = sp.r && /^[0-9a-f-]{36}$/i.test(sp.r) ? sp.r : null;
-  const pickedDetail = picked ? await requestDetail(picked) : null;
+  // Only requests of the bots this person works on.
+  const found = picked ? await requestDetail(picked) : null;
+  const pickedDetail = found && (await mayOnBot(actor, "inbox.view", found.botId)) ? found : null;
   // Opening a request from Teams shows the tab it's in.
   const tab: RequestTab = TABS.some((t) => t.key === sp.tab)
     ? (sp.tab as RequestTab)
@@ -47,26 +52,41 @@ export default async function RequestsPage({
           ? "in_progress"
           : "finished"
       : "new";
-  const [rows, counts, handlers] = await Promise.all([
-    requestList(tab),
-    requestCounts(),
-    requestHandlers(),
+  const [rows, counts, bots] = await Promise.all([
+    requestList(tab, view),
+    requestCounts(view),
+    myBots(actor),
   ]);
   const detail = pickedDetail ?? (rows[0] ? await requestDetail(rows[0].id) : null);
+  const handlers = detail ? await requestHandlers(detail.botId) : [];
+  const keep = (extra: Record<string, string> = {}) => {
+    const p = new URLSearchParams(extra);
+    if (view.only) p.set("bot", view.only);
+    return `/requests?${p}`;
+  };
 
   return (
     <>
       <AutoRefresh active every={15000} />
       <PageHeader
         title="Requests"
-        lede="Requests people made through a bot's chat, such as extra build-up hours. Each one has a reference and a page the person can follow, and once email is set up they're emailed when it changes."
+        lede="Requests people made through your bots' chats, such as extra build-up hours. Each one has a reference and a page the person can follow, and once email is set up they're emailed when it changes."
+        actions={
+          <BotFilter
+            bots={bots}
+            current={view.only ?? null}
+            path="/requests"
+            keep={{ tab }}
+            everyBot={view.ids === null}
+          />
+        }
       />
       <TabsNav
         label="Request sections"
         current={tab}
         tabs={TABS.map((t) => ({
           key: t.key,
-          href: `/requests?tab=${t.key}`,
+          href: keep({ tab: t.key }),
           label: t.key !== "finished" && counts[t.key] ? `${t.label} (${counts[t.key]})` : t.label,
         }))}
       />
@@ -89,7 +109,7 @@ export default async function RequestsPage({
             {rows.map((r) => (
               <li key={r.id}>
                 <Link
-                  href={`/requests?tab=${tab}&r=${r.id}`}
+                  href={keep({ tab, r: r.id })}
                   aria-current={r.id === detail?.id ? "page" : undefined}
                   data-testid="request-row"
                   className={cn(
@@ -127,7 +147,7 @@ export default async function RequestsPage({
               request={{ ...detail, emailOn: emailConfigured() }}
               handlers={handlers}
               canHandle={can(actor, "inbox.reply")}
-              backHref={`/requests?tab=${tab}`}
+              backHref={keep({ tab })}
             />
           ) : null}
         </div>

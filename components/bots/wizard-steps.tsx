@@ -6,6 +6,7 @@ export const STEPS = [
   { key: "personality", label: "Personality" },
   { key: "knowledge", label: "Knowledge" },
   { key: "rules", label: "Rules" },
+  { key: "people", label: "People" },
   { key: "email", label: "Email" },
   { key: "test", label: "Test" },
   { key: "live", label: "Go live" },

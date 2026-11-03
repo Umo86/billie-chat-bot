@@ -81,6 +81,31 @@ export const bots = pgTable(
 );
 
 /**
+ * Who works on a bot. Admins work on every bot and need no row; editors
+ * manage their bots (settings, knowledge, Inbox, requests, emails, going
+ * live) and agents answer their bots' Inbox, requests and emails. Set by
+ * admins on the bot's People step; whoever makes a bot is on it.
+ */
+export const botMembers = pgTable(
+  "bot_members",
+  {
+    botId: uuid("bot_id")
+      .notNull()
+      .references(() => bots.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    addedBy: uuid("added_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.botId, t.userId] }),
+    index("bot_members_user_idx").on(t.userId),
+    index("bot_members_added_by_idx").on(t.addedBy),
+  ],
+);
+
+/**
  * The event's Outlook mailbox for a bot (one each). New emails get a draft
  * reply from the bot's knowledge, saved in the mailbox's Drafts, and a post
  * in the bot's Teams channel naming the person who manages the mailbox.

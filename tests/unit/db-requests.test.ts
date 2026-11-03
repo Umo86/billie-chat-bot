@@ -32,7 +32,7 @@ import { deletePerson, findPerson } from "@/lib/privacy/requests";
 import { runRetention } from "@/lib/privacy/retention";
 import type { RequestType } from "@/lib/types";
 import { appUrl } from "@/lib/config";
-import { hasDb, makeBot, makeUser } from "../helpers/db";
+import { hasDb, makeBot, makeUser, putOnBot } from "../helpers/db";
 import { DIRECT } from "../helpers/microsoft";
 
 const hours: RequestType = {
@@ -47,6 +47,7 @@ async function botWithRequests() {
   const admin = await makeUser("admin");
   const manager = await makeUser("agent");
   const { bot } = await makeBot();
+  await putOnBot(bot.id, manager.id);
   await db
     .update(bots)
     .set({ requestTypes: [hours] })
@@ -174,7 +175,7 @@ describe.skipIf(!hasDb)("requests from chat (Postgres, stand-in Claude)", () => 
       .select()
       .from(chatRequests)
       .where(eq(chatRequests.conversationId, conversation.id));
-    expect((await requestList("new")).map((r) => r.id)).toContain(req.id);
+    expect((await requestList("new", { ids: null })).map((r) => r.id)).toContain(req.id);
 
     process.env.RESEND_API_KEY = "re_test_not_real";
     process.env.EMAIL_FROM = "Billie <billie@media10.test>";
@@ -186,7 +187,7 @@ describe.skipIf(!hasDb)("requests from chat (Postgres, stand-in Claude)", () => 
     const row = await db.query.chatRequests.findFirst({ where: eq(chatRequests.id, req.id) });
     expect(row).toMatchObject({ status: "done", assignedTo: admin.id });
     expect(row?.closedAt).toBeInstanceOf(Date);
-    expect((await requestList("finished")).map((r) => r.id)).toContain(req.id);
+    expect((await requestList("finished", { ids: null })).map((r) => r.id)).toContain(req.id);
     const emails = await db
       .select()
       .from(jobs)
@@ -260,7 +261,7 @@ describe.skipIf(!hasDb)("requests from chat (Postgres, stand-in Claude)", () => 
       .select()
       .from(chatRequests)
       .where(eq(chatRequests.conversationId, conversation.id));
-    expect((await requestList("new")).find((r) => r.id === req.id)?.test).toBe(true);
+    expect((await requestList("new", { ids: null })).find((r) => r.id === req.id)?.test).toBe(true);
     expect((await requestDetail(req.id))?.test).toBe(true);
     await notifyRequest(req.id);
     expect(

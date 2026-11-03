@@ -1,5 +1,5 @@
 import "server-only";
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { emailThreads } from "@/lib/db/schema";
 import { writeAudit } from "@/lib/audit";
@@ -7,10 +7,11 @@ import { enqueue } from "@/lib/jobs/queue";
 import { kickJobs } from "@/lib/jobs/kick";
 import { UserError } from "@/lib/errors";
 import type { Actor } from "@/lib/authz";
+import { inView, type BotView } from "@/lib/auth/bots";
 
 /**
  * The Emails screen: pasted emails (and, when the mailbox is connected,
- * Outlook's), each with a draft reply from the knowledge base. A person
+ * Outlook's), each with a draft reply from the bot's knowledge. A person
  * checks every draft; Billie never sends an email by itself.
  */
 export type EmailTab = "check" | "done";
@@ -23,7 +24,8 @@ const TAB: Record<
   done: ["sent", "dismissed"],
 };
 
-export async function emailList(tab: EmailTab) {
+/** Emails of the actor's bots (an email with no bot shows only to people who see every bot). */
+export async function emailList(tab: EmailTab, view: BotView) {
   return db
     .select({
       id: emailThreads.id,
@@ -37,7 +39,7 @@ export async function emailList(tab: EmailTab) {
       receivedAt: emailThreads.receivedAt,
     })
     .from(emailThreads)
-    .where(inArray(emailThreads.status, TAB[tab]))
+    .where(and(inArray(emailThreads.status, TAB[tab]), inView(view, emailThreads.botId)))
     .orderBy(desc(emailThreads.receivedAt))
     .limit(200);
 }

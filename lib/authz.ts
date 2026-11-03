@@ -1,10 +1,13 @@
 /**
  * The only authorisation module (Hall Pass rule): every server action and
- * every non-public read asks `can(actor, action)` first. Pure; the
- * permission matrix is tested row by row in tests/unit/authz.test.ts.
+ * every non-public read asks `can(actor, action)` first, and anything that
+ * belongs to a bot also asks `canOnBot`. Pure; the permission matrix is
+ * tested row by row in tests/unit/authz.test.ts.
  *
- * Admin: everything. Editor: bots and knowledge, plus the Inbox and emails.
- * Agent: the Inbox and emails only.
+ * Admin: everything, on every bot. Editor: the bots they work on (settings,
+ * knowledge, going live), plus those bots' Inbox, requests and emails.
+ * Agent: the Inbox, requests and emails of the bots they work on. Admins
+ * choose who works on each bot; whoever makes a bot works on it.
  */
 export type Role = "admin" | "editor" | "agent";
 
@@ -59,6 +62,42 @@ export function can(actor: Actor | null | undefined, action: Action): boolean {
   return MATRIX[action].includes(actor.role);
 }
 
+/** Which bots someone works on: every bot, or the ones they're on (bot_members). */
+export type BotScope = { all: true } | { all: false; ids: ReadonlySet<string> };
+
+/** Roles that work on every bot without being put on it. */
+export const EVERY_BOT_ROLES: readonly Role[] = ["admin"];
+
+export function roleWorksOnEveryBot(role: Role): boolean {
+  return EVERY_BOT_ROLES.includes(role);
+}
+
+/** Admins work on every bot without being put on it. */
+export function worksOnEveryBot(actor: Actor): boolean {
+  return roleWorksOnEveryBot(actor.role);
+}
+
+export function botScopeOf(actor: Actor, memberOf: readonly string[]): BotScope {
+  return worksOnEveryBot(actor) ? { all: true } : { all: false, ids: new Set(memberOf) };
+}
+
+/** May the actor do this to something of this bot? (No bot: admins only.) */
+export function canOnBot(
+  actor: Actor | null | undefined,
+  action: Action,
+  scope: BotScope,
+  botId: string | null | undefined,
+): boolean {
+  if (!can(actor, action)) return false;
+  if (scope.all) return true;
+  return !!botId && scope.ids.has(botId);
+}
+
+/** The bots to show, for queries: null means every bot. */
+export function scopeIds(scope: BotScope): string[] | null {
+  return scope.all ? null : [...scope.ids];
+}
+
 export class ForbiddenError extends Error {
   constructor(public readonly action: Action) {
     super(`Not allowed: ${action}`);
@@ -78,7 +117,8 @@ export const ROLE_LABEL: Record<Role, string> = {
 };
 
 export const ROLE_HELP: Record<Role, string> = {
-  admin: "Everything, including the team, settings and connections.",
-  editor: "Builds bots and knowledge, and answers the Inbox and emails.",
-  agent: "Answers the Inbox and emails only.",
+  admin: "Everything, on every bot, including the team, settings and connections.",
+  editor:
+    "Builds and runs the bots they're on: knowledge, rules, going live, and their Inbox, requests and emails.",
+  agent: "Answers the Inbox, requests and emails of the bots they're on.",
 };

@@ -12,7 +12,7 @@ export default async function NewBotPage() {
     <>
       <PageHeader
         title="New bot"
-        lede="Seven short steps: how it looks, how it comes across, what it knows, when it passes to a person, its email, a test, then the code for your website."
+        lede="Eight short steps: how it looks, how it comes across, what it knows, when it passes to a person, who works on it, its email, a test, then the code for your website."
       />
       <WizardSteps current="look" />
       <LookForm />

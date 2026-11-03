@@ -15,17 +15,13 @@ import {
   suspendAction,
 } from "@/app/actions/settings";
 
-type Role = "admin" | "editor" | "agent";
-const ROLE_HELP: Record<Role, string> = {
-  admin: "Everything, including the team, settings and connections.",
-  editor: "Builds bots and knowledge, and answers the Inbox and emails.",
-  agent: "Answers the Inbox and emails only.",
-};
+import { ROLE_HELP, roleWorksOnEveryBot, type Role } from "@/lib/authz";
 
 export function Team({
   me,
   members,
   invitations,
+  bots,
 }: {
   me: string;
   members: {
@@ -35,15 +31,23 @@ export function Team({
     role: Role;
     status: "active" | "suspended";
     linked: boolean;
+    /** Works on every bot (admins). */
+    everyBot: boolean;
+    /** The bots they work on, by name. */
+    bots: string[];
   }[];
   invitations: { id: string; email: string; name: string; role: Role; expiresAt: string }[];
+  bots: { id: string; name: string }[];
 }) {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [role, setRole] = useState<Role>("agent");
+  const [botIds, setBotIds] = useState<string[]>([]);
   const [link, setLink] = useState<{ link: string; emailed: boolean } | null>(null);
   const invite = useRunner();
   const act = useRunner();
+  // Admins work on every bot; editors and agents only on the bots they're given.
+  const pickBots = !roleWorksOnEveryBot(role);
 
   return (
     <div className="flex flex-col gap-4">
@@ -53,12 +57,13 @@ export function Team({
           className="grid grid-cols-1 items-end gap-3 md:grid-cols-[1fr_1fr_160px_auto]"
           onSubmit={(e) => {
             e.preventDefault();
-            invite.run(() => inviteAction({ email, name, role }), {
+            invite.run(() => inviteAction({ email, name, role, botIds: pickBots ? botIds : [] }), {
               done: (d) => {
                 if (!d) return;
                 setLink(d);
                 setEmail("");
                 setName("");
+                setBotIds([]);
                 toast.success(
                   d.emailed ? "Invitation emailed." : "Invitation ready. Copy the link below.",
                 );
@@ -95,6 +100,36 @@ export function Team({
           </Button>
         </form>
         <p className="text-sm text-muted-foreground">{ROLE_HELP[role]}</p>
+        {pickBots && bots.length ? (
+          <fieldset className="flex flex-col gap-2">
+            <legend className="mb-1 text-[0.9rem] font-semibold">Bots they&apos;ll work on</legend>
+            <div className="flex flex-wrap gap-2">
+              {bots.map((b) => {
+                const on = botIds.includes(b.id);
+                return (
+                  <label
+                    key={b.id}
+                    className="flex cursor-pointer items-center gap-2 rounded-full border border-border px-3 py-1.5 text-sm has-[:checked]:border-primary has-[:checked]:bg-accent"
+                  >
+                    <input
+                      type="checkbox"
+                      className="size-4 accent-[var(--color-primary)]"
+                      checked={on}
+                      onChange={() =>
+                        setBotIds((l) => (on ? l.filter((x) => x !== b.id) : [...l, b.id]))
+                      }
+                    />
+                    {b.name}
+                  </label>
+                );
+              })}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              They see only these bots&apos; chats, requests and emails. You can change this on each
+              bot&apos;s People step.
+            </p>
+          </fieldset>
+        ) : null}
         {link ? (
           <Note tone="good">
             <p className="font-semibold">
@@ -133,6 +168,13 @@ export function Team({
                   ) : null}
                 </p>
                 <p className="break-all text-sm text-muted-foreground">{m.email}</p>
+                <p className="text-sm text-muted-foreground" data-testid="member-bots">
+                  {m.everyBot
+                    ? "Works on every bot"
+                    : m.bots.length
+                      ? `Works on ${m.bots.join(", ")}`
+                      : "Not on any bot yet: add them on a bot's People step"}
+                </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {m.status === "suspended" ? <Chip tone="bad">Suspended</Chip> : null}

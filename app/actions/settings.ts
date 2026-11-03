@@ -52,6 +52,8 @@ export async function inviteAction(input: unknown) {
     email: z.email("That email doesn't look right."),
     name: z.string().trim().max(80).default(""),
     role,
+    /** The bots they'll work on (editors and agents). */
+    botIds: z.array(z.uuid()).max(200).default([]),
   });
   return runAction("team.manage", schema, input, async (actor, d) => {
     const result = await createInvitation(actor, d);

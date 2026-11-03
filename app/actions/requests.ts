@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { runAction } from "@/lib/actions/run";
 import { updateRequest } from "@/lib/requests/service";
+import { assertOnBotOf } from "@/lib/auth/bots";
 
 /** Status, owner and the message to the person on a request from chat. */
 export async function updateRequestAction(input: unknown) {
@@ -20,6 +21,7 @@ export async function updateRequestAction(input: unknown) {
     schema,
     input,
     async (actor, d) => {
+      await assertOnBotOf(actor, "inbox.reply", "request", d.id);
       await updateRequest(
         actor,
         d.id,

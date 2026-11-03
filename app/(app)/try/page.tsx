@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Chip, EmptyState, PageHeader } from "@/components/ui/bits";
 import { BotAvatar } from "@/components/bots/bot-avatar";
 import { requireActor } from "@/lib/auth/actor";
+import { myBotIds } from "@/lib/auth/bots";
 import { botCards } from "@/lib/bots/queries";
 import { cn } from "@/lib/utils";
 
@@ -19,8 +20,9 @@ export default async function TryPage({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  await requireActor("bots.view");
-  const bots = await botCards();
+  const actor = await requireActor("bots.view");
+  // Only the bots this person works on.
+  const bots = await botCards(await myBotIds(actor));
   const { bot: wanted } = await searchParams;
   const bot = bots.find((b) => b.slug === wanted) ?? bots[0];
 

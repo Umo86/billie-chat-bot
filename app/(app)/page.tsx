@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Chip, EmptyState, Note, PageHeader, Panel } from "@/components/ui/bits";
 import { BotAvatar } from "@/components/bots/bot-avatar";
 import { requireActor } from "@/lib/auth/actor";
-import { can } from "@/lib/authz";
+import { can, worksOnEveryBot } from "@/lib/authz";
 import { botCards, homeCounters } from "@/lib/bots/queries";
+import { myBotIds } from "@/lib/auth/bots";
 import { timeAgo } from "@/lib/time";
 
 export const metadata: Metadata = { title: "Home" };
@@ -19,9 +20,10 @@ export default async function HomePage({
   const actor = await requireActor();
   const params = await searchParams;
   const canBots = can(actor, "bots.view");
+  const ids = await myBotIds(actor);
   const [counters, bots] = await Promise.all([
-    homeCounters(),
-    canBots ? botCards() : Promise.resolve([]),
+    homeCounters(ids),
+    canBots ? botCards(ids) : Promise.resolve([]),
   ]);
 
   const tiles = [
@@ -44,8 +46,10 @@ export default async function HomePage({
         title={canBots ? "Your bots" : `Hello, ${actor.name.split(" ")[0]}`}
         lede={
           canBots
-            ? "Each bot answers from its own knowledge. Open one to edit it, test it or put it live."
-            : "Chats and emails that need a person are waiting in the Inbox and Emails."
+            ? worksOnEveryBot(actor)
+              ? "Each bot answers from its own knowledge. Open one to edit it, test it or put it live."
+              : "The bots you work on. Each answers from its own knowledge. Open one to edit it, test it or put it live."
+            : "Chats, requests and emails for your bots that need a person are waiting in the Inbox, Requests and Emails."
         }
         actions={
           can(actor, "bots.edit") ? (
@@ -152,7 +156,7 @@ export default async function HomePage({
           </div>
         ) : (
           <EmptyState
-            title="No bots yet"
+            title={worksOnEveryBot(actor) ? "No bots yet" : "You're not on any bots yet"}
             action={
               can(actor, "bots.edit") ? (
                 <Button asChild variant="primary">
@@ -163,8 +167,9 @@ export default async function HomePage({
               ) : null
             }
           >
-            Create one for exhibitors and one for visitors. Each takes about 15 minutes once your
-            documents are ready.
+            {worksOnEveryBot(actor)
+              ? "Create one for exhibitors and one for visitors. Each takes about 15 minutes once your documents are ready."
+              : "An admin can put you on a bot, on its People step. Or create a new one: you work on the bots you create."}
           </EmptyState>
         )
       ) : null}

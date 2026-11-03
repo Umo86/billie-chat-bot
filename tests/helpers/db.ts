@@ -3,7 +3,14 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { agentPresence, botKnowledgeBases, bots, knowledgeBases, users } from "@/lib/db/schema";
+import {
+  agentPresence,
+  botKnowledgeBases,
+  botMembers,
+  bots,
+  knowledgeBases,
+  users,
+} from "@/lib/db/schema";
 import { defaultRules } from "@/lib/bots/defaults";
 import { addSource, type NewSource } from "@/lib/knowledge/sources";
 import { ingestSource } from "@/lib/knowledge/ingest";
@@ -42,6 +49,12 @@ export async function makeBot(
     .returning();
   await db.insert(botKnowledgeBases).values({ botId: bot.id, knowledgeBaseId: kb.id });
   return { bot, kb };
+}
+
+/** Puts people on a bot (as an admin would on its People step). */
+export async function putOnBot(botId: string, ...userIds: string[]) {
+  for (const userId of userIds)
+    await db.insert(botMembers).values({ botId, userId }).onConflictDoNothing();
 }
 
 /** Adds a source and reads it straight away (no queue), as the job would. */

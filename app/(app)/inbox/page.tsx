@@ -7,7 +7,8 @@ import { AutoRefresh } from "@/components/ui/auto-refresh";
 import { Availability } from "@/components/inbox/availability";
 import { ConversationView } from "@/components/inbox/conversation-view";
 import { requireActor } from "@/lib/auth/actor";
-import { can } from "@/lib/authz";
+import { botView, mayOnBot, myBots } from "@/lib/auth/bots";
+import { BotFilter } from "@/components/ui/bot-filter";
 import {
   conversationDetail,
   inboxCounts,
@@ -61,17 +62,29 @@ export default async function InboxPage({
   const sp = await searchParams;
   const tab: InboxTab = TABS.some((t) => t.key === sp.tab) ? (sp.tab as InboxTab) : "needs";
   await extendIfAvailable(actor.id);
-  const [rows, counts, mine, others] = await Promise.all([
-    inboxList(tab),
-    inboxCounts(),
+  const view = await botView(actor, sp.bot);
+  const [rows, counts, mine, others, bots] = await Promise.all([
+    inboxList(tab, view),
+    inboxCounts(view),
     isAvailable(actor.id),
     agentsAvailable(),
+    myBots(actor),
   ]);
   const picked = sp.c && /^[0-9a-f-]{36}$/i.test(sp.c) ? sp.c : null;
   const selectedId = picked ?? rows[0]?.id ?? null;
-  const detail = selectedId ? await conversationDetail(selectedId) : null;
+  const found = selectedId ? await conversationDetail(selectedId) : null;
+  // Only chats of the bots this person works on.
+  const detail =
+    found && (await mayOnBot(actor, "inbox.view", found.conversation.botId)) ? found : null;
   if (detail) await markRead(detail.conversation.id);
-  const canTeach = can(actor, "knowledge.edit");
+  const canTeach = detail
+    ? await mayOnBot(actor, "knowledge.edit", detail.conversation.botId)
+    : false;
+  const keep = (extra: Record<string, string> = {}) => {
+    const p = new URLSearchParams(extra);
+    if (view.only) p.set("bot", view.only);
+    return `/inbox?${p}`;
+  };
   // "Save an answer" goes into the knowledge of the bot that was asked.
   const kbs = detail && canTeach ? [await knowledgeBaseOf(detail.conversation.botId)] : [];
   const live = counts.needs + counts.live > 0;
@@ -81,13 +94,22 @@ export default async function InboxPage({
       <AutoRefresh active every={live || mine ? 4000 : 10000} />
       <PageHeader
         title="Inbox"
-        lede="Chats that need a person. Reply here and it reaches them in the chat, on WhatsApp, or by email if they've gone."
+        lede="Chats with your bots that need a person. Reply here and it reaches them in the chat, on WhatsApp, or by email if they've gone."
         actions={
-          <Availability
-            available={mine}
-            others={Math.max(0, others - (mine ? 1 : 0))}
-            teams={Boolean(await directLink())}
-          />
+          <div className="flex flex-wrap items-center gap-3">
+            <BotFilter
+              bots={bots}
+              current={view.only ?? null}
+              path="/inbox"
+              keep={{ tab }}
+              everyBot={view.ids === null}
+            />
+            <Availability
+              available={mine}
+              others={Math.max(0, others - (mine ? 1 : 0))}
+              teams={Boolean(await directLink())}
+            />
+          </div>
         }
       />
       <TabsNav
@@ -95,7 +117,7 @@ export default async function InboxPage({
         current={tab}
         tabs={TABS.map((t) => ({
           key: t.key,
-          href: `/inbox?tab=${t.key}`,
+          href: keep({ tab: t.key }),
           label:
             (t.key === "needs" || t.key === "live") && counts[t.key]
               ? `${t.label} (${counts[t.key]})`
@@ -124,7 +146,7 @@ export default async function InboxPage({
               return (
                 <li key={r.id}>
                   <Link
-                    href={`/inbox?tab=${tab}&c=${r.id}`}
+                    href={keep({ tab, c: r.id })}
                     aria-current={r.id === selectedId ? "page" : undefined}
                     data-testid="inbox-row"
                     className={cn(
@@ -193,7 +215,7 @@ export default async function InboxPage({
             <div className="flex min-w-0 flex-col gap-2">
               {picked ? (
                 <Link
-                  href={`/inbox?tab=${tab}`}
+                  href={keep({ tab })}
                   className="inline-flex items-center gap-1 text-sm font-semibold text-primary lg:hidden"
                 >
                   <ArrowLeft className="size-4" aria-hidden /> All chats

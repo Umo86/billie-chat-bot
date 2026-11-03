@@ -315,7 +315,8 @@ export async function handover(
   conversationId: string,
   reason: HandoverReason,
 ): Promise<Turn> {
-  const route = handoverRoute(await agentsAvailable());
+  // Only people who work on this bot can see its chats.
+  const route = handoverRoute(await agentsAvailable(new Date(), bot.id));
   const result = await db.transaction(async (tx) => {
     const c = await lock(tx, conversationId);
     let status = await move(tx, c, route === "live" ? "handover_live" : "handover_offline");

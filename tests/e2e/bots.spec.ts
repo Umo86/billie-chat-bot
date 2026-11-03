@@ -15,7 +15,7 @@ test("build a bot with its own knowledge, test it and put it live", async ({ pag
   // Step 1: look.
   await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Home" }).click();
   await page.getByRole("link", { name: "New bot" }).first().click();
-  await expect(page.getByText(/^Seven short steps/)).toBeVisible();
+  await expect(page.getByText(/^Eight short steps/)).toBeVisible();
   await page.getByLabel("Bot name").fill("Exhibitor Help");
   await page.getByLabel("Show name").fill("UK Construction Week 2027");
   await page.getByRole("button", { name: "Suggest a welcome message" }).click();
@@ -72,7 +72,23 @@ test("build a bot with its own knowledge, test it and put it live", async ({ pag
   await shot(page, "bot-rules");
   await page.getByRole("button", { name: "Save and continue" }).click();
 
-  // Step 5: the event's mailbox and Teams channel (Microsoft 365 isn't connected in tests).
+  // Step 5: people. Priya (an agent) works on this bot; admins are on every bot.
+  const people = page.getByTestId("people-step");
+  await expect(people.getByRole("heading", { name: "Who works on Exhibitor Help" })).toBeVisible();
+  await expect(people).toContainText("Always on it, as admins: Umit Bozdag.");
+  const priya = people.getByRole("checkbox", { name: "Priya Shah" });
+  await expect(priya).not.toBeChecked();
+  await priya.check();
+  await people.getByRole("button", { name: "Save people" }).click();
+  await expect(page.getByText("Saved.").first()).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByTestId("people-step").getByRole("checkbox", { name: "Priya Shah" }),
+  ).toBeChecked();
+  await shot(page, "bot-people");
+  await page.getByRole("link", { name: "Continue to Email" }).click();
+
+  // Step 6: the event's mailbox and Teams channel (Microsoft 365 isn't connected in tests).
   await expect(page.getByRole("heading", { name: "Event mailbox" })).toBeVisible();
   await expect(page.getByText(/Microsoft 365 isn't connected yet/)).toBeVisible();
   await page.getByLabel("Mailbox address").fill("UKCW-Exhibitors@media-ten.test");
@@ -103,7 +119,7 @@ test("build a bot with its own knowledge, test it and put it live", async ({ pag
   await expect(page.getByLabel("Teams Workflows link")).toBeVisible();
   await page.getByRole("link", { name: "Continue to Test" }).click();
 
-  // Step 6: test.
+  // Step 7: test.
   await expect(page.getByRole("heading", { name: "Try it" })).toBeVisible();
   await page.getByLabel("Question", { exact: true }).fill("When does build-up start?");
   await page.getByRole("button", { name: "Ask" }).click();
@@ -120,7 +136,7 @@ test("build a bot with its own knowledge, test it and put it live", async ({ pag
 
   await shot(page, "bot-test");
 
-  // Step 7: go live.
+  // Step 8: go live.
   await page.getByRole("button", { name: "Continue to Go live" }).click();
   await expect(page.locator("#embed-code")).toContainText('data-bot="exhibitor-help"');
   await page

@@ -34,6 +34,9 @@ Chatbots, live handover and an email assistant for Media10 shows.
 - **Knowledge check**: one button and Claude reads all of a bot's knowledge,
   listing contradictions, dates that have passed and contact details that
   don't match, with Edit next to each pasted text or typed answer involved.
+- **People on each bot**: admins choose who works on each bot. Editors run
+  their bots; agents answer their bots' Inbox, requests and emails. Each
+  person sees only their bots, with a filter for one bot's Inbox.
 - **Roles** (admin, editor, agent), an audit log, UK GDPR retention.
 
 ## How it's built

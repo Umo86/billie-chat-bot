@@ -3,6 +3,7 @@ import { asc, eq, inArray, sql } from "drizzle-orm";
 import { db, query } from "@/lib/db/client";
 import { bots, conversations, messages, users } from "@/lib/db/schema";
 import type { ContactDetails } from "@/lib/types";
+import { inView, type BotView } from "@/lib/auth/bots";
 import type { ConversationStatus } from "./status";
 
 /** The Inbox: chats that need a person, live chats, Billie's chats and finished ones. */
@@ -31,7 +32,8 @@ export type InboxRow = {
   handoverReason: string | null;
 };
 
-export async function inboxList(tab: InboxTab): Promise<InboxRow[]> {
+/** The chats of the actor's bots, for one tab of the Inbox. */
+export async function inboxList(tab: InboxTab, view: BotView): Promise<InboxRow[]> {
   const statuses = TAB_STATUSES[tab];
   const since = tab === "billie" ? "7 days" : tab === "done" ? "30 days" : "365 days";
   const rows = await query<{
@@ -59,6 +61,7 @@ export async function inboxList(tab: InboxTab): Promise<InboxRow[]> {
         LEFT JOIN users u ON u.id = c.assigned_to
         WHERE c.status = ANY(${sql.raw(`ARRAY[${statuses.map((s) => `'${s}'`).join(",")}]::conversation_status[]`)})
           AND c.last_message_at > now() - ${sql.raw(`interval '${since}'`)}
+          AND ${inView(view, sql`c.bot_id`)}
         ORDER BY ${tab === "needs" ? sql`c.status = 'waiting' DESC, c.last_message_at ASC` : sql`c.last_message_at DESC`}
         LIMIT 200`,
   );
@@ -79,11 +82,12 @@ export async function inboxList(tab: InboxTab): Promise<InboxRow[]> {
   }));
 }
 
-export async function inboxCounts(): Promise<Record<InboxTab, number>> {
+export async function inboxCounts(view: BotView): Promise<Record<InboxTab, number>> {
   const rows = await query<{ status: ConversationStatus; n: number }>(
     db,
     sql`SELECT status, count(*)::int AS n FROM conversations
-        WHERE status IN ('waiting','ticket','live','collecting') GROUP BY status`,
+        WHERE status IN ('waiting','ticket','live','collecting') AND ${inView(view, sql`bot_id`)}
+        GROUP BY status`,
   );
   const n = (s: ConversationStatus) => rows.find((r) => r.status === s)?.n ?? 0;
   return {

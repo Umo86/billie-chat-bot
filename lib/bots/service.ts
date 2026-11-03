@@ -10,6 +10,7 @@ import type { BotRules, RequestType, TestQuestion, TestResult, TestRun } from "@
 import { UserError } from "@/lib/errors";
 import { createBotKnowledgeBase, renameBotKnowledgeBase } from "@/lib/knowledge/bases";
 import { answerBotFor, botById } from "./load";
+import { addToBot } from "./people";
 import { defaultQuality, defaultRules } from "./defaults";
 import { uniqueSlug } from "./slug";
 
@@ -57,6 +58,8 @@ export async function createBot(actor: Actor, look: BotLook): Promise<string> {
       })
       .returning({ id: bots.id, name: bots.name });
     await createBotKnowledgeBase(tx, bot, actor.id);
+    // Whoever makes a bot works on it.
+    await addToBot(tx, bot.id, actor.id, actor.id);
     await writeAudit(tx, {
       actorUserId: actor.id,
       entityType: "bot",

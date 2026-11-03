@@ -10,6 +10,7 @@ import { DeleteOldKb } from "@/components/knowledge/kb-dialog";
 import { ReplaceDialog } from "@/components/knowledge/replace-dialog";
 import { KnowledgeWorkspace } from "@/components/knowledge/workspace";
 import { requireActor } from "@/lib/auth/actor";
+import { mayOnBot, myBotIds } from "@/lib/auth/bots";
 import { can } from "@/lib/authz";
 import { ensureBotKnowledgeBases } from "@/lib/knowledge/bases";
 import { knowledgeBaseList, openGaps } from "@/lib/knowledge/queries";
@@ -25,11 +26,11 @@ export default async function KnowledgePage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const actor = await requireActor("knowledge.view");
-  const canEdit = can(actor, "knowledge.edit");
   const params = await searchParams;
   const tab = params.tab === "gaps" ? "gaps" : "bases";
   await ensureBotKnowledgeBases();
-  const [kbs, gaps] = await Promise.all([knowledgeBaseList(), openGaps()]);
+  const ids = await myBotIds(actor);
+  const [kbs, gaps] = await Promise.all([knowledgeBaseList(ids), openGaps(ids)]);
   const selected =
     kbs.find((k) => k.id === params.kb) ??
     kbs.find((k) => k.bot && k.bot.id === params.bot) ??
@@ -37,6 +38,10 @@ export default async function KnowledgePage({
     null;
   const owned = kbs.filter((k) => k.bot);
   const old = kbs.filter((k) => !k.bot);
+  // Editing goes by the bot: an old shared base (no bot) is for admins only.
+  const canEdit = selected
+    ? await mayOnBot(actor, "knowledge.edit", selected.bot?.id ?? null)
+    : can(actor, "knowledge.edit");
 
   return (
     <>
@@ -58,10 +63,10 @@ export default async function KnowledgePage({
       />
 
       {tab === "gaps" ? (
-        <GapList gaps={gaps} canEdit={canEdit} />
+        <GapList gaps={gaps} canEdit={can(actor, "knowledge.edit")} />
       ) : !selected ? (
         <EmptyState
-          title="No bots yet"
+          title={ids === null ? "No bots yet" : "You're not on any bots yet"}
           action={
             can(actor, "bots.edit") ? (
               <Button asChild variant="primary">
@@ -72,8 +77,9 @@ export default async function KnowledgePage({
             ) : null
           }
         >
-          Each bot has its own knowledge. Create a bot, then add the exhibitor manual, price lists
-          and the show&apos;s FAQ to it.
+          {ids === null
+            ? "Each bot has its own knowledge. Create a bot, then add the exhibitor manual, price lists and the show's FAQ to it."
+            : "You see the knowledge of the bots you work on. An admin can put you on a bot, or you can create one."}
         </EmptyState>
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">

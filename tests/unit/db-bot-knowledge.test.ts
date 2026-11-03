@@ -134,7 +134,7 @@ describe.skipIf(!hasDb)("each bot has its own knowledge (Postgres)", () => {
     await db.update(bots).set({ deletedAt: new Date() }).where(eq(bots.id, binned.bot.id));
     const [old] = await db.insert(knowledgeBases).values({ name: "Aardvark FAQ" }).returning();
 
-    const list = await knowledgeBaseList();
+    const list = await knowledgeBaseList(null);
     const at = (id: string) => list.findIndex((k) => k.id === id);
     expect(at(alpha.kb.id)).toBeLessThan(at(zulu.kb.id));
     expect(at(binned.kb.id)).toBe(-1);

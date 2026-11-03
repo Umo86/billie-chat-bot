@@ -10,6 +10,8 @@ test("invite an editor from Settings; they join with the link", async ({ page, b
   await page.getByLabel("Work email").fill("jo.editor@media10.test");
   await page.getByLabel("Name", { exact: true }).fill("Jo Editor");
   await page.getByLabel("Role", { exact: true }).selectOption("editor");
+  // Jo works on one of the two bots.
+  await page.getByRole("checkbox", { name: "Exhibitor Help" }).check();
   await page.getByRole("button", { name: "Invite" }).click();
   const link = (await page.locator("#invite-link").textContent())?.trim() ?? "";
   expect(link).toMatch(/\/invite\/[A-Za-z0-9_-]{20,}$/);
@@ -23,6 +25,12 @@ test("invite an editor from Settings; they join with the link", async ({ page, b
   await p.getByLabel("Type it again").fill("editor-password-42");
   await p.getByRole("button", { name: "Save password and sign in" }).click();
   await expect(p.getByRole("heading", { name: "Your bots" })).toBeVisible();
+  // Only the bot Jo works on, and only its knowledge.
+  await expect(p.getByTestId("bot-card")).toHaveCount(1);
+  await expect(p.getByTestId("bot-card")).toContainText("Exhibitor Help");
+  await p.goto("/knowledge");
+  await expect(p.getByRole("navigation", { name: "Bots" }).getByRole("link")).toHaveCount(1);
+  await expect(p.getByRole("heading", { name: "Exhibitor Help" })).toBeVisible();
   // Editors build bots but don't manage settings.
   await p.goto("/settings");
   await expect(p).toHaveURL(/\/\?denied=1$/);
@@ -30,7 +38,9 @@ test("invite an editor from Settings; they join with the link", async ({ page, b
   await jo.close();
 
   await page.reload();
-  await expect(page.getByTestId("member-row").filter({ hasText: "Jo Editor" })).toBeVisible();
+  const joRow = page.getByTestId("member-row").filter({ hasText: "Jo Editor" });
+  await expect(joRow).toBeVisible();
+  await expect(joRow.getByTestId("member-bots")).toHaveText("Works on Exhibitor Help");
   // Suspend Jo: the next request is refused.
   await page
     .getByTestId("member-row")

@@ -18,7 +18,7 @@ import { deleteBot } from "@/lib/bots/service";
 import { notifyHandover } from "@/lib/alerts/notify";
 import { startConversation } from "@/lib/conversations/service";
 import { deletePerson } from "@/lib/privacy/requests";
-import { addAndRead, hasDb, makeBot, makeUser } from "../helpers/db";
+import { addAndRead, hasDb, makeBot, makeUser, putOnBot } from "../helpers/db";
 import { fakeMicrosoft, message, TEAMS } from "../helpers/microsoft";
 
 const uid = () => randomUUID().slice(0, 8);
@@ -69,6 +69,7 @@ describe.skipIf(!hasDb)("event mailboxes and Teams (Postgres, stand-in Microsoft
     const manager = await makeUser("agent");
     const { bot } = await makeBot();
     const { bot: other } = await makeBot();
+    await putOnBot(bot.id, manager.id);
     const address = `ukcw-${uid()}@media-ten.test`;
 
     await saveMailbox(admin, bot.id, {
@@ -141,6 +142,7 @@ describe.skipIf(!hasDb)("event mailboxes and Teams (Postgres, stand-in Microsoft
       .set({ emailSignOff: "Best wishes,\nThe UKCW team" })
       .where(eq(bots.id, bot.id));
     const address = `ukcw-${uid()}@media-ten.test`;
+    await putOnBot(bot.id, manager.id);
     await saveMailbox(admin, bot.id, { address, assignedUserId: manager.id, enabled: true });
     await setTeamsLink(admin, bot.id, TEAMS);
     await startedReading(address);

@@ -1,11 +1,12 @@
 import "server-only";
 import { sql } from "drizzle-orm";
 import { db, query } from "@/lib/db/client";
+import { inBots } from "@/lib/auth/bots";
 
 /**
  * Reports: what people ask, how much Billie answers alone, when it's busy.
  * Staff test chats (channel "try") are left out so they don't skew numbers.
- * Hours are UK time.
+ * Hours are UK time. Each takes the bots to count (null: every bot).
  */
 export type Kpis = {
   chats: number;
@@ -16,7 +17,7 @@ export type Kpis = {
   helpfulPct: number | null;
 };
 
-export async function kpis(since: Date): Promise<Kpis> {
+export async function kpis(since: Date, ids: string[] | null = null): Promise<Kpis> {
   const [row] = await query<{
     chats: number;
     handed: number;
@@ -27,14 +28,14 @@ export async function kpis(since: Date): Promise<Kpis> {
   }>(
     db,
     sql`SELECT
-      (SELECT count(*)::int FROM conversations WHERE channel <> 'try' AND created_at >= ${since.toISOString()}) AS chats,
-      (SELECT count(*)::int FROM conversations WHERE channel <> 'try' AND created_at >= ${since.toISOString()} AND handover_at IS NOT NULL) AS handed,
-      (SELECT count(*)::int FROM email_threads WHERE created_at >= ${since.toISOString()} AND status IN ('draft_ready', 'sent')) AS emails,
-      (SELECT count(*)::int FROM gaps WHERE status = 'open') AS gaps,
+      (SELECT count(*)::int FROM conversations WHERE channel <> 'try' AND created_at >= ${since.toISOString()} AND ${inBots(ids, sql`bot_id`)}) AS chats,
+      (SELECT count(*)::int FROM conversations WHERE channel <> 'try' AND created_at >= ${since.toISOString()} AND handover_at IS NOT NULL AND ${inBots(ids, sql`bot_id`)}) AS handed,
+      (SELECT count(*)::int FROM email_threads WHERE created_at >= ${since.toISOString()} AND status IN ('draft_ready', 'sent') AND ${inBots(ids, sql`bot_id`)}) AS emails,
+      (SELECT count(*)::int FROM gaps WHERE status = 'open' AND ${inBots(ids, sql`bot_id`)}) AS gaps,
       (SELECT count(*)::int FROM messages m JOIN conversations c ON c.id = m.conversation_id
-         WHERE c.channel <> 'try' AND m.rating = 1 AND m.created_at >= ${since.toISOString()}) AS up,
+         WHERE c.channel <> 'try' AND m.rating = 1 AND m.created_at >= ${since.toISOString()} AND ${inBots(ids, sql`c.bot_id`)}) AS up,
       (SELECT count(*)::int FROM messages m JOIN conversations c ON c.id = m.conversation_id
-         WHERE c.channel <> 'try' AND m.rating = -1 AND m.created_at >= ${since.toISOString()}) AS down`,
+         WHERE c.channel <> 'try' AND m.rating = -1 AND m.created_at >= ${since.toISOString()} AND ${inBots(ids, sql`c.bot_id`)}) AS down`,
   );
   return {
     chats: row.chats,
@@ -46,12 +47,13 @@ export async function kpis(since: Date): Promise<Kpis> {
   };
 }
 
-export async function topQuestions(since: Date, limit = 10) {
+export async function topQuestions(since: Date, limit = 10, ids: string[] | null = null) {
   return query<{ question: string; times: number }>(
     db,
     sql`SELECT min(first_question) AS question, count(*)::int AS times
         FROM conversations
         WHERE channel <> 'try' AND first_question <> '' AND created_at >= ${since.toISOString()}
+          AND ${inBots(ids, sql`bot_id`)}
         GROUP BY lower(regexp_replace(first_question, '[^a-zA-Z0-9 ]+', '', 'g'))
         ORDER BY times DESC, question
         LIMIT ${limit}`,
@@ -59,11 +61,12 @@ export async function topQuestions(since: Date, limit = 10) {
 }
 
 /** Chats started per hour of the day (0–23, UK time). */
-export async function busiestHours(since: Date): Promise<number[]> {
+export async function busiestHours(since: Date, ids: string[] | null = null): Promise<number[]> {
   const rows = await query<{ hour: number; n: number }>(
     db,
     sql`SELECT extract(hour FROM created_at AT TIME ZONE 'Europe/London')::int AS hour, count(*)::int AS n
         FROM conversations WHERE channel <> 'try' AND created_at >= ${since.toISOString()}
+          AND ${inBots(ids, sql`bot_id`)}
         GROUP BY 1`,
   );
   const out = new Array<number>(24).fill(0);
@@ -71,7 +74,7 @@ export async function busiestHours(since: Date): Promise<number[]> {
   return out;
 }
 
-export async function perBot(since: Date) {
+export async function perBot(since: Date, ids: string[] | null = null) {
   return query<{
     id: string;
     name: string;
@@ -88,7 +91,7 @@ export async function perBot(since: Date) {
           (SELECT count(*)::int FROM conversations c WHERE c.bot_id = b.id AND c.channel <> 'try' AND c.created_at >= ${since.toISOString()} AND c.handover_at IS NOT NULL) AS handed,
           (SELECT count(*)::int FROM gaps g WHERE g.bot_id = b.id AND g.status = 'open') AS open_gaps,
           b.last_test_run AS last_test
-        FROM bots b WHERE b.deleted_at IS NULL ORDER BY b.name`,
+        FROM bots b WHERE b.deleted_at IS NULL AND ${inBots(ids, sql`b.id`)} ORDER BY b.name`,
   );
 }
 

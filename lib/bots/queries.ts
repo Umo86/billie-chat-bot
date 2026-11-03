@@ -1,6 +1,7 @@
 import "server-only";
 import { sql } from "drizzle-orm";
 import { db, query } from "@/lib/db/client";
+import { inBots } from "@/lib/auth/bots";
 import type { TestRun } from "@/lib/types";
 
 export type BotCardData = {
@@ -18,8 +19,8 @@ export type BotCardData = {
   lastTestRun: TestRun | null;
 };
 
-/** Every bot with its week's numbers, for Home. */
-export async function botCards(): Promise<BotCardData[]> {
+/** The actor's bots (ids from myBotIds; null is every bot) with their week's numbers, for Home. */
+export async function botCards(ids: string[] | null): Promise<BotCardData[]> {
   const rows = await query<{
     id: string;
     name: string;
@@ -42,7 +43,7 @@ export async function botCards(): Promise<BotCardData[]> {
              JOIN sources s ON s.id = p.source_id
              JOIN knowledge_bases kb ON kb.id = p.knowledge_base_id
             WHERE kb.bot_id = b.id AND s.deleted_at IS NULL AND s.status = 'ready' AND kb.deleted_at IS NULL) AS passages
-        FROM bots b WHERE b.deleted_at IS NULL
+        FROM bots b WHERE b.deleted_at IS NULL AND ${inBots(ids, sql`b.id`)}
         ORDER BY b.created_at`,
   );
   return rows.map((r) => ({
@@ -61,13 +62,14 @@ export async function botCards(): Promise<BotCardData[]> {
   }));
 }
 
-export async function homeCounters() {
+/** What's waiting on the actor's bots (null is every bot). */
+export async function homeCounters(ids: string[] | null) {
   const [row] = await query<{ waiting: number; emails: number; gaps: number }>(
     db,
     sql`SELECT
-      (SELECT count(*)::int FROM conversations WHERE status IN ('waiting', 'ticket')) AS waiting,
-      (SELECT count(*)::int FROM email_threads WHERE status IN ('draft_ready', 'needs_you', 'failed')) AS emails,
-      (SELECT count(*)::int FROM gaps WHERE status = 'open') AS gaps`,
+      (SELECT count(*)::int FROM conversations WHERE status IN ('waiting', 'ticket') AND ${inBots(ids, sql`bot_id`)}) AS waiting,
+      (SELECT count(*)::int FROM email_threads WHERE status IN ('draft_ready', 'needs_you', 'failed') AND ${inBots(ids, sql`bot_id`)}) AS emails,
+      (SELECT count(*)::int FROM gaps WHERE status = 'open' AND ${inBots(ids, sql`bot_id`)}) AS gaps`,
   );
   return row;
 }

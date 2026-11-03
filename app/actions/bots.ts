@@ -16,6 +16,8 @@ import {
 import { CONTACT_FIELDS, PERSONALITY_MAX, SIGN_OFF_MAX } from "@/lib/bots/defaults";
 import { validTime } from "@/lib/conversations/hours";
 import { UserError } from "@/lib/errors";
+import { assertOnBot } from "@/lib/auth/bots";
+import { setBotPeople } from "@/lib/bots/people";
 import { MAX_REQUEST_FIELDS, MAX_REQUEST_TYPES } from "@/lib/requests/rules";
 
 const AVATAR = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
@@ -124,6 +126,7 @@ export async function updateBotAction(input: unknown) {
     patch,
     input,
     async (actor, data) => {
+      await assertOnBot(actor, "bots.edit", data.id);
       await updateBot(actor, data.id, {
         ...(data.look ?? {}),
         ...(data.tone ? { tone: data.tone } : {}),
@@ -148,6 +151,7 @@ export async function setBotStatusAction(input: unknown) {
     z.object({ id: z.uuid(), status: z.enum(["draft", "live"]) }),
     input,
     async (actor, d) => {
+      await assertOnBot(actor, "bots.publish", d.id);
       await setStatus(actor, d.id, d.status);
       refresh(d.id);
     },
@@ -156,6 +160,7 @@ export async function setBotStatusAction(input: unknown) {
 
 export async function deleteBotAction(input: unknown) {
   return runAction("bots.delete", z.object({ id: z.uuid() }), input, async (actor, d) => {
+    await assertOnBot(actor, "bots.delete", d.id);
     await deleteBot(actor, d.id);
     refresh();
   });
@@ -163,6 +168,7 @@ export async function deleteBotAction(input: unknown) {
 
 export async function restoreBotAction(input: unknown) {
   return runAction("bots.delete", z.object({ id: z.uuid() }), input, async (actor, d) => {
+    await assertOnBot(actor, "bots.delete", d.id);
     await restoreBot(actor, d.id);
     refresh();
   });
@@ -170,6 +176,7 @@ export async function restoreBotAction(input: unknown) {
 
 export async function runTestsAction(input: unknown) {
   return runAction("bots.edit", z.object({ id: z.uuid() }), input, async (actor, d) => {
+    await assertOnBot(actor, "bots.edit", d.id);
     const run = await runTests(actor, d.id);
     refresh(d.id);
     return run;
@@ -185,7 +192,8 @@ export async function testAskAction(input: unknown) {
       .array(z.object({ role: z.enum(["visitor", "bot"]), text: z.string().max(4000) }))
       .max(20),
   });
-  return runAction("bots.view", schema, input, async (_actor, d) => {
+  return runAction("bots.view", schema, input, async (actor, d) => {
+    await assertOnBot(actor, "bots.view", d.id);
     const bot = await botById(d.id);
     if (!bot) throw new UserError("That bot no longer exists.");
     const a = await answerQuestion({
@@ -200,4 +208,19 @@ export async function testAskAction(input: unknown) {
       request: bot.requestTypes.find((t) => t.id === a.request)?.name ?? null,
     };
   });
+}
+
+/** Who works on a bot (admins only; admins work on every bot). */
+export async function setBotPeopleAction(input: unknown) {
+  return runAction(
+    "team.manage",
+    z.object({ botId: z.uuid(), userIds: z.array(z.uuid()).max(500) }),
+    input,
+    async (actor, d) => {
+      await setBotPeople(actor, d.botId, d.userIds);
+      refresh(d.botId);
+      revalidatePath("/settings");
+    },
+    "Saved.",
+  );
 }

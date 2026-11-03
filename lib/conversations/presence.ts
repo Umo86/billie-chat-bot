@@ -1,4 +1,5 @@
 import "server-only";
+import { worksOnBotSql } from "@/lib/auth/bots";
 import { and, eq, gt, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { agentPresence, users } from "@/lib/db/schema";
@@ -38,12 +39,21 @@ export async function isAvailable(userId: string, now = new Date()): Promise<boo
   return Boolean(row?.availableUntil && row.availableUntil > now);
 }
 
-/** Active team members marked available right now. */
-export async function agentsAvailable(now = new Date()): Promise<number> {
+/**
+ * Active team members marked available right now; with a bot, only those
+ * who work on it (nobody else can see its chats).
+ */
+export async function agentsAvailable(now = new Date(), botId?: string): Promise<number> {
   const rows = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(agentPresence)
     .innerJoin(users, eq(users.id, agentPresence.userId))
-    .where(and(gt(agentPresence.availableUntil, now), eq(users.status, "active")));
+    .where(
+      and(
+        gt(agentPresence.availableUntil, now),
+        eq(users.status, "active"),
+        botId ? worksOnBotSql(botId) : undefined,
+      ),
+    );
   return rows[0]?.n ?? 0;
 }

@@ -1,6 +1,7 @@
 import "server-only";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, query } from "@/lib/db/client";
+import { inBots } from "@/lib/auth/bots";
 import { passages, sources } from "@/lib/db/schema";
 import type { FreshStatus } from "./learning";
 
@@ -22,8 +23,11 @@ export type KbSummary = {
   bot: KbBot | null;
 };
 
-/** Each bot's knowledge, by bot name, then any old shared bases no bot uses. */
-export async function knowledgeBaseList(): Promise<KbSummary[]> {
+/**
+ * The knowledge of the actor's bots (null: every bot), by bot name, then any
+ * old shared bases no bot uses (only for people who see every bot).
+ */
+export async function knowledgeBaseList(ids: string[] | null): Promise<KbSummary[]> {
   const rows = await query<{
     id: string;
     name: string;
@@ -40,6 +44,7 @@ export async function knowledgeBaseList(): Promise<KbSummary[]> {
           (SELECT coalesce(sum(s.passage_count), 0)::int FROM sources s WHERE s.knowledge_base_id = kb.id AND s.deleted_at IS NULL AND s.status = 'ready') AS passages
         FROM knowledge_bases kb LEFT JOIN bots b ON b.id = kb.bot_id
         WHERE kb.deleted_at IS NULL AND (kb.bot_id IS NULL OR b.deleted_at IS NULL)
+          AND ${inBots(ids, sql`kb.bot_id`)}
         ORDER BY kb.bot_id IS NULL, lower(coalesce(b.name, kb.name)), kb.created_at`,
   );
   return rows.map((r) => ({
@@ -149,7 +154,8 @@ export type GapRow = {
   lastAskedAt: string;
 };
 
-export async function openGaps(): Promise<GapRow[]> {
+/** Questions the actor's bots (null: every bot) couldn't answer. */
+export async function openGaps(ids: string[] | null): Promise<GapRow[]> {
   const rows = await query<{
     id: string;
     bot_id: string;
@@ -161,7 +167,7 @@ export async function openGaps(): Promise<GapRow[]> {
     db,
     sql`SELECT g.id, g.bot_id, b.name AS bot_name, g.question, g.ask_count, g.last_asked_at
         FROM gaps g JOIN bots b ON b.id = g.bot_id
-        WHERE g.status = 'open' AND b.deleted_at IS NULL
+        WHERE g.status = 'open' AND b.deleted_at IS NULL AND ${inBots(ids, sql`g.bot_id`)}
         ORDER BY g.ask_count DESC, g.last_asked_at DESC
         LIMIT 300`,
   );

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { PageHeader, Panel } from "@/components/ui/bits";
 import { TabsNav } from "@/components/ui/tabs-nav";
 import { requireActor } from "@/lib/auth/actor";
+import { myBotIds } from "@/lib/auth/bots";
 import { busiestHours, kpis, perBot, topQuestions, usageSince } from "@/lib/reports/queries";
 import { daysAgo } from "@/lib/time";
 
@@ -16,16 +17,18 @@ export default async function ReportsPage({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  await requireActor("reports.view");
+  const actor = await requireActor("reports.view");
   const sp = await searchParams;
   const days = PERIODS.find((p) => String(p) === sp.days) ?? 30;
   const since = daysAgo(days);
+  // The bots this person works on; Claude's cost is company-wide, for those who see every bot.
+  const ids = await myBotIds(actor);
   const [k, top, hours, bots, usage] = await Promise.all([
-    kpis(since),
-    topQuestions(since, 10),
-    busiestHours(since),
-    perBot(since),
-    usageSince(since),
+    kpis(since, ids),
+    topQuestions(since, 10, ids),
+    busiestHours(since, ids),
+    perBot(since, ids),
+    ids === null ? usageSince(since) : Promise.resolve(null),
   ]);
   const peak = Math.max(1, ...hours);
   const tiles = [
@@ -206,11 +209,15 @@ export default async function ReportsPage({
         </table>
       </Panel>
 
-      <p className="text-sm text-muted-foreground">
-        Claude use in this period: {fmt.format(usage.requests)} requests,{" "}
-        {fmt.format(usage.input + usage.output)} tokens
-        {usage.cached ? ` (${fmt.format(usage.cached)} served from cache)` : ""}.
-      </p>
+      {usage ? (
+        <p className="text-sm text-muted-foreground">
+          Claude use in this period: {fmt.format(usage.requests)} requests,{" "}
+          {fmt.format(usage.input + usage.output)} tokens
+          {usage.cached ? ` (${fmt.format(usage.cached)} served from cache)` : ""}.
+        </p>
+      ) : (
+        <p className="text-sm text-muted-foreground">These numbers cover the bots you work on.</p>
+      )}
     </>
   );
 }

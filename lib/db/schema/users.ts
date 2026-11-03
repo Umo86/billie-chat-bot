@@ -1,4 +1,5 @@
 import {
+  jsonb,
   index,
   integer,
   pgTable,
@@ -51,6 +52,8 @@ export const invitations = pgTable(
     email: text("email").notNull(),
     fullName: text("full_name").notNull(),
     role: role("role").notNull(),
+    /** Bots they'll work on once they join (editors and agents; admins work on all). */
+    botIds: jsonb("bot_ids").$type<string[]>().notNull().default([]),
     tokenHash: text("token_hash").notNull(),
     invitedBy: uuid("invited_by").references(() => users.id, { onDelete: "set null" }),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),

@@ -10,6 +10,7 @@ import { UserError } from "@/lib/errors";
 import { postToTeams } from "@/lib/channels/teams";
 import { adaptiveMessage, plainLine } from "@/lib/alerts/card";
 import { cardOf, eventManager, queueDirect } from "@/lib/alerts/direct";
+import { inView, worksOnBotSql, type BotView } from "@/lib/auth/bots";
 import { sendEmail } from "@/lib/email/send";
 import type { Actor } from "@/lib/authz";
 import type { ContactDetails, RequestAnswer, RequestStatus } from "@/lib/types";
@@ -48,16 +49,17 @@ const TAB_STATUS: Record<RequestTab, RequestStatus[]> = {
   finished: ["done", "declined"],
 };
 
-export async function requestCounts(): Promise<Record<RequestTab, number>> {
+export async function requestCounts(view: BotView): Promise<Record<RequestTab, number>> {
   const rows = await db
     .select({ status: chatRequests.status, n: sql<number>`count(*)::int` })
     .from(chatRequests)
+    .where(inView(view, chatRequests.botId))
     .groupBy(chatRequests.status);
   const n = (s: RequestStatus) => rows.find((r) => r.status === s)?.n ?? 0;
   return { new: n("new"), in_progress: n("in_progress"), finished: n("done") + n("declined") };
 }
 
-export async function requestList(tab: RequestTab): Promise<RequestRow[]> {
+export async function requestList(tab: RequestTab, view: BotView): Promise<RequestRow[]> {
   const rows = await db
     .select({
       id: chatRequests.id,
@@ -75,7 +77,7 @@ export async function requestList(tab: RequestTab): Promise<RequestRow[]> {
     .innerJoin(bots, eq(bots.id, chatRequests.botId))
     .leftJoin(users, eq(users.id, chatRequests.assignedTo))
     .leftJoin(conversations, eq(conversations.id, chatRequests.conversationId))
-    .where(inArray(chatRequests.status, TAB_STATUS[tab]))
+    .where(and(inArray(chatRequests.status, TAB_STATUS[tab]), inView(view, chatRequests.botId)))
     // Waiting work oldest first; finished work newest first.
     .orderBy(tab === "finished" ? desc(chatRequests.updatedAt) : asc(chatRequests.createdAt))
     .limit(200);
@@ -100,6 +102,7 @@ export type RequestDetail = {
   answers: RequestAnswer[];
   contact: ContactDetails;
   note: string;
+  botId: string;
   botName: string;
   showName: string;
   conversationId: string | null;
@@ -146,6 +149,7 @@ export async function requestDetail(id: string): Promise<RequestDetail | null> {
     answers: (r.req.answers as RequestAnswer[]).map((a) => ({ ...a, value: showValue(a.value) })),
     contact: r.req.contact as ContactDetails,
     note: r.req.note,
+    botId: r.req.botId,
     botName: r.botName,
     showName: r.showName,
     conversationId: r.req.conversationId,
@@ -163,11 +167,12 @@ export async function requestDetail(id: string): Promise<RequestDetail | null> {
 }
 
 /** The people who can be given a request: everyone active on the team. */
-export async function requestHandlers(): Promise<{ id: string; name: string }[]> {
+/** Who can be given a request: active people who work on its bot. */
+export async function requestHandlers(botId: string): Promise<{ id: string; name: string }[]> {
   const rows = await db
     .select({ id: users.id, name: users.fullName, email: users.email })
     .from(users)
-    .where(eq(users.status, "active"))
+    .where(and(eq(users.status, "active"), worksOnBotSql(botId)))
     .orderBy(asc(users.fullName));
   return rows.map((u) => ({ id: u.id, name: u.name ? `${u.name} (${u.email})` : u.email }));
 }
@@ -204,10 +209,17 @@ export async function updateRequest(
       let name = "nobody";
       if (patch.assignedTo) {
         const u = await tx.query.users.findFirst({
-          where: and(eq(users.id, patch.assignedTo), eq(users.status, "active")),
+          where: and(
+            eq(users.id, patch.assignedTo),
+            eq(users.status, "active"),
+            worksOnBotSql(r.botId),
+          ),
           columns: { fullName: true, email: true },
         });
-        if (!u) throw new UserError("That person can't take requests. Pick someone else.");
+        if (!u)
+          throw new UserError(
+            "That person can't take this request: they don't work on this bot. Pick someone else.",
+          );
         name = u.fullName || u.email;
       }
       changes.assignedTo = patch.assignedTo;
@@ -348,9 +360,10 @@ export async function notifyRequest(requestId: string): Promise<void> {
     first: answers[0] ? { ...answers[0], value: showValue(answers[0].value) } : null,
     link: `${appUrl()}/requests?r=${r.id}`,
   });
+  // Whoever handles it, if they still work on the bot; else whoever manages the event mailbox.
   const assignee = r.assignedTo
     ? await db.query.users.findFirst({
-        where: and(eq(users.id, r.assignedTo), eq(users.status, "active")),
+        where: and(eq(users.id, r.assignedTo), eq(users.status, "active"), worksOnBotSql(bot.id)),
         columns: { email: true },
       })
     : null;

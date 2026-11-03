@@ -9,10 +9,12 @@ import { Team } from "@/components/settings/team";
 import { Privacy } from "@/components/settings/privacy";
 import { TeamsDirect } from "@/components/settings/teams-direct";
 import { requireActor } from "@/lib/auth/actor";
+import { roleWorksOnEveryBot } from "@/lib/authz";
 import { authMode } from "@/lib/auth/config";
 import { getSettings } from "@/lib/settings";
 import { botCards } from "@/lib/bots/queries";
 import { openInvitations, teamMembers } from "@/lib/team/queries";
+import { botsByPerson } from "@/lib/bots/people";
 import { mailboxOverview } from "@/lib/emails/mailboxes";
 import { directLinkLabel } from "@/lib/alerts/direct";
 import { timeAgo } from "@/lib/time";
@@ -44,7 +46,7 @@ export default async function SettingsPage({
 
   let body: React.ReactNode;
   if (tab === "general") {
-    const [s, bots] = await Promise.all([getSettings(), botCards()]);
+    const [s, bots] = await Promise.all([getSettings(), botCards(null)]);
     body = (
       <GeneralForm
         bots={bots.map((b) => ({ id: b.id, name: b.name, audience: b.audience }))}
@@ -63,12 +65,23 @@ export default async function SettingsPage({
       />
     );
   } else if (tab === "team") {
-    const [members, invitations] = await Promise.all([teamMembers(), openInvitations()]);
+    const [members, invitations, byPerson, bots] = await Promise.all([
+      teamMembers(),
+      openInvitations(),
+      botsByPerson(),
+      botCards(null),
+    ]);
     body = (
       <Team
         me={actor.id}
-        members={members.map((m) => ({ ...m, linked: Boolean(m.linked) }))}
+        members={members.map((m) => ({
+          ...m,
+          linked: Boolean(m.linked),
+          everyBot: roleWorksOnEveryBot(m.role),
+          bots: (byPerson.get(m.id) ?? []).map((b) => b.name),
+        }))}
         invitations={invitations.map((i) => ({ ...i, expiresAt: i.expiresAt.toISOString() }))}
+        bots={bots.map((b) => ({ id: b.id, name: b.name }))}
       />
     );
   } else if (tab === "privacy") {

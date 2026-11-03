@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { runAction } from "@/lib/actions/run";
+import { runAction, UserError } from "@/lib/actions/run";
+import { assertOnBot, assertOnBotOf, mayOnBot } from "@/lib/auth/bots";
 import {
   addPastedEmail,
   finishEmail,
@@ -33,6 +34,10 @@ export async function pasteEmailAction(input: unknown) {
     schema,
     input,
     async (actor, d) => {
+      // Only into a bot this person works on (an email with no bot is seen by admins only).
+      if (d.botId) await assertOnBot(actor, "emails.handle", d.botId);
+      else if (!(await mayOnBot(actor, "emails.handle", null)))
+        throw new UserError("Choose which bot's knowledge to draft the reply from.");
       const emailId = await addPastedEmail(actor, d);
       refresh();
       return { id: emailId };
@@ -47,6 +52,7 @@ export async function saveDraftAction(input: unknown) {
     id.extend({ draft: z.string().max(20_000) }),
     input,
     async (actor, d) => {
+      await assertOnBotOf(actor, "emails.handle", "email", d.id);
       await saveDraft(actor, d.id, d.draft);
       refresh();
     },
@@ -60,6 +66,7 @@ export async function markSentAction(input: unknown) {
     id.extend({ draft: z.string().max(20_000).optional() }),
     input,
     async (actor, d) => {
+      await assertOnBotOf(actor, "emails.handle", "email", d.id);
       await finishEmail(actor, d.id, "sent", d.draft);
       refresh();
     },
@@ -69,6 +76,7 @@ export async function markSentAction(input: unknown) {
 
 export async function dismissEmailAction(input: unknown) {
   return runAction("emails.handle", id, input, async (actor, d) => {
+    await assertOnBotOf(actor, "emails.handle", "email", d.id);
     await finishEmail(actor, d.id, "dismissed");
     refresh();
   });
@@ -76,6 +84,7 @@ export async function dismissEmailAction(input: unknown) {
 
 export async function reopenEmailAction(input: unknown) {
   return runAction("emails.handle", id, input, async (actor, d) => {
+    await assertOnBotOf(actor, "emails.handle", "email", d.id);
     await reopenEmail(actor, d.id);
     refresh();
   });
@@ -87,6 +96,9 @@ export async function redoDraftAction(input: unknown) {
     id.extend({ botId: z.uuid().nullable().optional() }),
     input,
     async (actor, d) => {
+      await assertOnBotOf(actor, "emails.handle", "email", d.id);
+      // Moving it to another bot: that one must be theirs too.
+      if (d.botId !== undefined) await assertOnBot(actor, "emails.handle", d.botId);
       await redoDraft(actor, d.id, d.botId);
       refresh();
     },

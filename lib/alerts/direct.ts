@@ -3,6 +3,7 @@ import { and, eq, gt } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { agentPresence, botMailboxes, settings, users } from "@/lib/db/schema";
 import { writeAudit } from "@/lib/audit";
+import { worksOnBotSql } from "@/lib/auth/bots";
 import { UserError } from "@/lib/errors";
 import type { Actor } from "@/lib/authz";
 import { enqueue } from "@/lib/jobs/queue";
@@ -86,20 +87,25 @@ export async function sendDirect(to: string, card: unknown): Promise<void> {
   await postToTeams(link, { recipient: to, card: JSON.stringify(card) });
 }
 
-/** Whoever manages the bot's event mailbox, if they can still sign in. */
+/** Whoever manages the bot's event mailbox, if they can still sign in and work on the bot. */
 export async function eventManager(botId: string): Promise<{ email: string }[]> {
   return db
     .select({ email: users.email })
     .from(botMailboxes)
     .innerJoin(users, eq(users.id, botMailboxes.assignedUserId))
-    .where(and(eq(botMailboxes.botId, botId), eq(users.status, "active")));
+    .where(and(eq(botMailboxes.botId, botId), eq(users.status, "active"), worksOnBotSql(botId)));
 }
 
-/** Active people marked available for live chats right now. */
-export async function availablePeople(now = new Date()): Promise<{ email: string }[]> {
+/** Active people marked available for live chats right now, who work on the bot. */
+export async function availablePeople(
+  botId: string,
+  now = new Date(),
+): Promise<{ email: string }[]> {
   return db
     .select({ email: users.email })
     .from(agentPresence)
     .innerJoin(users, eq(users.id, agentPresence.userId))
-    .where(and(gt(agentPresence.availableUntil, now), eq(users.status, "active")));
+    .where(
+      and(gt(agentPresence.availableUntil, now), eq(users.status, "active"), worksOnBotSql(botId)),
+    );
 }

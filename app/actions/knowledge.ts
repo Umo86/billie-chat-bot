@@ -19,6 +19,7 @@ import { latestCheck, requestCheck } from "@/lib/knowledge/check";
 import { fileKind, MAX_FILE_BYTES } from "@/lib/knowledge/files";
 import { putFile, storedBlobSize } from "@/lib/storage";
 import { UserError } from "@/lib/errors";
+import { assertOnBotOf } from "@/lib/auth/bots";
 
 const id = z.object({ id: z.uuid() });
 
@@ -31,6 +32,7 @@ function refresh() {
 /** Only an old shared knowledge base no bot answers from (a bot's own goes with the bot). */
 export async function deleteKbAction(input: unknown) {
   return runAction("knowledge.edit", id, input, async (actor, d) => {
+    await assertOnBotOf(actor, "knowledge.edit", "kb", d.id);
     await setKnowledgeBaseDeleted(actor, d.id, true);
     refresh();
   });
@@ -38,6 +40,7 @@ export async function deleteKbAction(input: unknown) {
 
 export async function restoreKbAction(input: unknown) {
   return runAction("knowledge.edit", id, input, async (actor, d) => {
+    await assertOnBotOf(actor, "knowledge.edit", "kb", d.id);
     await setKnowledgeBaseDeleted(actor, d.id, false);
     refresh();
   });
@@ -54,6 +57,7 @@ export async function addTextAction(input: unknown) {
     schema,
     input,
     async (actor, d) => {
+      await assertOnBotOf(actor, "knowledge.edit", "kb", d.kbId);
       await addSource(actor, d.kbId, { kind: "text", title: d.title, body: d.body });
       refresh();
     },
@@ -72,6 +76,7 @@ export async function addQaAction(input: unknown) {
     schema,
     input,
     async (actor, d) => {
+      await assertOnBotOf(actor, "knowledge.edit", "kb", d.kbId);
       await addSource(actor, d.kbId, { kind: "qa", question: d.question, answer: d.answer });
       refresh();
     },
@@ -90,6 +95,7 @@ export async function addWebAction(input: unknown) {
     schema,
     input,
     async (actor, d) => {
+      await assertOnBotOf(actor, "knowledge.edit", "kb", d.kbId);
       await addSource(actor, d.kbId, { kind: "web", url: d.url, refreshWeekly: d.refreshWeekly });
       refresh();
     },
@@ -110,6 +116,7 @@ export async function uploadFileAction(form: FormData): Promise<ActionResult<{ i
   if (file.size > Math.min(MAX_FILE_BYTES, 4 * 1024 * 1024))
     return fail(`${file.name} is too large to upload this way.`);
   try {
+    await assertOnBotOf(actor, "knowledge.edit", "kb", kbId);
     const fileKey = await putFile(
       file.name,
       Buffer.from(await file.arrayBuffer()),
@@ -149,6 +156,7 @@ export async function registerUploadAction(input: unknown) {
   return runAction("knowledge.edit", schema, input, async (actor, d) => {
     if (!fileKind(d.name, d.type))
       throw new UserError("Billie reads PDF, Word (.docx), Excel (.xlsx), CSV and text files.");
+    await assertOnBotOf(actor, "knowledge.edit", "kb", d.kbId);
     // Trust the store, not the browser: the file must really be there.
     const size = await storedBlobSize(d.pathname);
     if (size === null) throw new UserError(`${d.name} didn't finish uploading. Try again.`);
@@ -167,7 +175,10 @@ export async function registerUploadAction(input: unknown) {
 /** How the reading of new files is going, for the "Billie is learning" panel. */
 export async function sourceStatusAction(input: unknown) {
   const schema = z.object({ ids: z.array(z.uuid()).min(1).max(20) });
-  return runAction("knowledge.view", schema, input, async (_actor, d) => sourceStatuses(d.ids));
+  return runAction("knowledge.view", schema, input, async (actor, d) => {
+    for (const s of d.ids) await assertOnBotOf(actor, "knowledge.view", "source", s);
+    return sourceStatuses(d.ids);
+  });
 }
 
 export async function rereadAction(input: unknown) {
@@ -176,6 +187,7 @@ export async function rereadAction(input: unknown) {
     id,
     input,
     async (actor, d) => {
+      await assertOnBotOf(actor, "knowledge.edit", "source", d.id);
       await rereadSource(actor, d.id);
       refresh();
     },
@@ -185,6 +197,7 @@ export async function rereadAction(input: unknown) {
 
 export async function deleteSourceAction(input: unknown) {
   return runAction("knowledge.edit", id, input, async (actor, d) => {
+    await assertOnBotOf(actor, "knowledge.edit", "source", d.id);
     await deleteSource(actor, d.id);
     refresh();
   });
@@ -192,18 +205,25 @@ export async function deleteSourceAction(input: unknown) {
 
 export async function restoreSourceAction(input: unknown) {
   return runAction("knowledge.edit", id, input, async (actor, d) => {
+    await assertOnBotOf(actor, "knowledge.edit", "source", d.id);
     await restoreSource(actor, d.id);
     refresh();
   });
 }
 
 export async function passagesAction(input: unknown) {
-  return runAction("knowledge.view", id, input, async (_actor, d) => passagesOf(d.id));
+  return runAction("knowledge.view", id, input, async (actor, d) => {
+    await assertOnBotOf(actor, "knowledge.view", "source", d.id);
+    return passagesOf(d.id);
+  });
 }
 
 /** The text of a pasted text or typed answer, for the Edit dialog. */
 export async function sourceTextAction(input: unknown) {
-  return runAction("knowledge.edit", id, input, async (_actor, d) => sourceForEdit(d.id));
+  return runAction("knowledge.edit", id, input, async (actor, d) => {
+    await assertOnBotOf(actor, "knowledge.edit", "source", d.id);
+    return sourceForEdit(d.id);
+  });
 }
 
 export async function editSourceAction(input: unknown) {
@@ -224,6 +244,7 @@ export async function editSourceAction(input: unknown) {
     }),
   ]);
   return runAction("knowledge.edit", schema, input, async (actor, d) => {
+    await assertOnBotOf(actor, "knowledge.edit", "source", d.id);
     const changed = await editSource(
       actor,
       d.id,
@@ -244,13 +265,15 @@ const replaceSchema = z.object({
 });
 
 export async function previewReplaceAction(input: unknown) {
-  return runAction("knowledge.edit", replaceSchema, input, async (_actor, d) =>
-    previewReplace(d.kbId, d.find, d.replace),
-  );
+  return runAction("knowledge.edit", replaceSchema, input, async (actor, d) => {
+    await assertOnBotOf(actor, "knowledge.edit", "kb", d.kbId);
+    return previewReplace(d.kbId, d.find, d.replace);
+  });
 }
 
 export async function replaceAction(input: unknown) {
   return runAction("knowledge.edit", replaceSchema, input, async (actor, d) => {
+    await assertOnBotOf(actor, "knowledge.edit", "kb", d.kbId);
     const done = await replaceInKnowledge(actor, d.kbId, d.find, d.replace);
     if (done.sources) refresh();
     return done;
@@ -268,6 +291,7 @@ export async function answerGapAction(input: unknown) {
     schema,
     input,
     async (actor, d) => {
+      await assertOnBotOf(actor, "knowledge.edit", "gap", d.gapId);
       await answerGap(actor, d.gapId, d.answer);
       refresh();
     },
@@ -277,6 +301,7 @@ export async function answerGapAction(input: unknown) {
 
 export async function dismissGapAction(input: unknown) {
   return runAction("knowledge.edit", z.object({ gapId: z.uuid() }), input, async (actor, d) => {
+    await assertOnBotOf(actor, "knowledge.edit", "gap", d.gapId);
     await dismissGap(actor, d.gapId);
     refresh();
   });
@@ -285,6 +310,7 @@ export async function dismissGapAction(input: unknown) {
 /** Asks Billie to check a knowledge base for contradictions, passed dates and contacts. */
 export async function checkKnowledgeAction(input: unknown) {
   return runAction("knowledge.edit", z.object({ kbId: z.uuid() }), input, async (actor, d) => {
+    await assertOnBotOf(actor, "knowledge.edit", "kb", d.kbId);
     await requestCheck(actor, d.kbId);
     refresh();
     return latestCheck(d.kbId);
@@ -293,7 +319,8 @@ export async function checkKnowledgeAction(input: unknown) {
 
 /** The latest check, while the screen waits for it to finish. */
 export async function checkStatusAction(input: unknown) {
-  return runAction("knowledge.view", z.object({ kbId: z.uuid() }), input, async (_actor, d) =>
-    latestCheck(d.kbId),
-  );
+  return runAction("knowledge.view", z.object({ kbId: z.uuid() }), input, async (actor, d) => {
+    await assertOnBotOf(actor, "knowledge.view", "kb", d.kbId);
+    return latestCheck(d.kbId);
+  });
 }

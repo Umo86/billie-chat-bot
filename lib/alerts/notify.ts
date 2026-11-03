@@ -84,7 +84,8 @@ export async function notifyHandover(
 
   // First, Teams messages to people (queued once, so a retry of this job never repeats them):
   // whoever is available for live chats, or, when nobody is, whoever manages the event's mailbox.
-  const people = kind === "live" ? await availablePeople() : await eventManager(conv.botId);
+  const people =
+    kind === "live" ? await availablePeople(conv.botId) : await eventManager(conv.botId);
   await queueDirect(
     people,
     `chat:${conv.id}:${conv.handoverAt?.getTime() ?? 0}`,
