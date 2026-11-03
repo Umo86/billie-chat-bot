@@ -132,6 +132,7 @@ export async function runNudges(now = new Date()): Promise<number> {
       fromName: emailThreads.fromName,
       fromEmail: emailThreads.fromEmail,
       subject: emailThreads.subject,
+      routedTo: emailThreads.routedTo,
       botName: bots.name,
       rules: bots.rules,
     })
@@ -156,12 +157,22 @@ export async function runNudges(now = new Date()): Promise<number> {
       link: `${appUrl()}/emails?e=${e.id}`,
     };
     const key = `nudge:email:${e.id}:${e.receivedAt.getTime()}`;
-    if (first && waited >= first)
+    if (first && waited >= first) {
+      // Whoever handles its topic, if they still work on the bot; else the mailbox's manager.
+      const routed = e.routedTo
+        ? await db
+            .select({ email: users.email })
+            .from(users)
+            .where(
+              and(eq(users.id, e.routedTo), eq(users.status, "active"), worksOnBotSql(e.botId!)),
+            )
+        : [];
       queued += await queueDirect(
-        await eventManager(e.botId!),
+        routed.length ? routed : await eventManager(e.botId!),
         `${key}:1`,
         cardOf(nudgeCard({ ...nudge, level: 1 })),
       );
+    }
     if (second && waited >= second)
       queued += await queueDirect(admins, `${key}:2`, cardOf(nudgeCard({ ...nudge, level: 2 })));
   }

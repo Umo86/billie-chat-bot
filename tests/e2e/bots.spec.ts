@@ -180,6 +180,22 @@ test("build a bot with its own knowledge, test it and put it live", async ({ pag
   await expect(
     page.getByTestId("people-step").getByRole("checkbox", { name: "Priya Shah" }),
   ).toBeChecked();
+  // Who handles what: electrics questions go to Priya first.
+  const routes = page.getByTestId("routes");
+  await routes.getByRole("button", { name: "Add a topic" }).click();
+  await routes.getByLabel("Topic", { exact: true }).fill("Electrics");
+  await routes.getByLabel("Words that mean it").fill("electric, power, socket");
+  await routes.getByRole("button", { name: "Save who handles what" }).click();
+  await expect(routes).toContainText("Topic 1: Choose who it goes to.");
+  await routes.getByLabel("Goes to").selectOption({ label: "Priya Shah" });
+  await expect(saved).toHaveCount(0, { timeout: 10_000 });
+  await routes.getByRole("button", { name: "Save who handles what" }).click();
+  await expect(saved.first()).toBeVisible();
+  await page.reload();
+  await expect(page.getByTestId("routes").getByLabel("Words that mean it")).toHaveValue(
+    "electric, power, socket",
+  );
+  await expect(page.getByTestId("routes").getByLabel("Goes to")).toHaveValue(/.+/);
   await shot(page, "bot-people");
   await page.getByRole("link", { name: "Continue to Email" }).click();
 

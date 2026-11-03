@@ -3,10 +3,13 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Chip, Note, Panel } from "@/components/ui/bits";
+import { Input, Label } from "@/components/ui/form";
 import { useRunner } from "@/components/ui/use-runner";
-import { setBotPeopleAction } from "@/app/actions/bots";
+import { saveRoutesAction, setBotPeopleAction } from "@/app/actions/bots";
+import { MAX_ROUTES } from "@/lib/conversations/routes";
 
 type Person = {
   id: string;
@@ -34,11 +37,16 @@ export function PeopleStep({
   botName,
   people,
   canManage,
+  routes,
+  canRoute,
 }: {
   botId: string;
   botName: string;
   people: Person[];
   canManage: boolean;
+  /** Who handles what: a topic, its words, and the person it goes to first. */
+  routes: { id: string; topic: string; words: string[]; userId: string }[];
+  canRoute: boolean;
 }) {
   const router = useRouter();
   const [on, setOn] = useState<string[]>(
@@ -123,11 +131,157 @@ export function PeopleStep({
           </div>
         ) : null}
       </Panel>
+      <Routes
+        botId={botId}
+        initial={routes}
+        people={people.filter((p) => p.status === "active" && (p.everyBot || p.onBot))}
+        canEdit={canRoute}
+      />
       <div>
         <Button asChild>
           <Link href={`/bots/${botId}?step=email`}>Continue to Email</Link>
         </Button>
       </div>
     </div>
+  );
+}
+
+type Rule = { id: string; topic: string; words: string; userId: string };
+
+const newId = () => Math.random().toString(36).slice(2, 10).padEnd(8, "0");
+
+/**
+ * Who handles what: chats passed to the team, and emails that need a
+ * person, go first to whoever handles their topic.
+ */
+function Routes({
+  botId,
+  initial,
+  people,
+  canEdit,
+}: {
+  botId: string;
+  initial: { id: string; topic: string; words: string[]; userId: string }[];
+  people: Person[];
+  canEdit: boolean;
+}) {
+  const router = useRouter();
+  const [rules, setRules] = useState<Rule[]>(
+    initial.map((r) => ({ ...r, words: r.words.join(", ") })),
+  );
+  const [error, setError] = useState<string | null>(null);
+  const { pending, run } = useRunner();
+  const update = (id: string, next: Partial<Rule>) =>
+    setRules((list) => list.map((r) => (r.id === id ? { ...r, ...next } : r)));
+
+  return (
+    <Panel className="flex flex-col gap-3" data-testid="routes">
+      <div>
+        <h2 className="text-[1.05rem]">Who handles what</h2>
+        <p className="mt-1 max-w-[68ch] text-sm text-muted-foreground">
+          A chat passed to the team, or an email that needs a person, goes first to whoever handles
+          its topic: they get the Teams message (and the chat, if nobody has it), then whoever is
+          available. Billie looks for the words in what the person wrote, so &ldquo;electric&rdquo;
+          also finds &ldquo;electrics&rdquo;.
+        </p>
+      </div>
+      {rules.length ? (
+        <ul className="flex flex-col gap-3" aria-label="Who handles what">
+          {rules.map((r, i) => (
+            <li
+              key={r.id}
+              className="grid grid-cols-1 items-end gap-2 rounded-[12px] border border-border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1.2fr)_auto]"
+            >
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <Label htmlFor={`route-${r.id}-topic`}>Topic</Label>
+                <Input
+                  id={`route-${r.id}-topic`}
+                  value={r.topic}
+                  maxLength={60}
+                  placeholder="Electrics"
+                  disabled={!canEdit}
+                  onChange={(e) => update(r.id, { topic: e.target.value })}
+                />
+              </div>
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <Label htmlFor={`route-${r.id}-words`}>Words that mean it</Label>
+                <Input
+                  id={`route-${r.id}-words`}
+                  value={r.words}
+                  maxLength={600}
+                  placeholder="electric, power, socket"
+                  disabled={!canEdit}
+                  onChange={(e) => update(r.id, { words: e.target.value })}
+                />
+              </div>
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <Label htmlFor={`route-${r.id}-person`}>Goes to</Label>
+                <select
+                  id={`route-${r.id}-person`}
+                  className="h-10 rounded-[10px] border border-input bg-card px-3"
+                  value={r.userId}
+                  disabled={!canEdit}
+                  onChange={(e) => update(r.id, { userId: e.target.value })}
+                >
+                  <option value="">Choose someone</option>
+                  {people.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name || p.email}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {canEdit ? (
+                <Button
+                  variant="ghost"
+                  aria-label={`Remove topic ${i + 1}`}
+                  onClick={() => setRules((list) => list.filter((x) => x.id !== r.id))}
+                >
+                  <Trash2 />
+                </Button>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          Nothing yet: everything goes to whoever is available, or the event mailbox&apos;s manager.
+        </p>
+      )}
+      {error ? <Note tone="bad">{error}</Note> : null}
+      {canEdit ? (
+        <div className="flex flex-wrap gap-2">
+          {rules.length < MAX_ROUTES ? (
+            <Button
+              onClick={() =>
+                setRules((list) => [...list, { id: newId(), topic: "", words: "", userId: "" }])
+              }
+            >
+              <Plus /> Add a topic
+            </Button>
+          ) : null}
+          <Button
+            variant="primary"
+            disabled={pending}
+            onClick={() => {
+              setError(null);
+              run(() => saveRoutesAction({ botId, routes: rules }), {
+                failed: (r) => {
+                  if (r.ok || !r.fieldErrors) return;
+                  const [key, message] = Object.entries(r.fieldErrors)[0] ?? [];
+                  const n = Number(key?.split(".")[1]);
+                  if (message) setError(Number.isNaN(n) ? message : `Topic ${n + 1}: ${message}`);
+                },
+                done: () => router.refresh(),
+              });
+            }}
+          >
+            Save who handles what
+          </Button>
+        </div>
+      ) : (
+        <Note>Only people who can change the bot set who handles what.</Note>
+      )}
+    </Panel>
   );
 }

@@ -42,6 +42,8 @@ export const emailThreads = pgTable(
     summary: text("summary").notNull().default(""),
     /** Why it needs a person (always-human topic, or Billie wasn't sure). */
     needsYouReason: text("needs_you_reason"),
+    /** Who handles its topic (the bot's "who handles what"), told first and nudged. */
+    routedTo: uuid("routed_to").references(() => users.id, { onDelete: "set null" }),
     draft: text("draft").notNull().default(""),
     draftSources: jsonb("draft_sources").$type<MessageSource[]>().notNull().default([]),
     /** The reply draft Billie put in Outlook, when the mailbox is connected. */

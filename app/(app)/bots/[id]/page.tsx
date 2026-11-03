@@ -227,6 +227,8 @@ export default async function BotPage({
         botName={bot.name}
         people={await botPeople(bot.id)}
         canManage={can(actor, "team.manage")}
+        routes={bot.routes}
+        canRoute={canEdit}
       />
     );
   } else if (step === "email") {

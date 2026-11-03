@@ -10,6 +10,7 @@ import { sendEmail } from "@/lib/email/send";
 import { postToTeams, teamsLinkFor } from "@/lib/channels/teams";
 import { adaptiveMessage, plainLine } from "./card";
 import { availablePeople, cardOf, eventManager, queueDirect } from "./direct";
+import { assignByRoute, routeFor, visitorWords } from "@/lib/conversations/routing";
 
 /**
  * Telling the team a chat needs them: a Teams message to each person who
@@ -26,6 +27,8 @@ export type HandoverAlert = {
   reason: string;
   contact: ContactDetails;
   link: string;
+  /** Who handles its topic (the bot's "who handles what"), if a rule matched. */
+  routed?: { topic: string; name: string } | null;
 };
 
 export function alertText(a: HandoverAlert): { title: string; lines: string[] } {
@@ -40,6 +43,7 @@ export function alertText(a: HandoverAlert): { title: string; lines: string[] } 
     `Question: ${a.question || "(not given)"}`,
     `Why: ${a.reason}`,
     ...(who ? [`From: ${who}`] : []),
+    ...(a.routed ? [`About: ${a.routed.topic}, which ${a.routed.name} handles`] : []),
     a.kind === "live"
       ? "Answer it now in the Inbox."
       : "Reply from the Inbox; it goes back by email.",
@@ -71,8 +75,12 @@ export async function notifyHandover(
   });
   if (!conv) return;
   const bot = await db.query.bots.findFirst({ where: eq(bots.id, conv.botId) });
+  // Who handles its topic goes first, and has the chat if nobody else does yet.
+  const routed = await routeFor(conv.botId, [conv.firstQuestion, ...(await visitorWords(conv.id))]);
+  if (routed) await assignByRoute(conv.id, routed);
   const alert: HandoverAlert = {
     kind,
+    routed: routed && { topic: routed.topic, name: routed.name },
     botName: bot?.name ?? "Billie",
     question: conv.firstQuestion,
     reason: conv.handoverReason
@@ -84,8 +92,17 @@ export async function notifyHandover(
 
   // First, Teams messages to people (queued once, so a retry of this job never repeats them):
   // whoever is available for live chats, or, when nobody is, whoever manages the event's mailbox.
-  const people =
-    kind === "live" ? await availablePeople(conv.botId) : await eventManager(conv.botId);
+  // With a person for the topic: them, and for a live chat whoever is available too
+  // when they aren't.
+  const available = kind === "live" ? await availablePeople(conv.botId) : [];
+  const people = routed
+    ? [
+        { email: routed.email },
+        ...(available.some((p) => p.email === routed.email) ? [] : available),
+      ]
+    : kind === "live"
+      ? available
+      : await eventManager(conv.botId);
   await queueDirect(
     people,
     `chat:${conv.id}:${conv.handoverAt?.getTime() ?? 0}`,

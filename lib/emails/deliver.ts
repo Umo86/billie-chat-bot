@@ -14,6 +14,7 @@ import {
 import { postToTeams } from "@/lib/channels/teams";
 import { cardOf, queueDirect } from "@/lib/alerts/direct";
 import { worksOnBotSql } from "@/lib/auth/bots";
+import { routeFor } from "@/lib/conversations/routing";
 import { safeError } from "@/lib/errors";
 import { draftFailureIsFinal, draftProblem } from "./mailbox-rules";
 import { emailTeamsCard, type EmailPost } from "./teams-card";
@@ -88,17 +89,29 @@ export async function deliverEmailDraft(
   ]).catch((err) => console.warn("categories not set:", safeError(err)));
 
   if (opts.quiet) return;
+  // An email that needs a person goes first to whoever handles its topic.
+  const routed =
+    email.status === "needs_you"
+      ? await routeFor(box.botId, [email.subject, email.summary, email.body.slice(0, 4000)])
+      : null;
+  if (routed)
+    await db
+      .update(emailThreads)
+      .set({ routedTo: routed.userId })
+      .where(eq(emailThreads.id, email.id));
   // The manager, if they still work on the bot (a link they couldn't open is no use).
-  const assignee = box.assignedUserId
-    ? await db.query.users.findFirst({
-        where: and(
-          eq(users.id, box.assignedUserId),
-          eq(users.status, "active"),
-          worksOnBotSql(box.botId),
-        ),
-        columns: { fullName: true, email: true },
-      })
-    : null;
+  const assignee = routed
+    ? { fullName: routed.name, email: routed.email }
+    : box.assignedUserId
+      ? await db.query.users.findFirst({
+          where: and(
+            eq(users.id, box.assignedUserId),
+            eq(users.status, "active"),
+            worksOnBotSql(box.botId),
+          ),
+          columns: { fullName: true, email: true },
+        })
+      : null;
   const post: EmailPost = {
     botName: box.botName,
     mailbox: email.mailbox,

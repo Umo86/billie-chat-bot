@@ -42,6 +42,8 @@ export async function copyBot(
         welcome: from.welcome,
         starters: from.starters,
         pageStarters: from.pageStarters,
+        // The same people come across, so who handles what does too.
+        routes: from.routes,
         tone: from.tone,
         personality: from.personality,
         emoji: from.emoji,

@@ -21,6 +21,11 @@ Chatbots, live handover and an email assistant for Media10 shows.
   in Drafts, and whoever is available when a visitor wants a person, get a
   Teams chat with an "Open in Billie" button (one company-wide workflow, set
   up in Settings → Connections).
+- **Who handles what**: on a bot's People step, topics with their words
+  and a person ("Electrics: electric, power, socket → Sam"). A chat passed
+  to the team, or an email that needs a person, about that topic goes to
+  them first (the Teams message, the chat if nobody has it, the nudges),
+  then whoever is available.
 - **Requests from chat**: a bot can take requests such as extra build-up
   hours as a short form in the chat. Each gets a reference (R-1001) and an
   owner, shows on the Requests page with a Teams message to whoever handles

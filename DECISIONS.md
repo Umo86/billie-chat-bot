@@ -374,6 +374,23 @@ thumbs down, why chats went to the team, what's waiting now, and the
 questions to fix (not answered, marked unhelpful, most asked), each a link.
 Copying a bot doesn't copy its days: each show has its own.
 
+## Who handles what is words, not Claude
+
+A bot's People step can list topics, each with the words that mean it and
+the person who handles it. When a chat is passed to the team, its visitor's
+messages are matched against the words (at the start of a word, so
+"electric" finds "electrics"; the topic with most words found wins, the
+first on a tie). The person gets the Teams message first, and the chat if
+nobody has it yet, so the nudges go to them too. For a live chat, whoever
+is available is told as well unless the person is available themselves;
+for a ticket they're told instead of the event mailbox's manager. Emails
+that need a person are matched on their subject, summary and text, and
+the person is named in the channel post, sent the Teams message and
+nudged, in place of the manager. Words rather than another Claude call:
+the team can see exactly why something went to someone, it's instant, and
+it costs nothing. Only someone still active and on the bot is chosen;
+otherwise things go as before.
+
 ## Nudges count the bot's working hours, and go once
 
 The bot promises people the team will come back to them, so a chat passed

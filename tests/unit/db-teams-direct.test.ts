@@ -2,10 +2,19 @@ import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { and, eq, like } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { auditLog, botMailboxes, emailThreads, jobs, settings } from "@/lib/db/schema";
+import {
+  auditLog,
+  botMailboxes,
+  conversations,
+  emailThreads,
+  jobs,
+  messages,
+  settings,
+} from "@/lib/db/schema";
 import { directLinkLabel, queueDirect, sendDirect, setDirectLink } from "@/lib/alerts/direct";
 import { enqueue } from "@/lib/jobs/queue";
 import { notifyHandover } from "@/lib/alerts/notify";
+import { saveRoutes } from "@/lib/conversations/routing";
 import { startConversation } from "@/lib/conversations/service";
 import { saveMailbox } from "@/lib/emails/mailboxes";
 import { syncAllMailboxes } from "@/lib/channels/outlook";
@@ -175,5 +184,84 @@ describe.skipIf(!hasDb)("Teams messages to people (Postgres, stand-in Teams)", (
     const toTicket = await directJobs(`dm:chat:${ticket.id}:`);
     expect(toTicket.map((j) => (j.payload as { to: string }).to)).toEqual([manager.email]);
     expect(JSON.stringify(toTicket[0].payload)).toContain("a question needs a reply");
+  });
+
+  it("sends a chat or email about a topic to whoever handles it first", async () => {
+    const admin = await makeUser("admin");
+    const onDuty = await makeUser("agent");
+    const sparky = await makeUser("agent");
+    const manager = await makeUser("agent");
+    const stranger = await makeUser("agent");
+    await setDirectLink(admin, DIRECT);
+    const { bot } = await makeBot();
+    await putOnBot(bot.id, onDuty.id, sparky.id, manager.id);
+    const address = `routes-${uid()}@media-ten.test`;
+    await saveMailbox(admin, bot.id, { address, assignedUserId: manager.id, enabled: true });
+    const rule = { id: "electrics1", topic: "Electrics", words: ["electric", "power"] };
+    await expect(saveRoutes(admin, bot.id, [{ ...rule, userId: stranger.id }])).rejects.toThrow(
+      /works on this bot/,
+    );
+    await saveRoutes(admin, bot.id, [{ ...rule, userId: sparky.id }]);
+    vi.stubGlobal("fetch", fakeMicrosoft({}).fetchMock);
+    const chatAbout = async (text: string) => {
+      const { conversation } = await startConversation({ bot, channel: "web" });
+      await db.insert(messages).values({ conversationId: conversation.id, role: "visitor", text });
+      return conversation;
+    };
+    const to = async (id: string) =>
+      (await directJobs(`dm:chat:${id}:`)).map((j) => (j.payload as { to: string }).to).sort();
+
+    // A live chat about electrics: the electrics person first, and whoever is available.
+    await clearPresence();
+    await setAvailableAgent(onDuty.id, true);
+    const live = await chatAbout("Can we get extra electrics on our stand?");
+    await notifyHandover(live.id, "live");
+    expect(await to(live.id)).toEqual([onDuty.email, sparky.email].sort());
+    const job = (await directJobs(`dm:chat:${live.id}:`)).find(
+      (j) => (j.payload as { to: string }).to === sparky.email,
+    )!;
+    expect(JSON.stringify(job.payload)).toContain("About: Electrics, which Sam Tester handles");
+    const given = await db.query.conversations.findFirst({ where: eq(conversations.id, live.id) });
+    expect(given?.assignedTo).toBe(sparky.id);
+
+    // When they're available themselves, only them.
+    await setAvailableAgent(sparky.id, true);
+    const again = await chatAbout("Is there power at the back of the hall?");
+    await notifyHandover(again.id, "live");
+    expect(await to(again.id)).toEqual([sparky.email]);
+
+    // Anything else goes as before: here the event's manager, for a ticket.
+    await clearPresence();
+    const parking = await chatAbout("Where do we park?");
+    await notifyHandover(parking.id, "ticket");
+    expect(await to(parking.id)).toEqual([manager.email]);
+
+    // An email that needs a person, about electrics: to them, not the mailbox's manager.
+    await db
+      .update(botMailboxes)
+      .set({ syncFrom: new Date(Date.now() - 3_600_000) })
+      .where(eq(botMailboxes.address, address));
+    const ms = fakeMicrosoft({
+      [address]: {
+        value: [
+          message(
+            `m-${uid()}`,
+            "jo@stands.example",
+            "Electrics",
+            "Can we add two power sockets?",
+            "Jo",
+          ),
+        ],
+      },
+    });
+    vi.stubGlobal("fetch", ms.fetchMock);
+    await syncAllMailboxes();
+    const [email] = await db.select().from(emailThreads).where(eq(emailThreads.mailbox, address));
+    await processEmail(email.id);
+    await deliverEmailDraft(email.id);
+    const after = await db.query.emailThreads.findFirst({ where: eq(emailThreads.id, email.id) });
+    expect(after).toMatchObject({ status: "needs_you", routedTo: sparky.id });
+    const emailed = await directJobs(`dm:email:${email.id}:`);
+    expect(emailed.map((j) => (j.payload as { to: string }).to)).toEqual([sparky.email]);
   });
 });

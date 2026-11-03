@@ -21,6 +21,8 @@ import { setBotPeople } from "@/lib/bots/people";
 import { copyBot, markDatesChecked } from "@/lib/bots/copy";
 import { MAX_REQUEST_FIELDS, MAX_REQUEST_TYPES } from "@/lib/requests/rules";
 import { showDaysProblem } from "@/lib/bots/show-days";
+import { MAX_ROUTES, wordList } from "@/lib/conversations/routes";
+import { saveRoutes } from "@/lib/conversations/routing";
 import { cleanPageRules, MAX_PAGE_RULES, MAX_STARTERS } from "@/lib/bots/page-starters";
 
 const AVATAR = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
@@ -246,6 +248,37 @@ export async function setBotPeopleAction(input: unknown) {
       await setBotPeople(actor, d.botId, d.userIds);
       refresh(d.botId);
       revalidatePath("/settings");
+    },
+    "Saved.",
+  );
+}
+
+/** Who handles what: chats and emails about a topic go to that person first. */
+export async function saveRoutesAction(input: unknown) {
+  return runAction(
+    "bots.edit",
+    z.object({
+      botId: z.uuid(),
+      routes: z
+        .array(
+          z.object({
+            id: z.string().regex(/^[a-z0-9]{4,20}$/),
+            topic: z.string().trim().min(2, "Name the topic.").max(60),
+            words: z
+              .string()
+              .max(600)
+              .transform(wordList)
+              .refine((w) => w.length > 0, "Give at least one word that means it."),
+            userId: z.uuid("Choose who it goes to."),
+          }),
+        )
+        .max(MAX_ROUTES, `Up to ${MAX_ROUTES} topics.`),
+    }),
+    input,
+    async (actor, d) => {
+      await assertOnBot(actor, "bots.edit", d.botId);
+      await saveRoutes(actor, d.botId, d.routes);
+      refresh(d.botId);
     },
     "Saved.",
   );
