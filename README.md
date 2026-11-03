@@ -67,6 +67,12 @@ Chatbots, live handover and an email assistant for Media10 shows.
 - **People on each bot**: admins choose who works on each bot. Editors run
   their bots; agents answer their bots' Inbox, requests and emails. Each
   person sees only their bots, with a filter for one bot's Inbox.
+- **AI usage and models** (Settings → AI, admins): Claude's tokens and
+  cost (Claude credits are US dollars) for today, the last 7 days, this
+  month or last month, by model, by what it was for and by day. Costs are
+  worked out for each request from Anthropic's list prices. Admins choose
+  the model for Fast and Thorough work (Claude Haiku 5.5, Sonnet 5.5 or
+  Opus 5.5).
 - **Roles** (admin, editor, agent), an audit log, UK GDPR retention.
 
 ## How it's built

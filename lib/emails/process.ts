@@ -16,7 +16,7 @@ import {
   emailTagUser,
   knowledgeBlock,
 } from "@/lib/ai/prompts";
-import { fallbackFor, modelFor } from "@/lib/ai/models";
+import { modelsFor } from "@/lib/ai/chosen";
 import { citeSources } from "@/lib/ai/answer";
 import { capReached, recordUsage } from "@/lib/ai/usage";
 import { answerBotFor, botById } from "@/lib/bots/load";
@@ -70,15 +70,14 @@ export async function processEmail(emailId: string, opts: { redo?: boolean } = {
 
     const tagged = await structured({
       purpose: "email_tag",
-      model: modelFor("fast"),
-      fallbackModel: fallbackFor("fast"),
+      ...(await modelsFor("fast")),
       system: emailTagSystem(show, alwaysHuman),
       user: emailTagUser(prompt),
       schema: emailTagJsonSchema,
       maxTokens: 400,
       fake: { purpose: "email_tag", email: prompt, alwaysHuman },
     });
-    await recordUsage("email", tagged.usage);
+    await recordUsage("email", tagged.usage, tagged.model);
     const tag = emailTagSchema.parse(tagged.json);
     const tags = {
       topic: tag.topic,
@@ -110,8 +109,7 @@ export async function processEmail(emailId: string, opts: { redo?: boolean } = {
     const signature = (bot?.emailSignOff.trim() || settings.emailSignature).trim();
     const drafted = await structured({
       purpose: "email_draft",
-      model: modelFor("thorough"),
-      fallbackModel: fallbackFor("thorough"),
+      ...(await modelsFor("thorough")),
       system: emailDraftSystem({
         show,
         tone: bot?.tone ?? "friendly",
@@ -123,7 +121,7 @@ export async function processEmail(emailId: string, opts: { redo?: boolean } = {
       maxTokens: 1500,
       fake: { purpose: "email_draft", email: prompt, passages },
     });
-    await recordUsage("email", drafted.usage);
+    await recordUsage("email", drafted.usage, drafted.model);
     const d = emailDraftSchema.parse(drafted.json);
     const draft = d.draft.trim();
     const ok = d.confident && Boolean(draft);

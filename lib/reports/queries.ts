@@ -95,13 +95,22 @@ export async function perBot(since: Date, ids: string[] | null = null) {
   );
 }
 
-/** Claude use over the period (requests and tokens), for the cost line on Reports. */
+/** Claude use over the period (requests, tokens and cost), for the cost line on Reports. */
 export async function usageSince(since: Date) {
-  const [row] = await query<{ requests: number; input: number; output: number; cached: number }>(
+  const [row] = await query<{
+    requests: number;
+    input: number;
+    output: number;
+    cached: number;
+    cost: number;
+  }>(
     db,
-    sql`SELECT coalesce(sum(requests), 0)::int AS requests, coalesce(sum(input_tokens), 0)::int AS input,
-               coalesce(sum(output_tokens), 0)::int AS output, coalesce(sum(cached_tokens), 0)::int AS cached
-        FROM usage_daily WHERE day >= ${since.toISOString().slice(0, 10)}`,
+    sql`SELECT coalesce(sum(requests), 0)::int AS requests,
+               coalesce(sum(input_tokens + cache_write_tokens + cache_read_tokens), 0)::float8 AS input,
+               coalesce(sum(output_tokens), 0)::float8 AS output,
+               coalesce(sum(cache_read_tokens), 0)::float8 AS cached,
+               coalesce(sum(cost_micros), 0)::float8 AS cost
+        FROM ai_usage WHERE day >= ${since.toISOString().slice(0, 10)}`,
   );
   return row;
 }

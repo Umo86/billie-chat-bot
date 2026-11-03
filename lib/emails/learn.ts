@@ -8,7 +8,7 @@ import type { Actor } from "@/lib/authz";
 import { inBots } from "@/lib/auth/bots";
 import { enqueue } from "@/lib/jobs/queue";
 import { AiError, structured } from "@/lib/ai/provider";
-import { fallbackFor, modelFor } from "@/lib/ai/models";
+import { modelsFor } from "@/lib/ai/chosen";
 import { learnFromSentSystem, learnFromSentUser } from "@/lib/ai/prompts";
 import { learnFromSentJsonSchema, learnFromSentSchema } from "@/lib/ai/schemas";
 import { capReached, recordUsage } from "@/lib/ai/usage";
@@ -115,8 +115,7 @@ export async function learnFromSent(emailId: string): Promise<void> {
   try {
     const result = await structured({
       purpose: "learn_from_sent",
-      model: modelFor("thorough"),
-      fallbackModel: fallbackFor("thorough"),
+      ...(await modelsFor("thorough")),
       system: learnFromSentSystem(bot.showName),
       user: learnFromSentUser({
         subject: e.subject,
@@ -128,7 +127,7 @@ export async function learnFromSent(emailId: string): Promise<void> {
       maxTokens: 600,
       fake: { purpose: "learn_from_sent", subject: e.subject, draft: e.draft, sent: e.sentText },
     });
-    await recordUsage("learning", result.usage);
+    await recordUsage("learning", result.usage, result.model);
     const d = learnFromSentSchema.parse(result.json);
     if (!d.learned || !d.question.trim() || !d.answer.trim()) return;
     const learning: SentLearning = {

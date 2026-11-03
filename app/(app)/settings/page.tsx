@@ -8,6 +8,11 @@ import { GeneralForm } from "@/components/settings/general-form";
 import { Team } from "@/components/settings/team";
 import { Privacy } from "@/components/settings/privacy";
 import { TeamsDirect } from "@/components/settings/teams-direct";
+import { AiUsage } from "@/components/settings/ai-usage";
+import { ModelsForm } from "@/components/settings/models-form";
+import { aiUsageReport, PERIODS, type Period } from "@/lib/ai/report";
+import { MODELS, priceLine } from "@/lib/ai/pricing";
+import { modelFor } from "@/lib/ai/models";
 import { requireActor } from "@/lib/auth/actor";
 import { roleWorksOnEveryBot } from "@/lib/authz";
 import { authMode } from "@/lib/auth/config";
@@ -32,7 +37,7 @@ import { appDatabaseUrl, describeDatabase, isNeon } from "@/lib/db/urls";
 
 export const metadata: Metadata = { title: "Settings" };
 
-type Tab = "general" | "team" | "privacy" | "connections";
+type Tab = "general" | "team" | "privacy" | "connections" | "ai";
 
 export default async function SettingsPage({
   searchParams,
@@ -42,10 +47,39 @@ export default async function SettingsPage({
   const actor = await requireActor("settings.manage");
   const sp = await searchParams;
   const tab: Tab =
-    sp.tab === "team" || sp.tab === "privacy" || sp.tab === "connections" ? sp.tab : "general";
+    sp.tab === "team" || sp.tab === "privacy" || sp.tab === "connections" || sp.tab === "ai"
+      ? sp.tab
+      : "general";
 
   let body: React.ReactNode;
-  if (tab === "general") {
+  if (tab === "ai") {
+    const period: Period = PERIODS.some((p) => p.key === sp.period)
+      ? (sp.period as Period)
+      : "month";
+    const [report, s] = await Promise.all([aiUsageReport(period), getSettings()]);
+    const chosen = { fast: s.fastModel, thorough: s.thoroughModel };
+    body = (
+      <div className="flex flex-col gap-4">
+        <ModelsForm
+          models={MODELS.map((m) => ({
+            id: m.id,
+            name: m.name,
+            blurb: m.blurb,
+            prices: priceLine(m),
+          }))}
+          initial={{ fast: modelFor("fast", chosen), thorough: modelFor("thorough", chosen) }}
+        />
+        <AiUsage periods={PERIODS} period={period} report={report} />
+        <p className="text-sm text-muted-foreground">
+          The daily limit on answers ({s.dailyAnswerCap.toLocaleString("en-GB")} a day) is in{" "}
+          <Link href="/settings" className="font-semibold text-primary">
+            General
+          </Link>
+          .
+        </p>
+      </div>
+    );
+  } else if (tab === "general") {
     const [s, bots] = await Promise.all([getSettings(), botCards(null)]);
     body = (
       <GeneralForm
@@ -332,7 +366,10 @@ export default async function SettingsPage({
 
   return (
     <>
-      <PageHeader title="Settings" lede="The team, privacy, alerts and connections. Admins only." />
+      <PageHeader
+        title="Settings"
+        lede="The team, privacy, alerts, connections and the AI. Admins only."
+      />
       <TabsNav
         label="Settings sections"
         current={tab}
@@ -341,6 +378,7 @@ export default async function SettingsPage({
           { key: "team", href: "/settings?tab=team", label: "Team" },
           { key: "privacy", href: "/settings?tab=privacy", label: "Privacy requests" },
           { key: "connections", href: "/settings?tab=connections", label: "Connections" },
+          { key: "ai", href: "/settings?tab=ai", label: "AI" },
         ]}
       />
       {body}

@@ -54,7 +54,17 @@ export type FakeContext =
       passages: PromptPassage[];
     };
 
-export type Usage = { inputTokens: number; outputTokens: number; cachedTokens: number };
+/**
+ * Tokens of one call. inputTokens is the whole prompt; cachedTokens of it
+ * were read from the cache and cacheWriteTokens written to it (each priced
+ * differently, lib/ai/pricing.ts).
+ */
+export type Usage = {
+  inputTokens: number;
+  outputTokens: number;
+  cachedTokens: number;
+  cacheWriteTokens: number;
+};
 
 export type StructuredResult = { json: unknown; model: string; usage: Usage; latencyMs: number };
 
@@ -125,9 +135,13 @@ async function callAnthropic(call: StructuredCall, model: string): Promise<Struc
     json,
     model: res.model ?? model,
     usage: {
-      inputTokens: res.usage.input_tokens + (res.usage.cache_read_input_tokens ?? 0),
+      inputTokens:
+        res.usage.input_tokens +
+        (res.usage.cache_read_input_tokens ?? 0) +
+        (res.usage.cache_creation_input_tokens ?? 0),
       outputTokens: res.usage.output_tokens,
       cachedTokens: res.usage.cache_read_input_tokens ?? 0,
+      cacheWriteTokens: res.usage.cache_creation_input_tokens ?? 0,
     },
     latencyMs: Date.now() - started,
   };
@@ -140,7 +154,7 @@ export async function structured(call: StructuredCall): Promise<StructuredResult
     return {
       json: fakeStructured(call.fake),
       model: "stand-in",
-      usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 },
+      usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0, cacheWriteTokens: 0 },
       latencyMs: Date.now() - started,
     };
   }

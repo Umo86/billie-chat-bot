@@ -4,7 +4,7 @@ import { retrieve } from "@/lib/knowledge/search";
 import { answerSchema } from "./schemas";
 import { answerJsonSchema } from "./schemas";
 import { answerSystem, answerUser, knowledgeBlock, type PromptPassage, type Turn } from "./prompts";
-import { fallbackFor, modelFor } from "./models";
+import { modelsFor } from "./chosen";
 import { AiError, structured } from "./provider";
 import { capReached, recordUsage } from "./usage";
 
@@ -97,8 +97,7 @@ export async function answerQuestion(input: {
 
   const result = await structured({
     purpose: "answer",
-    model: modelFor(bot.quality),
-    fallbackModel: fallbackFor(bot.quality),
+    ...(await modelsFor(bot.quality)),
     system: answerSystem({
       name: bot.name,
       audience: bot.audience,
@@ -142,7 +141,7 @@ export async function answerQuestion(input: {
   if (request && handover !== "always_human" && handover !== "asked_for_person") handover = "none";
 
   if (input.countUsage !== false) {
-    await recordUsage(`bot:${bot.id}`, result.usage).catch((err) =>
+    await recordUsage(`bot:${bot.id}`, result.usage, result.model).catch((err) =>
       console.error("usage not recorded", err instanceof Error ? err.message : err),
     );
   }

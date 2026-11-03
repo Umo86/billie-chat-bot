@@ -1,9 +1,10 @@
 import "server-only";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { settings, usageDaily } from "@/lib/db/schema";
+import { aiUsage, settings, usageDaily } from "@/lib/db/schema";
 import { londonDate } from "@/lib/time";
 import type { Usage } from "./provider";
+import { costMicros } from "./pricing";
 
 /**
  * Claude use per day (UK date) and the daily safety cap: once the day's
@@ -37,11 +38,52 @@ export async function capReached(
   return (await answersToday(now)) >= limit;
 }
 
-export async function recordUsage(scope: string, usage: Usage, now = new Date()): Promise<void> {
+/**
+ * Counts one Claude call: in usage_daily (requests and tokens, for the daily
+ * cap) and in ai_usage, by model and with what it cost (Settings → AI).
+ */
+export async function recordUsage(
+  scope: string,
+  usage: Usage,
+  model: string,
+  now = new Date(),
+): Promise<void> {
+  const day = londonDate(now);
+  const billed = {
+    input: Math.max(0, usage.inputTokens - usage.cachedTokens - usage.cacheWriteTokens),
+    cacheWrite: usage.cacheWriteTokens,
+    cacheRead: usage.cachedTokens,
+    output: usage.outputTokens,
+  };
+  const cost = costMicros(model, billed) ?? 0;
+  await db
+    .insert(aiUsage)
+    .values({
+      day,
+      scope,
+      model,
+      requests: 1,
+      inputTokens: billed.input,
+      cacheWriteTokens: billed.cacheWrite,
+      cacheReadTokens: billed.cacheRead,
+      outputTokens: billed.output,
+      costMicros: cost,
+    })
+    .onConflictDoUpdate({
+      target: [aiUsage.day, aiUsage.scope, aiUsage.model],
+      set: {
+        requests: sql`${aiUsage.requests} + 1`,
+        inputTokens: sql`${aiUsage.inputTokens} + ${billed.input}`,
+        cacheWriteTokens: sql`${aiUsage.cacheWriteTokens} + ${billed.cacheWrite}`,
+        cacheReadTokens: sql`${aiUsage.cacheReadTokens} + ${billed.cacheRead}`,
+        outputTokens: sql`${aiUsage.outputTokens} + ${billed.output}`,
+        costMicros: sql`${aiUsage.costMicros} + ${cost}`,
+      },
+    });
   await db
     .insert(usageDaily)
     .values({
-      day: londonDate(now),
+      day,
       scope,
       requests: 1,
       inputTokens: usage.inputTokens,

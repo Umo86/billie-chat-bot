@@ -98,7 +98,10 @@ test("a bot's own knowledge: edit it, then find and replace across it", async ({
 
   // Copy the second bot for next year's show: everything comes across, with its dates to check.
   await bots.getByRole("link", { name: /Christmas Show Help/ }).click();
+  // Wait for the page to switch, or "Open the bot" is still the other bot's link.
+  await expect(page.getByRole("heading", { name: "Christmas Show Help", level: 2 })).toBeVisible();
   await page.getByRole("link", { name: "Open the bot" }).click();
+  await expect(page.getByRole("heading", { name: "Christmas Show Help", level: 1 })).toBeVisible();
   await page.getByRole("button", { name: "Copy for another show" }).click();
   const copy = page.getByRole("dialog");
   await expect(copy.getByLabel("Show name")).toHaveValue("Ideal Home Show Christmas 2027");

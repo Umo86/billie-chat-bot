@@ -5,7 +5,7 @@ import { conversations, messages } from "@/lib/db/schema";
 import { enqueue, PermanentJobError } from "@/lib/jobs/queue";
 import { kickJobs } from "@/lib/jobs/kick";
 import { AiError, structured } from "@/lib/ai/provider";
-import { fallbackFor, modelFor } from "@/lib/ai/models";
+import { modelsFor } from "@/lib/ai/chosen";
 import {
   knowledgeBlock,
   suggestReplySystem,
@@ -110,8 +110,7 @@ export async function writeSuggestion(
       : found;
     const result = await structured({
       purpose: "reply_suggestion",
-      model: modelFor(bot.quality),
-      fallbackModel: fallbackFor(bot.quality),
+      ...(await modelsFor(bot.quality)),
       system: suggestReplySystem({
         name: bot.name,
         audience: bot.audience,
@@ -127,7 +126,7 @@ export async function writeSuggestion(
       maxTokens: 800,
       fake: { purpose: "reply_suggestion", history, passages },
     });
-    await recordUsage("suggestion", result.usage);
+    await recordUsage("suggestion", result.usage, result.model);
     const d = emailDraftSchema.parse(result.json);
     const draft = d.draft.trim();
     const confident = d.confident && Boolean(draft);

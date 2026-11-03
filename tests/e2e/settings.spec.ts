@@ -102,7 +102,31 @@ test("general settings save, connections and reports render", async ({ page }) =
   await page.goto("/reports");
   await expect(page.getByRole("heading", { name: "Reports" })).toBeVisible();
   await expect(page.getByText("By bot")).toBeVisible();
+  await expect(page.getByText(/Claude use in this period: .* about \$0\.00\./)).toBeVisible();
   await shot(page, "reports");
+
+  // AI: tokens and cost (the stand-in AI costs nothing), and which model does what.
+  await page.getByRole("link", { name: "Details in Settings → AI" }).click();
+  await expect(page.getByTestId("ai-totals")).toContainText("Cost (Claude credits)");
+  await expect(page.getByTestId("ai-totals")).toContainText("$0.00");
+  await expect(page.getByTestId("ai-by-model")).toContainText("Stand-in (tests)");
+  await expect(page.getByTestId("ai-by-use")).toContainText("Answers: Exhibitor Help");
+  await page.getByRole("link", { name: "Last 7 days" }).click();
+  await expect(page.getByRole("heading", { name: "Cost per day" })).toBeVisible();
+  const models = page.getByTestId("ai-models");
+  await expect(models.getByLabel("Fast")).toHaveValue("claude-haiku-5-5");
+  await expect(models.getByLabel("Thorough")).toHaveValue("claude-sonnet-5-5");
+  await expect(models.getByRole("button", { name: "Save models" })).toBeDisabled();
+  await models.getByLabel("Thorough").selectOption("claude-opus-5-5");
+  await models.getByRole("button", { name: "Save models" }).click();
+  await expect(page.getByText("Saved. New questions use these models now.")).toBeVisible();
+  await page.reload();
+  await expect(page.getByTestId("ai-models").getByLabel("Thorough")).toHaveValue("claude-opus-5-5");
+  await shot(page, "settings-ai");
+  // Back to the default, so later tests run as usual.
+  await page.getByTestId("ai-models").getByLabel("Thorough").selectOption("claude-sonnet-5-5");
+  await page.getByTestId("ai-models").getByRole("button", { name: "Save models" }).click();
+  await expect(page.getByText("Saved. New questions use these models now.").first()).toBeVisible();
 });
 
 test("a privacy request: find a visitor's chat and delete it", async ({ page }) => {

@@ -152,6 +152,31 @@ Each bot's tone, personality (in the team's own words), emoji choice and
 email sign-off go into its prompts as style. The prompt says the rules win,
 answers still come only from the knowledge, and emails never get emoji.
 
+## Claude's cost is counted per request, and the models are a setting
+
+Each Claude call is costed when it's made, from the price list in
+`lib/ai/pricing.ts` (checked against Anthropic's pricing page; change it
+there when prices change), and stored in millionths of a dollar in
+`ai_usage` by day, use and model. Per call, because Haiku 5.5 costs more
+for prompts over 100,000 tokens and cache writes, cache reads and fresh
+input are priced differently; stored, so a later price change never
+rewrites the past. `usage_daily` stays as it was for the daily cap, and so
+the version still serving during a deploy keeps working. Use from before
+models were recorded was copied across with its tokens and no cost.
+
+Not from Anthropic's Usage and Cost API: it needs an Admin key
+(`sk-ant-admin…`), and it reports the whole Claude account, which may be
+shared with other apps. The page says the Claude Console has the bill.
+
+Admins choose the Fast and Thorough models in Settings → AI; that wins over
+`ANTHROPIC_MODEL_FAST` / `ANTHROPIC_MODEL_SMART`, which win over the
+defaults (Haiku 5.5, Sonnet 5.5). Only models with a known price can be
+chosen, so every cost is known. The backup is the other model; if both are
+the same, a different default, so there's always one. Claude Fable 5.1
+isn't offered: it always thinks before answering (billed as output, so
+Billie's short answer limits would cut replies off), it costs five times
+Sonnet, and it needs 30-day data retention on the account.
+
 ## Exhibitors sign in with a code, and only ever see their own row
 
 Personal answers come from the team's own exhibitor list, uploaded on the

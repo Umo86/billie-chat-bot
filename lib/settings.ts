@@ -32,10 +32,16 @@ export type SettingsPatch = Partial<
     | "whatsappExhibitorBotId"
     | "emailBotId"
     | "emailSignature"
+    | "fastModel"
+    | "thoroughModel"
   >
 >;
 
-export async function updateSettings(actorId: string, patch: SettingsPatch): Promise<void> {
+export async function updateSettings(
+  actorId: string,
+  patch: SettingsPatch,
+  summary?: string,
+): Promise<void> {
   const { writeAudit } = await import("@/lib/audit");
   await getSettings();
   await db.transaction(async (tx) => {
@@ -45,7 +51,7 @@ export async function updateSettings(actorId: string, patch: SettingsPatch): Pro
       entityType: "settings",
       entityId: null,
       action: "update",
-      summary: `Changed settings: ${Object.keys(patch).join(", ")}`,
+      summary: summary ?? `Changed settings: ${Object.keys(patch).join(", ")}`,
     });
   });
 }

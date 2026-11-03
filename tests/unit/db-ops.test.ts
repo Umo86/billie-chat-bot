@@ -118,13 +118,21 @@ describe.skipIf(!hasDb)("rate limits and the daily cap (Postgres)", () => {
       await db.update(settings).set({ dailyAnswerCap: 0 });
       expect(await capReached()).toBe(false); // 0 = no cap
       const before = await answersToday();
-      await recordUsage("bot:test", { inputTokens: 10, outputTokens: 5, cachedTokens: 0 });
+      await recordUsage(
+        "bot:test",
+        { inputTokens: 10, outputTokens: 5, cachedTokens: 0, cacheWriteTokens: 0 },
+        "claude-haiku-5-5",
+      );
       expect(await answersToday()).toBe(before + 1);
       await db.update(settings).set({ dailyAnswerCap: before + 1 });
       expect(await capReached()).toBe(true);
       // Visitors stop at 85% of the cap; the rest is kept for the team.
       for (let i = 0; i < 10; i++)
-        await recordUsage("bot:test", { inputTokens: 10, outputTokens: 5, cachedTokens: 0 });
+        await recordUsage(
+          "bot:test",
+          { inputTokens: 10, outputTokens: 5, cachedTokens: 0, cacheWriteTokens: 0 },
+          "claude-haiku-5-5",
+        );
       const used = await answersToday(); // 11 or more
       // A cap above what's used, whose 85% is at or below it.
       await db.update(settings).set({ dailyAnswerCap: Math.floor(used / 0.85) });

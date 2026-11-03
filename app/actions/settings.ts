@@ -4,10 +4,29 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { runAction } from "@/lib/actions/run";
 import { updateSettings } from "@/lib/settings";
+import { MODEL_IDS, modelName } from "@/lib/ai/pricing";
 import { deletePerson, findPerson } from "@/lib/privacy/requests";
 import { changeRole, createInvitation, revokeInvitation, setSuspended } from "@/lib/team/accounts";
 
 const role = z.enum(["admin", "editor", "agent"]);
+
+/** Settings → AI: which Claude model answers Fast and Thorough work. */
+export async function saveModelsAction(input: unknown) {
+  return runAction(
+    "settings.manage",
+    z.object({ fast: z.enum(MODEL_IDS), thorough: z.enum(MODEL_IDS) }),
+    input,
+    async (actor, d) => {
+      await updateSettings(
+        actor.id,
+        { fastModel: d.fast, thoroughModel: d.thorough },
+        `Chose the AI models: ${modelName(d.fast)} for fast work, ${modelName(d.thorough)} for thorough work`,
+      );
+      revalidatePath("/settings");
+    },
+    "Saved. New questions use these models now.",
+  );
+}
 
 export async function saveSettingsAction(input: unknown) {
   const schema = z

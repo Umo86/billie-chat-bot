@@ -195,9 +195,24 @@ describe("sources under an answer", () => {
 
 describe("models", () => {
   it("uses Haiku for fast and Sonnet for thorough, each falling back to the other", () => {
-    expect(modelFor("fast", {})).toBe("claude-haiku-5-5");
-    expect(modelFor("thorough", {})).toBe("claude-sonnet-5-5");
-    expect(fallbackFor("thorough", {})).toBe("claude-haiku-5-5");
-    expect(modelFor("fast", { ANTHROPIC_MODEL_FAST: "x" })).toBe("x");
+    expect(modelFor("fast", {}, {})).toBe("claude-haiku-5-5");
+    expect(modelFor("thorough", {}, {})).toBe("claude-sonnet-5-5");
+    expect(fallbackFor("thorough", {}, {})).toBe("claude-haiku-5-5");
+    expect(modelFor("fast", {}, { ANTHROPIC_MODEL_FAST: "x" })).toBe("x");
+  });
+
+  it("takes an admin's choice first, then the environment, then the default", () => {
+    const env = { ANTHROPIC_MODEL_SMART: "env-model" };
+    expect(modelFor("thorough", {}, env)).toBe("env-model");
+    expect(modelFor("thorough", { thorough: "claude-opus-5-5" }, env)).toBe("claude-opus-5-5");
+    expect(modelFor("thorough", { thorough: " " }, env)).toBe("env-model");
+    // Each falls back to the other's model...
+    expect(fallbackFor("fast", { thorough: "claude-opus-5-5" }, {})).toBe("claude-opus-5-5");
+    // ...and when both are the same, to a different default: there's always a backup.
+    const same = { fast: "claude-sonnet-5-5", thorough: "claude-sonnet-5-5" };
+    expect(fallbackFor("thorough", same, {})).toBe("claude-haiku-5-5");
+    expect(
+      fallbackFor("fast", { fast: "claude-haiku-5-5", thorough: "claude-haiku-5-5" }, {}),
+    ).toBe("claude-sonnet-5-5");
   });
 });

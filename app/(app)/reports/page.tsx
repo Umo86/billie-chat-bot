@@ -6,6 +6,7 @@ import { requireActor } from "@/lib/auth/actor";
 import { myBotIds } from "@/lib/auth/bots";
 import { sentCounts } from "@/lib/emails/learn";
 import { busiestHours, kpis, perBot, topQuestions, usageSince } from "@/lib/reports/queries";
+import { usd } from "@/lib/ai/pricing";
 import { daysAgo } from "@/lib/time";
 
 export const metadata: Metadata = { title: "Reports" };
@@ -223,7 +224,12 @@ export default async function ReportsPage({
         <p className="text-sm text-muted-foreground">
           Claude use in this period: {fmt.format(usage.requests)} requests,{" "}
           {fmt.format(usage.input + usage.output)} tokens
-          {usage.cached ? ` (${fmt.format(usage.cached)} served from cache)` : ""}.
+          {usage.cached ? ` (${fmt.format(usage.cached)} served from cache)` : ""}, about{" "}
+          {usd(usage.cost)}.{" "}
+          <Link href="/settings?tab=ai" className="font-semibold text-primary">
+            Details in Settings → AI
+          </Link>
+          .
         </p>
       ) : (
         <p className="text-sm text-muted-foreground">These numbers cover the bots you work on.</p>

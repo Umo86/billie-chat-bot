@@ -20,7 +20,7 @@ import { appUrl, emailConfigured } from "@/lib/config";
 import { enqueue, PermanentJobError } from "@/lib/jobs/queue";
 import { kickJobs } from "@/lib/jobs/kick";
 import { AiError, structured } from "@/lib/ai/provider";
-import { fallbackFor, modelFor } from "@/lib/ai/models";
+import { modelsFor } from "@/lib/ai/chosen";
 import { knowledgeBlock, reminderSystem, reminderUser } from "@/lib/ai/prompts";
 import { reminderJsonSchema, reminderSchema } from "@/lib/ai/schemas";
 import { capReached, recordUsage } from "@/lib/ai/usage";
@@ -88,8 +88,7 @@ export async function writeReminders(
     );
     const result = await structured({
       purpose: "deadline_reminder",
-      model: modelFor("thorough"),
-      fallbackModel: fallbackFor("thorough"),
+      ...(await modelsFor("thorough")),
       system: reminderSystem({ show: bot.showName, tone: bot.tone, personality: bot.personality }),
       knowledge: knowledgeBlock(passages),
       user: reminderUser({ deadline: d.name, due, column: d.column }),
@@ -97,7 +96,7 @@ export async function writeReminders(
       maxTokens: 1200,
       fake: { purpose: "deadline_reminder", deadline: d.name, due, passages },
     });
-    await recordUsage("reminders", result.usage);
+    await recordUsage("reminders", result.usage, result.model);
     const r = reminderSchema.parse(result.json);
     // The sign-off is added here, word for word, as with email drafts.
     const settings = await getSettings();

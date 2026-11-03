@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   date,
   index,
@@ -164,6 +165,9 @@ export const settings = pgTable("settings", {
   /** The bot whose knowledge drafts replies to exhibitor emails. */
   emailBotId: uuid("email_bot_id").references(() => bots.id, { onDelete: "set null" }),
   emailSignature: text("email_signature").notNull().default("Kind regards,\nThe Operations team"),
+  /** The Claude models for Fast and Thorough answers (null: the default in lib/ai/models.ts). */
+  fastModel: text("fast_model"),
+  thoroughModel: text("thorough_model"),
   /**
    * The company's Teams workflow that sends one person a 1:1 Teams chat
    * (lib/alerts/direct.ts). A secret: set by admins, never shown again.
@@ -193,6 +197,29 @@ export const usageDaily = pgTable(
     cachedTokens: integer("cached_tokens").notNull().default(0),
   },
   (t) => [primaryKey({ columns: [t.day, t.scope] })],
+);
+
+/**
+ * Claude use per day, use and model, with what it cost (Settings → AI). The
+ * cost is worked out per call from lib/ai/pricing.ts, in millionths of a US
+ * dollar, so a later price change never rewrites the past. model "" is use
+ * from before models were recorded (copied from usage_daily, cost unknown).
+ */
+export const aiUsage = pgTable(
+  "ai_usage",
+  {
+    day: date("day").notNull(),
+    scope: text("scope").notNull(),
+    model: text("model").notNull().default(""),
+    requests: integer("requests").notNull().default(0),
+    /** Prompt tokens at the full price (not from or into the cache). */
+    inputTokens: bigint("input_tokens", { mode: "number" }).notNull().default(0),
+    cacheWriteTokens: bigint("cache_write_tokens", { mode: "number" }).notNull().default(0),
+    cacheReadTokens: bigint("cache_read_tokens", { mode: "number" }).notNull().default(0),
+    outputTokens: bigint("output_tokens", { mode: "number" }).notNull().default(0),
+    costMicros: bigint("cost_micros", { mode: "number" }).notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.day, t.scope, t.model] })],
 );
 
 /** Append-only: a trigger (migration 0001) refuses UPDATE and DELETE. */

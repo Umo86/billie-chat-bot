@@ -6,7 +6,7 @@ import { writeAudit } from "@/lib/audit";
 import { enqueue, PermanentJobError } from "@/lib/jobs/queue";
 import { kickJobs } from "@/lib/jobs/kick";
 import { AiError, structured } from "@/lib/ai/provider";
-import { fallbackFor, modelFor } from "@/lib/ai/models";
+import { modelsFor } from "@/lib/ai/chosen";
 import { knowledgeCheckSystem, knowledgeCheckUser } from "@/lib/ai/prompts";
 import { knowledgeCheckJsonSchema, knowledgeCheckSchema } from "@/lib/ai/schemas";
 import { capReached, recordUsage } from "@/lib/ai/usage";
@@ -236,8 +236,7 @@ async function askForIssues(kbName: string, picked: Picked, now: Date): Promise<
   if (await capReached()) throw new AiError("cap_reached", "Today's answer limit has been reached");
   const res = await structured({
     purpose: "knowledge_check",
-    model: modelFor("thorough"),
-    fallbackModel: fallbackFor("thorough"),
+    ...(await modelsFor("thorough")),
     system: knowledgeCheckSystem(),
     user: knowledgeCheckUser(kbName, picked, now),
     schema: knowledgeCheckJsonSchema,
@@ -245,7 +244,7 @@ async function askForIssues(kbName: string, picked: Picked, now: Date): Promise<
     timeoutMs: 100_000,
     fake: { purpose: "knowledge_check", sources: picked, now },
   });
-  await recordUsage("check", res.usage);
+  await recordUsage("check", res.usage, res.model);
   const parsed = knowledgeCheckSchema.parse(res.json);
   // Link each source Claude names (by label, or else by title) to its row, for Edit and View.
   const byLabel = new Map(picked.map((s) => [s.label.toLowerCase(), s]));
