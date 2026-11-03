@@ -4,7 +4,8 @@ import { shot, signInAsAdmin } from "./helpers";
 
 /**
  * Knowledge in, bot out: a knowledge base with a typed answer and a file,
- * then the five-step wizard through to a passing test run and going live.
+ * then the bot's steps (look, personality, knowledge, rules, email and
+ * Teams, test) through to a passing test run and going live.
  */
 test.describe.configure({ mode: "serial" });
 
@@ -61,17 +62,60 @@ test("build knowledge, then a bot that answers from it", async ({ page }) => {
   await shot(page, "bot-look");
   await page.getByRole("button", { name: "Create bot and continue" }).click();
 
-  // Step 2: knowledge.
+  // Step 2: personality.
   await expect(page.getByText("Bot created.")).toBeVisible();
+  await page.getByRole("tab", { name: "Formal" }).click();
+  await page.getByRole("button", { name: "Use the example" }).click();
+  await expect(page.getByLabel("Personality, in your own words")).toHaveValue(/ops manager/);
+  await page.getByRole("switch", { name: "Emoji in chats" }).click();
+  await page.getByLabel("Email sign-off").fill("Best wishes,\nThe UKCW team");
+  await shot(page, "bot-personality");
+  await page.getByRole("button", { name: "Save and continue" }).click();
+
+  // Step 3: knowledge.
+  await expect(
+    page.getByRole("heading", { name: "Which knowledge should it answer from?" }),
+  ).toBeVisible();
   await page.getByLabel(/Exhibitor knowledge/).check();
   await page.getByRole("button", { name: "Save and continue" }).click();
 
-  // Step 3: rules (defaults are fine).
+  // Step 4: rules (defaults are fine).
   await expect(page.getByRole("heading", { name: "Always pass these to a person" })).toBeVisible();
   await shot(page, "bot-rules");
   await page.getByRole("button", { name: "Save and continue" }).click();
 
-  // Step 4: test.
+  // Step 5: the event's mailbox and Teams channel (Microsoft 365 isn't connected in tests).
+  await expect(page.getByRole("heading", { name: "Event mailbox" })).toBeVisible();
+  await expect(page.getByText(/Microsoft 365 isn't connected yet/)).toBeVisible();
+  await page.getByLabel("Mailbox address").fill("UKCW-Exhibitors@media-ten.test");
+  await page.getByLabel("Managed by").selectOption({ label: "Umit Bozdag (umit@media10.test)" });
+  await page.getByRole("button", { name: "Save mailbox" }).click();
+  await expect(page.getByText("Mailbox saved.")).toBeVisible();
+  await expect(page.getByTestId("mailbox-status")).toContainText(
+    "Billie starts once Microsoft 365 is connected.",
+  );
+  await expect(page.getByLabel("Mailbox address")).toHaveValue("ukcw-exhibitors@media-ten.test");
+  // Only a Teams Workflows link is taken, and it's never shown again once saved.
+  await page.getByLabel("Teams Workflows link").fill("https://hooks.example.com/abc");
+  await page.getByRole("button", { name: "Save link" }).click();
+  await expect(page.getByText(/isn't a Teams Workflows link/)).toBeVisible();
+  await page
+    .getByLabel("Teams Workflows link")
+    .fill(
+      "https://prod-12.uksouth.logic.azure.com:443/workflows/e2e/triggers/manual/paths/invoke?sig=e2e-signature",
+    );
+  await page.getByRole("button", { name: "Save link" }).click();
+  await expect(page.getByTestId("teams-status")).toContainText("prod-12.uksouth.logic.azure.com");
+  await expect(page.locator("body")).not.toContainText("e2e-signature");
+  await shot(page, "bot-email");
+  // Removed again, so later tests never post to Microsoft.
+  await page.getByRole("button", { name: "Remove", exact: true }).click();
+  await page.getByRole("button", { name: "Yes, remove" }).click();
+  await expect(page.getByText("Teams channel removed.")).toBeVisible();
+  await expect(page.getByLabel("Teams Workflows link")).toBeVisible();
+  await page.getByRole("link", { name: "Continue to Test" }).click();
+
+  // Step 6: test.
   await expect(page.getByRole("heading", { name: "Try it" })).toBeVisible();
   await page.getByLabel("Question", { exact: true }).fill("When does build-up start?");
   await page.getByRole("button", { name: "Ask" }).click();
@@ -88,7 +132,7 @@ test("build knowledge, then a bot that answers from it", async ({ page }) => {
 
   await shot(page, "bot-test");
 
-  // Step 5: go live.
+  // Step 7: go live.
   await page.getByRole("button", { name: "Continue to Go live" }).click();
   await expect(page.locator("#embed-code")).toContainText('data-bot="exhibitor-help"');
   await page
@@ -99,6 +143,9 @@ test("build knowledge, then a bot that answers from it", async ({ page }) => {
   await expect(page.getByLabel("Websites allowed to show it")).toHaveValue(
     "ukconstructionweek.com",
   );
+  await expect(
+    page.getByText(/New emails in ukcw-exhibitors@media-ten.test get a draft reply/),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Put live" }).click();
   await expect(page.getByText("Exhibitor Help is live.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Take offline" })).toBeVisible();

@@ -24,21 +24,34 @@ import { ALWAYS_HUMAN_DEFAULT } from "@/lib/bots/defaults";
 import { retrieve } from "@/lib/knowledge/search";
 import { recordGap } from "@/lib/knowledge/gap-store";
 import { getSettings } from "@/lib/settings";
-import { PermanentJobError } from "@/lib/jobs/queue";
-import { createReplyDraft, setCategories } from "@/lib/channels/outlook";
-import { outlookConfigured } from "@/lib/config";
+import { enqueue, PermanentJobError } from "@/lib/jobs/queue";
 
 /**
  * The email assistant (the "process_email" job). Two checks before any
  * draft: a fast model tags the email and spots always-human topics; then a
- * thorough model drafts the reply from the knowledge base. A person checks
- * and sends every draft. Outlook emails get the draft in their own thread
- * and Outlook categories; pasted emails show the draft in Billie.
+ * thorough model drafts the reply from the bot's knowledge, in the bot's
+ * personality and with its sign-off. A person checks and sends every draft.
+ *
+ * Emails from an event mailbox then go to the "deliver_email_draft" job,
+ * which saves the reply in the mailbox's Drafts and posts in the event's
+ * Teams channel. Kept apart so a retry never pays for the drafting twice.
  */
-export async function processEmail(emailId: string): Promise<void> {
+export async function processEmail(
+  emailId: string,
+  opts: { redo?: boolean; replaceDraftId?: string | null } = {},
+): Promise<void> {
   const email = await db.query.emailThreads.findFirst({ where: eq(emailThreads.id, emailId) });
   if (!email) throw new PermanentJobError("Email not found");
   if (["sent", "dismissed"].includes(email.status)) return;
+  // A person asked for a new draft: Billie replaces its old one in Outlook and doesn't post again.
+  const deliver = () =>
+    email.source === "outlook"
+      ? enqueue("deliver_email_draft", {
+          emailId,
+          ...(opts.replaceDraftId ? { replaceDraftId: opts.replaceDraftId } : {}),
+          ...(opts.redo ? { quiet: true } : {}),
+        })
+      : Promise.resolve(null);
   await db
     .update(emailThreads)
     .set({ status: "working", error: null })
@@ -94,12 +107,14 @@ export async function processEmail(emailId: string): Promise<void> {
           botId: bot?.id ?? null,
         })
         .where(eq(emailThreads.id, emailId));
-      await tagInOutlook(email.source, email.externalId, ["Billie: needs you", tag.topic]);
+      await deliver();
       return;
     }
 
     const kbIds = bot ? (await answerBotFor(bot)).knowledgeBaseIds : [];
     const passages = await retrieve(kbIds, `${email.subject}\n${email.body}`.slice(0, 4000));
+    // The bot's own sign-off, else the company's in Settings.
+    const signature = bot?.emailSignOff.trim() || settings.emailSignature;
     const drafted = await structured({
       purpose: "email_draft",
       model: modelFor("thorough"),
@@ -107,13 +122,14 @@ export async function processEmail(emailId: string): Promise<void> {
       system: emailDraftSystem({
         show,
         tone: bot?.tone ?? "friendly",
-        signature: settings.emailSignature,
+        personality: bot?.personality ?? "",
+        signature,
       }),
       knowledge: knowledgeBlock(passages),
       user: emailDraftUser(prompt),
       schema: emailDraftJsonSchema,
       maxTokens: 1500,
-      fake: { purpose: "email_draft", email: prompt, passages, signature: settings.emailSignature },
+      fake: { purpose: "email_draft", email: prompt, passages, signature },
     });
     await recordUsage("email", drafted.usage);
     const d = emailDraftSchema.parse(drafted.json);
@@ -122,10 +138,6 @@ export async function processEmail(emailId: string): Promise<void> {
     if (!ok && bot) await recordGap(bot.id, d.missing.trim() || email.subject);
 
     const text = ok ? draft : d.holding.trim() || draft;
-    let outlookDraftId: string | null = null;
-    if (email.source === "outlook" && email.externalId && outlookConfigured() && text) {
-      outlookDraftId = await createReplyDraft(email.externalId, text);
-    }
     await db
       .update(emailThreads)
       .set({
@@ -139,14 +151,10 @@ export async function processEmail(emailId: string): Promise<void> {
             : "Billie wasn't sure of the answer.",
         draft: text,
         draftSources: ok ? citeSources(d.used, passages) : [],
-        outlookDraftId,
         botId: bot?.id ?? null,
       })
       .where(eq(emailThreads.id, emailId));
-    await tagInOutlook(email.source, email.externalId, [
-      ok ? "Billie: draft ready" : "Billie: needs you",
-      tag.topic,
-    ]);
+    await deliver();
   } catch (err) {
     const message =
       err instanceof AiError && err.code === "not_configured"
@@ -161,11 +169,4 @@ export async function processEmail(emailId: string): Promise<void> {
     if (err instanceof AiError && err.code === "not_configured") return;
     throw err;
   }
-}
-
-async function tagInOutlook(source: string, externalId: string | null, categories: string[]) {
-  if (source !== "outlook" || !externalId || !outlookConfigured()) return;
-  await setCategories(externalId, categories).catch((err) =>
-    console.warn("categories not set", err instanceof Error ? err.message : err),
-  );
 }

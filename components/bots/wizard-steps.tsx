@@ -3,15 +3,17 @@ import { cn } from "@/lib/utils";
 
 export const STEPS = [
   { key: "look", label: "Look" },
+  { key: "personality", label: "Personality" },
   { key: "knowledge", label: "Knowledge" },
   { key: "rules", label: "Rules" },
+  { key: "email", label: "Email" },
   { key: "test", label: "Test" },
   { key: "live", label: "Go live" },
 ] as const;
 
 export type StepKey = (typeof STEPS)[number]["key"];
 
-/** The five steps; each is a link once the bot exists. */
+/** The bot's steps; each is a link once the bot exists. */
 export function WizardSteps({ current, botId }: { current: StepKey; botId?: string }) {
   return (
     <nav aria-label="Steps" className="overflow-x-auto">

@@ -36,6 +36,8 @@ export async function answerBotFor(bot: BotRow): Promise<AnswerBot> {
     audience: bot.audience,
     showName: bot.showName,
     tone: bot.tone,
+    personality: bot.personality,
+    emoji: bot.emoji,
     quality: bot.quality,
     rules: bot.rules,
     knowledgeBaseIds: await knowledgeBaseIdsFor(bot.id),

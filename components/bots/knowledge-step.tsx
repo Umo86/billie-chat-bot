@@ -11,27 +11,23 @@ import { useRunner } from "@/components/ui/use-runner";
 import { setBotKnowledgeAction, updateBotAction } from "@/app/actions/bots";
 import type { KbSummary } from "@/lib/knowledge/queries";
 
-type Tone = "friendly" | "formal" | "brief";
 type Quality = "fast" | "thorough";
 
 export function KnowledgeStep({
   botId,
   kbs,
   chosen,
-  tone: initialTone,
   quality: initialQuality,
   canEdit,
 }: {
   botId: string;
   kbs: KbSummary[];
   chosen: string[];
-  tone: Tone;
   quality: Quality;
   canEdit: boolean;
 }) {
   const router = useRouter();
   const [picked, setPicked] = useState<string[]>(chosen);
-  const [tone, setTone] = useState<Tone>(initialTone);
   const [quality, setQuality] = useState<Quality>(initialQuality);
   const { pending, run } = useRunner();
 
@@ -57,7 +53,7 @@ export function KnowledgeStep({
       async () => {
         const a = await setBotKnowledgeAction({ id: botId, kbIds: picked });
         if (!a.ok) return a;
-        return updateBotAction({ id: botId, tone, quality });
+        return updateBotAction({ id: botId, quality });
       },
       { done: () => router.push(`/bots/${botId}?step=rules`) },
     );
@@ -100,26 +96,6 @@ export function KnowledgeStep({
       </Panel>
 
       <Panel className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1.5">
-          <h2 className="text-[1.05rem]">How should it sound?</h2>
-          <Segmented<Tone>
-            label="Tone"
-            value={tone}
-            onChange={setTone}
-            options={[
-              { value: "friendly", label: "Friendly" },
-              { value: "formal", label: "Formal" },
-              { value: "brief", label: "Brief" },
-            ]}
-          />
-          <p className="text-sm text-muted-foreground">
-            {tone === "friendly"
-              ? "Warm and plain, like a helpful colleague."
-              : tone === "formal"
-                ? "Polite and precise, for contracts, rules and deadlines."
-                : "Short answers, straight to the point."}
-          </p>
-        </div>
         <div className="flex flex-col gap-1.5">
           <h2 className="text-[1.05rem]">Answer quality</h2>
           <Segmented<Quality>

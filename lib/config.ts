@@ -42,12 +42,13 @@ export function emailConfigured(env: Env = process.env): boolean {
   return Boolean(env.RESEND_API_KEY?.trim() && env.EMAIL_FROM?.trim());
 }
 
-export function outlookConfigured(env: Env = process.env): boolean {
+/**
+ * The company's Microsoft 365 connection (one app registration for every
+ * event mailbox). Which mailboxes Billie reads is set per bot, by admins.
+ */
+export function microsoftConfigured(env: Env = process.env): boolean {
   return Boolean(
-    env.MS_TENANT_ID?.trim() &&
-    env.MS_CLIENT_ID?.trim() &&
-    env.MS_CLIENT_SECRET?.trim() &&
-    env.MS_MAILBOX?.trim(),
+    env.MS_TENANT_ID?.trim() && env.MS_CLIENT_ID?.trim() && env.MS_CLIENT_SECRET?.trim(),
   );
 }
 

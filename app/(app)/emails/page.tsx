@@ -11,7 +11,8 @@ import { requireActor } from "@/lib/auth/actor";
 import { emailDetail, emailList, type EmailTab } from "@/lib/emails/service";
 import { botCards } from "@/lib/bots/queries";
 import { getSettings } from "@/lib/settings";
-import { outlookConfigured } from "@/lib/config";
+import { microsoftConfigured } from "@/lib/config";
+import { hasMailboxToSync } from "@/lib/channels/outlook";
 import { timeAgo } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
@@ -25,7 +26,12 @@ export default async function EmailsPage({
   await requireActor("emails.view");
   const sp = await searchParams;
   const tab: EmailTab = sp.tab === "done" ? "done" : "check";
-  const [rows, bots, settings] = await Promise.all([emailList(tab), botCards(), getSettings()]);
+  const [rows, bots, settings, mailboxes] = await Promise.all([
+    emailList(tab),
+    botCards(),
+    getSettings(),
+    microsoftConfigured() ? hasMailboxToSync() : Promise.resolve(false),
+  ]);
   const picked = sp.e && /^[0-9a-f-]{36}$/i.test(sp.e) ? sp.e : null;
   const selected = picked ?? rows[0]?.id ?? null;
   const email = selected ? await emailDetail(selected) : null;
@@ -46,10 +52,11 @@ export default async function EmailsPage({
           <PasteEmail bots={choices} defaultBotId={settings.emailBotId ?? choices[0]?.id ?? null} />
         }
       />
-      {!outlookConfigured() ? (
+      {!mailboxes ? (
         <Note>
-          The exhibitor mailbox isn&apos;t connected yet, so paste emails here. Once an admin
-          connects it in Settings, new emails arrive by themselves with the draft saved in Outlook.
+          No event mailbox is connected yet, so paste emails here. Once an admin connects one on a
+          bot&apos;s Email step, new emails arrive by themselves, with the reply saved in
+          Outlook&apos;s Drafts.
         </Note>
       ) : null}
       <TabsNav
@@ -136,7 +143,8 @@ export default async function EmailsPage({
                   needsYouReason: email.needsYouReason,
                   draft: email.draft,
                   draftSources: email.draftSources,
-                  outlookDraftId: email.outlookDraftId,
+                  mailbox: email.mailbox,
+                  inOutlook: Boolean(email.outlookDraftId),
                   error: email.error,
                 }}
               />

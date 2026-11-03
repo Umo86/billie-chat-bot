@@ -15,6 +15,7 @@ import { jobs } from "@/lib/db/schema";
 export type JobKind =
   | "ingest_source"
   | "process_email"
+  | "deliver_email_draft"
   | "notify_handover"
   | "send_staff_reply"
   | "whatsapp_inbound"

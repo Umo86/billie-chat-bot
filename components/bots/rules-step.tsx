@@ -50,7 +50,7 @@ export function RulesStep({
     setErrors({});
     run(() => updateBotAction({ id: botId, rules }), {
       failed: (r) => !r.ok && setErrors(r.fieldErrors ?? {}),
-      done: () => router.push(`/bots/${botId}?step=test`),
+      done: () => router.push(`/bots/${botId}?step=email`),
     });
   }
 

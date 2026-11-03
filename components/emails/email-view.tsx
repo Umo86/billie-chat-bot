@@ -34,7 +34,10 @@ export function EmailView({
     needsYouReason: string | null;
     draft: string;
     draftSources: MessageSource[];
-    outlookDraftId: string | null;
+    /** The event mailbox it arrived in (Outlook emails). */
+    mailbox: string | null;
+    /** Billie's reply is also in the mailbox's Drafts. */
+    inOutlook: boolean;
     error: string | null;
   };
 }) {
@@ -60,7 +63,7 @@ export function EmailView({
                 minute: "2-digit",
                 timeZone: "Europe/London",
               }).format(new Date(email.receivedAt))}
-              {email.source === "outlook" ? " · Outlook" : " · Pasted"}
+              {email.source === "outlook" ? ` · ${email.mailbox ?? "Outlook"}` : " · Pasted"}
             </p>
           </div>
           <Chip tone={EMAIL_STATUS[email.status].tone}>{EMAIL_STATUS[email.status].label}</Chip>
@@ -83,9 +86,9 @@ export function EmailView({
       <Panel className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-[1.05rem]">Reply</h2>
-          {email.outlookDraftId ? (
+          {email.inOutlook ? (
             <span className="text-sm text-muted-foreground">
-              Also saved as a draft in Outlook, in the same thread.
+              Also in Drafts in {email.mailbox ?? "Outlook"}, in the same thread.
             </span>
           ) : null}
         </div>
@@ -119,7 +122,9 @@ export function EmailView({
               </p>
             ) : null}
             <p className="text-sm text-muted-foreground">
-              Check the facts, then copy it into your reply. Billie never sends emails itself.
+              {email.inOutlook
+                ? "Check it in Outlook's Drafts, then send it from there. Writing it again replaces Billie's draft in Outlook. Billie never sends emails itself."
+                : "Check the facts, then copy it into your reply. Billie never sends emails itself."}
             </p>
           </>
         ) : null}

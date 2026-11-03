@@ -126,16 +126,44 @@ export async function reopenEmail(actor: Actor, id: string): Promise<void> {
     .where(eq(emailThreads.id, id));
 }
 
-/** Writes the draft again (after adding knowledge, or choosing another bot). */
+/**
+ * Writes the draft again (after adding knowledge, or choosing another bot).
+ * For an email from an event mailbox, Billie's old draft in Outlook is
+ * replaced by the new one.
+ */
 export async function redoDraft(actor: Actor, id: string, botId?: string | null): Promise<void> {
   await db.transaction(async (tx) => {
-    const [row] = await tx
+    const current = await tx.query.emailThreads.findFirst({
+      where: eq(emailThreads.id, id),
+      columns: { subject: true, outlookDraftId: true },
+    });
+    if (!current) throw new UserError("That email no longer exists.");
+    const job = await enqueue(
+      "process_email",
+      {
+        emailId: id,
+        redo: true,
+        ...(current.outlookDraftId ? { replaceDraftId: current.outlookDraftId } : {}),
+      },
+      { tx, dedupeKey: `email:${id}` },
+    );
+    await tx
       .update(emailThreads)
-      .set({ status: "new", error: null, ...(botId !== undefined ? { botId } : {}) })
-      .where(eq(emailThreads.id, id))
-      .returning({ id: emailThreads.id });
-    if (!row) throw new UserError("That email no longer exists.");
-    await enqueue("process_email", { emailId: id }, { tx, dedupeKey: `email:${id}` });
+      .set({
+        status: "new",
+        error: null,
+        ...(botId !== undefined ? { botId } : {}),
+        // Only when this request queued the new draft; a draft already on its way keeps the link.
+        ...(job ? { outlookDraftId: null } : {}),
+      })
+      .where(eq(emailThreads.id, id));
+    await writeAudit(tx, {
+      actorUserId: actor.id,
+      entityType: "email",
+      entityId: id,
+      action: "update",
+      summary: `Asked Billie to write the draft again: "${current.subject.slice(0, 80)}"`,
+    });
   });
   await kickJobs();
 }

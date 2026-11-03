@@ -27,6 +27,8 @@ export const emailThreads = pgTable(
     externalId: text("external_id"),
     /** Outlook conversation id: the thread the draft reply goes into. */
     threadKey: text("thread_key"),
+    /** The Outlook mailbox it arrived in (the bot's event mailbox); the draft goes there. */
+    mailbox: text("mailbox"),
     botId: uuid("bot_id").references(() => bots.id, { onDelete: "set null" }),
     fromName: text("from_name").notNull().default(""),
     fromEmail: text("from_email").notNull().default(""),
@@ -121,7 +123,11 @@ export const settings = pgTable("settings", {
   /** The bot whose knowledge drafts replies to exhibitor emails. */
   emailBotId: uuid("email_bot_id").references(() => bots.id, { onDelete: "set null" }),
   emailSignature: text("email_signature").notNull().default("Kind regards,\nThe Operations team"),
-  /** Outlook delta link: where the next mailbox sync carries on from. */
+  /**
+   * No longer used: each bot's mailbox keeps its own sync point (bot_mailboxes).
+   * Kept because migrations run before a new version goes live, and the
+   * version still serving reads this column. Drop it in a later release.
+   */
   outlookDeltaLink: text("outlook_delta_link"),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()

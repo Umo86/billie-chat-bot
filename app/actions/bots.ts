@@ -14,7 +14,7 @@ import {
   setStatus,
   updateBot,
 } from "@/lib/bots/service";
-import { CONTACT_FIELDS } from "@/lib/bots/defaults";
+import { CONTACT_FIELDS, PERSONALITY_MAX, SIGN_OFF_MAX } from "@/lib/bots/defaults";
 import { validTime } from "@/lib/conversations/hours";
 import { UserError } from "@/lib/errors";
 
@@ -58,6 +58,17 @@ const patch = z.object({
   id: z.uuid(),
   look: look.partial().optional(),
   tone: z.enum(["friendly", "formal", "brief"]).optional(),
+  personality: z
+    .string()
+    .trim()
+    .max(PERSONALITY_MAX, `Keep it under ${PERSONALITY_MAX} characters.`)
+    .optional(),
+  emoji: z.boolean().optional(),
+  emailSignOff: z
+    .string()
+    .trim()
+    .max(SIGN_OFF_MAX, `Keep the sign-off under ${SIGN_OFF_MAX} characters.`)
+    .optional(),
   quality: z.enum(["fast", "thorough"]).optional(),
   rules: rules.optional(),
   domains: z.array(z.string().max(253)).max(30).optional(),
@@ -95,6 +106,9 @@ export async function updateBotAction(input: unknown) {
       await updateBot(actor, data.id, {
         ...(data.look ?? {}),
         ...(data.tone ? { tone: data.tone } : {}),
+        ...(data.personality !== undefined ? { personality: data.personality } : {}),
+        ...(data.emoji !== undefined ? { emoji: data.emoji } : {}),
+        ...(data.emailSignOff !== undefined ? { emailSignOff: data.emailSignOff } : {}),
         ...(data.quality ? { quality: data.quality } : {}),
         ...(data.rules ? { rules: data.rules } : {}),
         ...(data.domains ? { domains: data.domains } : {}),

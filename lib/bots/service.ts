@@ -30,6 +30,9 @@ export type BotLook = {
 export type BotPatch = Partial<
   BotLook & {
     tone: "friendly" | "formal" | "brief";
+    personality: string;
+    emoji: boolean;
+    emailSignOff: string;
     quality: "fast" | "thorough";
     rules: BotRules;
     domains: string[];

@@ -2,6 +2,7 @@ import "server-only";
 import { and, eq, isNull, lt, or } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { sources } from "@/lib/db/schema";
+import { microsoftConfigured } from "@/lib/config";
 import { enqueue, pruneJobs, runDueJobs, type Handlers } from "./queue";
 
 /**
@@ -34,9 +35,17 @@ const handlers: Handlers = {
     await handleWhatsAppInbound({ ...m, timestamp: new Date(m.timestamp) });
   },
   process_email: async (p) =>
-    (await import("@/lib/emails/process")).processEmail(String(p.emailId)),
+    (await import("@/lib/emails/process")).processEmail(String(p.emailId), {
+      redo: p.redo === true,
+      replaceDraftId: typeof p.replaceDraftId === "string" ? p.replaceDraftId : null,
+    }),
+  deliver_email_draft: async (p) =>
+    (await import("@/lib/emails/deliver")).deliverEmailDraft(String(p.emailId), {
+      replaceDraftId: typeof p.replaceDraftId === "string" ? p.replaceDraftId : null,
+      quiet: p.quiet === true,
+    }),
   outlook_sync: async () => {
-    await (await import("@/lib/channels/outlook")).syncMailbox();
+    await (await import("@/lib/channels/outlook")).syncAllMailboxes();
   },
   refresh_web_sources: async () => {
     await queueWebRefresh();
@@ -73,10 +82,18 @@ export async function queueWebRefresh(now = new Date()): Promise<number> {
   return due.length;
 }
 
-/** Once a minute (Vercel Cron): the Outlook sweep is queued here so it runs once however many instances call. */
+/**
+ * Once a minute (Vercel Cron). The sweep of the event mailboxes is queued
+ * here so it runs once however many instances call, and only when
+ * Microsoft 365 is connected and a bot has a mailbox switched on.
+ */
 export async function minuteTick(now = new Date()) {
   const minute = Math.floor(now.getTime() / 60_000);
-  await enqueue("outlook_sync", {}, { dedupeKey: `outlook:${minute}`, maxAttempts: 1 });
+  if (microsoftConfigured()) {
+    const { hasMailboxToSync } = await import("@/lib/channels/outlook");
+    if (await hasMailboxToSync())
+      await enqueue("outlook_sync", {}, { dedupeKey: `outlook:${minute}`, maxAttempts: 1 });
+  }
   return runJobsNow({ budgetMs: 50_000 });
 }
 

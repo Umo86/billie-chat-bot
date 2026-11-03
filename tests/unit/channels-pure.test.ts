@@ -181,10 +181,16 @@ describe("alerts and the weekly summary", () => {
     expect(title).toBe("Exhibitor Help: a question needs a reply");
     expect(lines).toContain("From: Pat Example, Example Signs, stand N3-210");
     const card = teamsCard(alert);
-    expect(card.attachments[0].content.actions[0]).toMatchObject({
+    expect(card.attachments[0].content.actions?.[0]).toMatchObject({
       type: "Action.OpenUrl",
       url: alert.link,
     });
+    // What the visitor wrote is plain text in Teams, never Markdown.
+    expect(
+      (card.attachments[0].content.body as { type: string }[]).every(
+        (b) => b.type === "RichTextBlock",
+      ),
+    ).toBe(true);
   });
 
   it("summarises the week", () => {

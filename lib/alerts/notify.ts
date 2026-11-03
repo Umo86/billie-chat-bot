@@ -2,17 +2,20 @@ import "server-only";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { bots, conversations } from "@/lib/db/schema";
-import { appUrl, emailConfigured, teamsConfigured } from "@/lib/config";
+import { appUrl, emailConfigured } from "@/lib/config";
 import { getSettings } from "@/lib/settings";
 import { REASON_LABEL, type HandoverReason } from "@/lib/conversations/handover";
 import type { ContactDetails } from "@/lib/types";
 import { sendEmail } from "@/lib/email/send";
+import { postToTeams, teamsLinkFor } from "@/lib/channels/teams";
+import { adaptiveMessage, plainLine } from "./card";
 
 /**
- * Telling the team a chat needs them: a Teams channel message (Teams
- * Workflows webhook) and an email to the alert addresses. Each is optional;
- * the Inbox shows the chat either way, and its browser alert fires while
- * it's open. A transient failure throws, so the job retries.
+ * Telling the team a chat needs them: a message in the bot's Teams channel
+ * (or the company-wide one), through a Teams Workflows link, and an email to
+ * the alert addresses. Each is optional; the Inbox shows the chat either
+ * way, and its browser alert fires while it's open. A transient failure
+ * throws, so the job retries.
  */
 export type HandoverAlert = {
   kind: "live" | "ticket";
@@ -42,37 +45,19 @@ export function alertText(a: HandoverAlert): { title: string; lines: string[] } 
   return { title, lines };
 }
 
-/** A Teams Workflows ("Post to a channel when a webhook request is received") Adaptive Card. */
+/**
+ * A Teams Workflows ("Post to a channel when a webhook request is received")
+ * Adaptive Card. The visitor's words go in plain text runs, never Markdown.
+ */
 export function teamsCard(a: HandoverAlert) {
   const { title, lines } = alertText(a);
-  return {
-    type: "message",
-    attachments: [
-      {
-        contentType: "application/vnd.microsoft.card.adaptive",
-        content: {
-          $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
-          type: "AdaptiveCard",
-          version: "1.4",
-          body: [
-            { type: "TextBlock", text: title, weight: "Bolder", size: "Medium", wrap: true },
-            ...lines.map((text) => ({ type: "TextBlock", text, wrap: true, spacing: "Small" })),
-          ],
-          actions: [{ type: "Action.OpenUrl", title: "Open the Inbox", url: a.link }],
-        },
-      },
+  return adaptiveMessage({
+    body: [
+      plainLine(title, { bold: true, size: "Medium", spacing: "None" }),
+      ...lines.map((text) => plainLine(text)),
     ],
-  };
-}
-
-async function postTeams(a: HandoverAlert): Promise<void> {
-  const res = await fetch(process.env.TEAMS_WEBHOOK_URL!, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(teamsCard(a)),
-    signal: AbortSignal.timeout(15_000),
+    actions: [{ type: "Action.OpenUrl", title: "Open the Inbox", url: a.link }],
   });
-  if (!res.ok && res.status !== 202) throw new Error(`Teams webhook answered ${res.status}`);
 }
 
 export async function notifyHandover(
@@ -96,8 +81,10 @@ export async function notifyHandover(
   };
 
   const failures: string[] = [];
-  if (teamsConfigured()) {
-    await postTeams(alert).catch((err) =>
+  // The event's own Teams channel when the bot has one, else the company-wide one.
+  const teams = teamsLinkFor(bot?.teamsWebhookUrl);
+  if (teams) {
+    await postToTeams(teams, teamsCard(alert)).catch((err) =>
       failures.push(err instanceof Error ? err.message : String(err)),
     );
   }

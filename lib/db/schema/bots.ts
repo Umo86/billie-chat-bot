@@ -49,6 +49,17 @@ export const bots = pgTable(
     welcome: text("welcome").notNull().default(""),
     starters: jsonb("starters").$type<string[]>().notNull().default([]),
     tone: tone("tone").notNull().default("friendly"),
+    /** How it should come across, in the team's own words (style only; the rules always win). */
+    personality: text("personality").notNull().default(""),
+    /** The odd emoji in chats (never in emails). */
+    emoji: boolean("emoji").notNull().default(false),
+    /** Ends this bot's email drafts; empty uses the company signature in Settings. */
+    emailSignOff: text("email_sign_off").notNull().default(""),
+    /**
+     * The event's Teams channel (a Teams Workflows webhook link): new email
+     * drafts and chats that need a person are posted there. Set by admins only.
+     */
+    teamsWebhookUrl: text("teams_webhook_url"),
     quality: quality("quality").notNull().default("fast"),
     status: botStatus("status").notNull().default("draft"),
     /** Websites allowed to show the chat (hostnames, e.g. "ukconstructionweek.com"). */
@@ -64,6 +75,39 @@ export const bots = pgTable(
     uniqueIndex("bots_slug_unique").on(t.slug),
     index("bots_created_by_idx").on(t.createdBy),
     index("bots_status_idx").on(t.status),
+  ],
+);
+
+/**
+ * The event's Outlook mailbox for a bot (one each). New emails get a draft
+ * reply from the bot's knowledge, saved in the mailbox's Drafts, and a post
+ * in the bot's Teams channel naming the person who manages the mailbox.
+ */
+export const botMailboxes = pgTable(
+  "bot_mailboxes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    botId: uuid("bot_id")
+      .notNull()
+      .references(() => bots.id, { onDelete: "cascade" }),
+    /** The mailbox's address in Microsoft 365, lower case. */
+    address: text("address").notNull(),
+    /** Who manages the mailbox: named in the Teams post for every new draft. */
+    assignedUserId: uuid("assigned_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    enabled: boolean("enabled").notNull().default(true),
+    /** Microsoft Graph delta link: where the next sync of this mailbox carries on from. */
+    deltaLink: text("delta_link"),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+    /** Why the last sync failed, in words for the screen (null when it worked). */
+    lastError: text("last_error"),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("bot_mailboxes_bot_unique").on(t.botId),
+    uniqueIndex("bot_mailboxes_address_unique").on(t.address),
+    index("bot_mailboxes_assigned_idx").on(t.assignedUserId),
   ],
 );
 

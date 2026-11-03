@@ -89,7 +89,7 @@ export function LookForm({ botId, initial }: { botId?: string; initial?: Look })
     } else {
       run(() => createBotAction(payload), {
         failed: (r) => !r.ok && setErrors(r.fieldErrors ?? {}),
-        done: (d) => d?.id && router.push(`/bots/${d.id}?step=knowledge&created=1`),
+        done: (d) => d?.id && router.push(`/bots/${d.id}?step=personality&created=1`),
       });
     }
   }

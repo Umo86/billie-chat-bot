@@ -21,6 +21,8 @@ export type AnswerBot = {
   audience: "visitors" | "exhibitors";
   showName: string;
   tone: "friendly" | "formal" | "brief";
+  personality: string;
+  emoji: boolean;
   quality: "fast" | "thorough";
   rules: BotRules;
   knowledgeBaseIds: string[];
@@ -83,6 +85,8 @@ export async function answerQuestion(input: {
       audience: bot.audience,
       showName: bot.showName,
       tone: bot.tone,
+      personality: bot.personality,
+      emoji: bot.emoji,
       alwaysHuman: bot.rules.alwaysHuman,
     }),
     knowledge: knowledgeBlock(passages),

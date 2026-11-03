@@ -43,6 +43,13 @@
       "when": 1792695247982,
       "tag": "0005_drop_self_hosted_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793709406685,
+      "tag": "0006_bot_mailboxes_personality",
+      "breakpoints": true
     }
   ]
 }

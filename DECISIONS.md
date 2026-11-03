@@ -66,7 +66,46 @@ Reading files, drafting emails, alerts and WhatsApp replies run as jobs
 (`FOR UPDATE SKIP LOCKED`, leases, retries with backoff, de-duplication).
 Each request that queues work starts it straight after the response
 (`after()`); Vercel Cron (Pro) sweeps every minute as a safety net and
-checks the Outlook mailbox. No extra service to run or pay for.
+checks the event mailboxes. No extra service to run or pay for.
+
+## Event mailboxes: one per bot, drafts in Outlook, a post in Teams
+
+Each event has its own Microsoft 365 mailbox and Teams channel, so both
+belong to the event's bot (`bot_mailboxes`, `bots.teams_webhook_url`), not
+to company settings. One app registration serves every mailbox; IT limits it
+to the event mailboxes with Exchange RBAC for Applications, so Billie can't
+open anyone else's mail. Only admins connect a mailbox or a Teams link,
+because everyone on the team then sees that mailbox's emails in Billie.
+
+- **Sync**: a Graph delta query per mailbox, every minute, a few mailboxes
+  at a time. The first sync asks for the last two days only. The sync point
+  is saved after every page, so a busy inbox is never re-read from the top.
+  One mailbox failing (no access, wrong address) never stops the others;
+  its problem is saved in words for the screen. Auto-replies, bounces and
+  meeting replies are skipped, so a mailshot doesn't fill Drafts and Teams.
+- **Drafting and delivery are two jobs.** `process_email` calls Claude and
+  saves the reply; `deliver_email_draft` puts it in Outlook and posts to
+  Teams. A Teams or Graph failure retries the delivery without paying for
+  the drafting again, and the Outlook draft is made once (its id is saved).
+- **The draft is HTML.** Graph's `createReply` comment loses line breaks, so
+  Billie makes an empty reply and writes its text (escaped, with `<br>`)
+  above the quoted email. "Write it again" replaces Billie's own draft, and
+  only while it is still an unsent draft.
+- **Teams posts** go to a Teams Workflows link. Only Microsoft's hosts are
+  accepted (no requests elsewhere), redirects are refused, and the link is
+  never shown or logged once saved. What visitors and senders wrote goes in
+  plain text runs, not Markdown, so nobody can slip a link into a channel.
+  The mailbox manager is @mentioned by their Billie email, which must be
+  their Microsoft 365 address.
+- **Migrations only add.** They run before a new version goes live, while
+  the old one is still serving, so a column is dropped one release after
+  the code stops using it (`settings.outlook_delta_link` is next).
+
+## Personality is style only
+
+Each bot's tone, personality (in the team's own words), emoji choice and
+email sign-off go into its prompts as style. The prompt says the rules win,
+answers still come only from the knowledge, and emails never get emoji.
 
 ## Search: hybrid full-text + vectors
 

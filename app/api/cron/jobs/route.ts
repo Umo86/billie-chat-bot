@@ -1,7 +1,7 @@
 import { cronAuthorised } from "@/lib/cron";
 
 /**
- * Every minute (vercel.json): checks the exhibitor mailbox and works through
+ * Every minute (vercel.json): checks the event mailboxes and works through
  * queued jobs (reading files, drafting emails, alerts, WhatsApp). Most jobs
  * already ran straight after the request that queued them; this is the
  * safety net that retries failures and picks up anything left over.

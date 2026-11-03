@@ -49,6 +49,18 @@ export function suggestedWelcome(b: {
   return `Hi, I'm ${b.name || "your assistant"}. Ask me anything about ${verb} ${b.showName || "the show"}.`;
 }
 
+/** Longest "in your own words" personality, and email sign-off, a bot can have. */
+export const PERSONALITY_MAX = 600;
+export const SIGN_OFF_MAX = 300;
+
+/** Ideas for the personality box (the placeholder and the "Use an example" button). */
+export const PERSONALITY_EXAMPLES = {
+  exhibitors:
+    "Calm and practical, like an experienced ops manager on build-up day. Gets to the point, gives the deadline or rule first, and says where to find more.",
+  visitors:
+    "Upbeat and welcoming, like a good front-of-house host. Keeps things simple and makes people look forward to the show.",
+} as const;
+
 /** Exhibitor answers default to the thorough model (rules, deadlines, money); visitor answers to fast. */
 export function defaultQuality(audience: "visitors" | "exhibitors"): "fast" | "thorough" {
   return audience === "exhibitors" ? "thorough" : "fast";

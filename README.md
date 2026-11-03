@@ -9,8 +9,13 @@ Chatbots, live handover and an email assistant for Media10 shows.
   with a QR code, and **WhatsApp**.
 - **Live handover** to the team: the Inbox, availability, contact details
   when nobody's free, replies by chat, WhatsApp or email.
-- **Exhibitor emails** get a draft reply from the knowledge base that a
-  person checks before sending (pasted, or straight from the Outlook mailbox).
+- **Each bot has its own** look, personality (tone, a description in your
+  own words, emoji, email sign-off), knowledge and rules.
+- **Event mailboxes**: each bot can have its event's Microsoft 365 mailbox.
+  New emails get a reply from that bot's knowledge, saved in the mailbox's
+  Drafts in the same thread, and a post in the event's Teams channel that
+  @mentions whoever manages the mailbox. A person checks and sends every
+  reply. Emails can also be pasted in.
 - **Knowledge gaps**: questions the bots couldn't answer, fixed in one click.
 - **Roles** (admin, editor, agent), an audit log, UK GDPR retention.
 
@@ -67,14 +72,16 @@ GitHub Actions runs all of these on every push (`.github/workflows/ci.yml`).
    - `FIRST_ADMIN_EMAIL`: who may create the first admin account.
    - `ANTHROPIC_API_KEY`, and optionally `VOYAGE_API_KEY`.
    - Add **Vercel Blob** storage to the project for file uploads.
-   - Optional: Resend, Outlook (Microsoft Graph), WhatsApp and Teams; see
-     `.env.example`.
+   - Optional: Resend, Microsoft 365 (event mailboxes), WhatsApp and Teams;
+     see `.env.example`. Settings → Connections has the IT steps for
+     Microsoft 365: one app registration, limited to the event mailboxes
+     with RBAC for Applications.
 4. In Neon Auth, add the site's address as a trusted domain (Auth →
    Configuration → Domains). Optionally add the sign-up check webhook
    (`/api/webhooks/neon-auth`, event `user.before_create`) so only invited
    people can create a sign-in at all.
 5. Scheduled work runs on Vercel Cron (`vercel.json`, Vercel Pro): every
-   minute it checks the Outlook mailbox and retries failed jobs; once a day
+   minute it checks the event mailboxes and retries failed jobs; once a day
    it runs retention, re-reads web pages and sends Monday's summary. Most
    work doesn't wait for either: it starts straight after the request that
    asked for it.
@@ -82,8 +89,10 @@ GitHub Actions runs all of these on every push (`.github/workflows/ci.yml`).
    set-up code: the `CRON_SECRET` value, so only whoever deployed Billie can
    claim the first account. Then invite the team from Settings.
 
-Settings → Connections shows what's connected and the webhook addresses to
-paste into Meta (WhatsApp) and Neon.
+Settings → Connections shows what's connected, every event mailbox and its
+status, and the webhook addresses to paste into Meta (WhatsApp) and Neon.
+Each bot's mailbox, manager and Teams channel are set on its Email step
+(admins only).
 
 ## Folders
 

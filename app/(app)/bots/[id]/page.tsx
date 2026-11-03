@@ -5,15 +5,20 @@ import { Chip, Note, PageHeader } from "@/components/ui/bits";
 import { BotAvatar } from "@/components/bots/bot-avatar";
 import { STEPS, WizardSteps, type StepKey } from "@/components/bots/wizard-steps";
 import { LookForm } from "@/components/bots/look-form";
+import { PersonalityStep } from "@/components/bots/personality-step";
 import { KnowledgeStep } from "@/components/bots/knowledge-step";
 import { RulesStep } from "@/components/bots/rules-step";
+import { EmailStep } from "@/components/bots/email-step";
 import { TestStep } from "@/components/bots/test-step";
 import { LiveStep } from "@/components/bots/live-step";
 import { requireActor } from "@/lib/auth/actor";
 import { can } from "@/lib/authz";
 import { botById, knowledgeBaseIdsFor } from "@/lib/bots/load";
 import { knowledgeBaseList } from "@/lib/knowledge/queries";
-import { appUrl, outlookConfigured, whatsappConfigured } from "@/lib/config";
+import { appUrl, microsoftConfigured, teamsConfigured, whatsappConfigured } from "@/lib/config";
+import { botEmailSetup, mailboxManagers } from "@/lib/emails/mailboxes";
+import { getSettings } from "@/lib/settings";
+import { timeAgo } from "@/lib/time";
 
 export const metadata: Metadata = { title: "Bot" };
 // Running a bot's test questions asks Claude once per question.
@@ -53,6 +58,22 @@ export default async function BotPage({
     ) : (
       <Note>Only editors can change how a bot looks.</Note>
     );
+  } else if (step === "personality") {
+    const settings = await getSettings();
+    body = (
+      <PersonalityStep
+        botId={bot.id}
+        audience={bot.audience}
+        initial={{
+          tone: bot.tone,
+          personality: bot.personality,
+          emoji: bot.emoji,
+          emailSignOff: bot.emailSignOff,
+        }}
+        companySignOff={settings.emailSignature}
+        canEdit={canEdit}
+      />
+    );
   } else if (step === "knowledge") {
     const [kbs, chosen] = await Promise.all([knowledgeBaseList(), knowledgeBaseIdsFor(bot.id)]);
     body = (
@@ -60,13 +81,49 @@ export default async function BotPage({
         botId={bot.id}
         kbs={kbs}
         chosen={chosen}
-        tone={bot.tone}
         quality={bot.quality}
         canEdit={canEdit}
       />
     );
   } else if (step === "rules") {
     body = <RulesStep botId={bot.id} initial={bot.rules} canEdit={canEdit} />;
+  } else if (step === "email") {
+    const canManage = can(actor, "settings.manage");
+    const [setup, people] = await Promise.all([botEmailSetup(bot.id), mailboxManagers()]);
+    const m = setup.mailbox;
+    const microsoft = microsoftConfigured();
+    body = (
+      <EmailStep
+        key={`${m?.address ?? ""}:${m?.enabled}:${m?.assignedUserId}:${setup.teams ?? ""}`}
+        botId={bot.id}
+        botName={bot.name}
+        mailbox={
+          m ? { address: m.address, assignedUserId: m.assignedUserId, enabled: m.enabled } : null
+        }
+        status={
+          !m
+            ? null
+            : !m.enabled
+              ? { tone: "neutral", text: "Switched off: Billie isn't reading it." }
+              : m.lastError
+                ? { tone: "bad", text: m.lastError }
+                : m.lastSyncedAt
+                  ? { tone: "good", text: `Last checked ${timeAgo(m.lastSyncedAt)}.` }
+                  : {
+                      tone: "neutral",
+                      text: microsoft
+                        ? "Saved. Billie checks it within a minute."
+                        : "Saved. Billie starts once Microsoft 365 is connected.",
+                    }
+        }
+        teams={setup.teams}
+        // The read-only view only needs the manager's name.
+        managers={canManage ? people : people.filter((p) => p.id === m?.assignedUserId)}
+        microsoft={microsoft}
+        companyTeams={teamsConfigured()}
+        canManage={canManage}
+      />
+    );
   } else if (step === "test") {
     body = (
       <TestStep botId={bot.id} tests={bot.tests} lastRun={bot.lastTestRun} canEdit={canEdit} />
@@ -91,7 +148,12 @@ export default async function BotPage({
         }}
         appUrl={base}
         qrSvg={qrSvg}
-        channels={{ whatsapp: whatsappConfigured(), outlook: outlookConfigured() }}
+        channels={{
+          whatsapp: whatsappConfigured(),
+          mailbox: await botEmailSetup(bot.id).then((x) =>
+            x.mailbox?.enabled ? x.mailbox.address : null,
+          ),
+        }}
         can={{
           edit: canEdit,
           publish: can(actor, "bots.publish"),
@@ -116,9 +178,7 @@ export default async function BotPage({
           </span>
         }
       />
-      {sp.created ? (
-        <Note tone="good">Bot created. Next, choose the knowledge it answers from.</Note>
-      ) : null}
+      {sp.created ? <Note tone="good">Bot created. Next, choose how it comes across.</Note> : null}
       <WizardSteps current={step} botId={bot.id} />
       {body}
     </>

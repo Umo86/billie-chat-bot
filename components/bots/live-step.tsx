@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ExternalLink, Globe, Mail, MessageCircle, Power, Rocket, Trash2 } from "lucide-react";
@@ -36,7 +37,8 @@ export function LiveStep({
   };
   appUrl: string;
   qrSvg: string;
-  channels: { whatsapp: boolean; outlook: boolean };
+  /** mailbox: the bot's event mailbox when Billie is reading it. */
+  channels: { whatsapp: boolean; mailbox: string | null };
   can: { edit: boolean; publish: boolean; delete: boolean };
 }) {
   const router = useRouter();
@@ -158,10 +160,25 @@ export function LiveStep({
           <div className="flex items-start gap-3">
             <Mail className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden />
             <p className="text-sm">
-              <strong>Exhibitor mailbox.</strong>{" "}
-              {channels.outlook
-                ? "Connected. New emails get a draft reply from the exhibitor knowledge, ready to check in Emails."
-                : "Not connected yet. Until it is, paste emails into Emails to get a draft reply."}
+              <strong>Event mailbox.</strong>{" "}
+              {channels.mailbox ? (
+                <>
+                  New emails in {channels.mailbox} get a draft reply from this bot&apos;s knowledge,
+                  saved in Outlook&apos;s Drafts. Change it on the{" "}
+                  <Link href={`/bots/${bot.id}?step=email`} className="font-semibold text-primary">
+                    Email step
+                  </Link>
+                  .
+                </>
+              ) : (
+                <>
+                  None yet. Connect the event&apos;s mailbox on the{" "}
+                  <Link href={`/bots/${bot.id}?step=email`} className="font-semibold text-primary">
+                    Email step
+                  </Link>{" "}
+                  to get draft replies in Outlook, or paste emails into Emails.
+                </>
+              )}
             </p>
           </div>
         </Panel>

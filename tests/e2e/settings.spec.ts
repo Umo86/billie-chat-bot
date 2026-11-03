@@ -55,6 +55,17 @@ test("general settings save, connections and reports render", async ({ page }) =
   const signIn = page.getByRole("listitem").filter({ hasText: "Sign-in" });
   await expect(signIn).toContainText(/Neon Auth|Test stand-in/);
   await expect(page.locator("#na-hook")).toContainText("/api/webhooks/neon-auth");
+  // The event mailbox set on the bot, with its manager; Microsoft 365 itself isn't connected here.
+  await expect(
+    page.getByRole("listitem").filter({ hasText: "Microsoft 365 (event mailboxes)" }),
+  ).toContainText("Not connected");
+  const mailbox = page
+    .getByRole("list", { name: "Event mailboxes" })
+    .getByRole("listitem")
+    .filter({ hasText: "ukcw-exhibitors@media-ten.test" });
+  await expect(mailbox).toContainText("Exhibitor Help");
+  await expect(mailbox).toContainText("Managed by Umit Bozdag");
+  await shot(page, "settings-connections");
 
   await page.goto("/reports");
   await expect(page.getByRole("heading", { name: "Reports" })).toBeVisible();
