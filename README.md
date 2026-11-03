@@ -73,6 +73,10 @@ Chatbots, live handover and an email assistant for Media10 shows.
   worked out for each request from Anthropic's list prices. Admins choose
   the model for Fast and Thorough work (Claude Haiku 5.5, Sonnet 5.5 or
   Opus 5.5).
+- **Saving tokens** (Settings → AI, both on by default): Thorough bots try
+  the Fast model first and ask the Thorough one only when it isn't sure,
+  and a first question asked again the same day, with the knowledge
+  unchanged, gets the same answer again without asking Claude.
 - **Roles** (admin, editor, agent), an audit log, UK GDPR retention.
 
 ## How it's built

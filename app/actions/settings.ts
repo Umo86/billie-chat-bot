@@ -10,6 +10,28 @@ import { changeRole, createInvitation, revokeInvitation, setSuspended } from "@/
 
 const role = z.enum(["admin", "editor", "agent"]);
 
+/** Settings → AI: the two ways Billie saves tokens, each on or off. */
+export async function saveSavingsAction(input: unknown) {
+  return runAction(
+    "settings.manage",
+    z.object({ tryFastFirst: z.boolean().optional(), reuseAnswers: z.boolean().optional() }),
+    input,
+    async (actor, d) => {
+      const parts = [
+        d.tryFastFirst === undefined
+          ? null
+          : `${d.tryFastFirst ? "on" : "off"}: Thorough bots try the Fast model first`,
+        d.reuseAnswers === undefined
+          ? null
+          : `${d.reuseAnswers ? "on" : "off"}: the same answer again to the same first question`,
+      ].filter(Boolean);
+      await updateSettings(actor.id, d, `Switched ${parts.join("; ")}`);
+      revalidatePath("/settings");
+    },
+    "Saved.",
+  );
+}
+
 /** Settings → AI: which Claude model answers Fast and Thorough work. */
 export async function saveModelsAction(input: unknown) {
   return runAction(

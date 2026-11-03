@@ -41,6 +41,7 @@ export function AiUsage({
     byModel: (Totals & { model: string })[];
     byScope: (Totals & { scope: string; label: string; unpriced: number })[];
     days: (Totals & { day: string })[];
+    reused: { count: number; saved: number };
     unpriced: number;
   };
 }) {
@@ -51,9 +52,17 @@ export function AiUsage({
       label: "Cost (Claude credits)",
       value: usd(t.cost),
       lead: true,
-      sub: report.unpriced
-        ? `Not counting ${n(report.unpriced)} earlier ${report.unpriced === 1 ? "request" : "requests"}`
-        : null,
+      sub:
+        [
+          report.reused.count
+            ? `Saved ${usd(report.reused.saved)} by giving ${n(report.reused.count)} ${report.reused.count === 1 ? "answer" : "answers"} again`
+            : null,
+          report.unpriced
+            ? `Not counting ${n(report.unpriced)} earlier ${report.unpriced === 1 ? "request" : "requests"}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(". ") || null,
     },
     { label: "Requests", value: n(t.requests) },
     {

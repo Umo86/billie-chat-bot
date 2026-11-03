@@ -34,6 +34,8 @@ export type SettingsPatch = Partial<
     | "emailSignature"
     | "fastModel"
     | "thoroughModel"
+    | "tryFastFirst"
+    | "reuseAnswers"
   >
 >;
 

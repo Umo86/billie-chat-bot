@@ -17,6 +17,7 @@ import {
 import { writeAudit } from "@/lib/audit";
 import { getSettings } from "@/lib/settings";
 import { deleteStoredFile } from "@/lib/storage";
+import { pruneReused } from "@/lib/ai/reuse";
 
 /**
  * UK GDPR housekeeping (daily job): chats and emails older than the
@@ -72,6 +73,8 @@ export async function runRetention(now = new Date()): Promise<Record<string, num
     .delete(reminderBatches)
     .where(lt(reminderBatches.createdAt, cutoff))
     .returning({ id: reminderBatches.id });
+  // Answers kept to give again are only for their day.
+  await pruneReused(now);
   // Sign-in codes last ten minutes; keep a day, for the attempts count.
   await db
     .delete(exhibitorCodes)

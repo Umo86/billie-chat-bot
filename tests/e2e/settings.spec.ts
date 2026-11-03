@@ -122,6 +122,10 @@ test("general settings save, connections and reports render", async ({ page }) =
   await expect(page.getByText("Saved. New questions use these models now.")).toBeVisible();
   await page.reload();
   await expect(page.getByTestId("ai-models").getByLabel("Thorough")).toHaveValue("claude-opus-5-5");
+  // Both ways of saving tokens are on unless an admin turns them off.
+  const savings = page.getByTestId("ai-savings");
+  await expect(savings.getByRole("switch", { name: "Try the Fast model first" })).toBeChecked();
+  await expect(savings.getByRole("switch", { name: "Give the same answer again" })).toBeChecked();
   await shot(page, "settings-ai");
   // Back to the default, so later tests run as usual.
   await page.getByTestId("ai-models").getByLabel("Thorough").selectOption("claude-sonnet-5-5");

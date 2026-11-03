@@ -62,6 +62,8 @@ export type AnswerMeta = {
   error?: string;
   /** The request form offered under this answer (lib/requests/rules.ts). */
   request?: string;
+  /** Given again from earlier today, without Claude (lib/ai/reuse.ts). */
+  reused?: boolean;
 };
 
 export type EmailTags = {

@@ -5,6 +5,7 @@ import { botMailboxes, chatRequests, conversations, messages, users } from "@/li
 import { writeAudit } from "@/lib/audit";
 import { enqueue } from "@/lib/jobs/queue";
 import { kickJobs } from "@/lib/jobs/kick";
+import { forgetReused } from "@/lib/ai/reuse";
 import { answerQuestion, aiFailureLine } from "@/lib/ai/answer";
 import { answerBotFor, type BotRow } from "@/lib/bots/load";
 import { recordGap } from "@/lib/knowledge/gap-store";
@@ -276,6 +277,8 @@ export async function visitorMessage(input: {
       question: text,
       from: input.channel === "try" ? "staff" : "visitor",
       person,
+      // Visitors only: tests and the try page always ask Claude.
+      reuse: input.channel === "try" ? null : input.channel === "whatsapp" ? "whatsapp" : "web",
     });
   } catch (err) {
     console.error("answer failed", err instanceof Error ? `${err.name}: ${err.message}` : err);
@@ -593,8 +596,10 @@ export async function rateMessage(
           eq(messages.role, "bot"),
         ),
       )
-      .returning({ id: messages.id });
+      .returning({ id: messages.id, text: messages.text });
     if (!m) throw new ChatError("not_found", "That answer isn't in this chat.");
+    // Unhelpful: nobody else gets this answer again without Claude.
+    if (rating === -1) await forgetReused(c.botId, m.text);
     const next = rating === -1 ? c.thumbsDownStreak + 1 : 0;
     await tx
       .update(conversations)

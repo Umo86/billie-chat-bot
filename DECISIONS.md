@@ -152,6 +152,30 @@ Each bot's tone, personality (in the team's own words), emoji choice and
 email sign-off go into its prompts as style. The prompt says the rules win,
 answers still come only from the knowledge, and emails never get emoji.
 
+## Cheapest first: the Fast model, then the Thorough one; answers given again
+
+Haiku 5.5 costs a twentieth of Sonnet 5.5, and most show questions are
+look-ups it answers as well. So a Thorough bot's chat answer (and the
+team's suggested reply) is asked of the Fast model first, and of the
+Thorough model only when the Fast one says it isn't sure, can't answer,
+replies in the wrong shape or is busy. A question nobody can answer costs
+both calls, which at Haiku's price adds a twentieth. Email drafts always
+use the Thorough model: they're long, read by a person, and fewer. A
+switch in Settings → AI turns this off.
+
+At shows many people ask the same first question. The same first
+question (case, punctuation, greetings and thanks ignored), to the same
+bot, with the same knowledge and settings (a stamp of the bot's and its
+sources' and passages' times and counts), on the same UK day and channel,
+gets the answer Claude gave before, at no cost. Only confident answers that
+didn't need a person; never a follow-up (it depends on the chat), a test,
+a signed-in exhibitor, or a question with an email address or phone
+number; and an answer marked unhelpful is forgotten. Kept for their day
+only. Settings → AI shows how many were given again and what that saved.
+
+Each question also sends less: the last three exchanges of the chat (not
+four), each cut at 800 characters.
+
 ## Claude's cost is counted per request, and the models are a setting
 
 Each Claude call is costed when it's made, from the price list in

@@ -168,6 +168,10 @@ export const settings = pgTable("settings", {
   /** The Claude models for Fast and Thorough answers (null: the default in lib/ai/models.ts). */
   fastModel: text("fast_model"),
   thoroughModel: text("thorough_model"),
+  /** Thorough bots answer with the Fast model first; the Thorough one only when it isn't sure. */
+  tryFastFirst: boolean("try_fast_first").notNull().default(true),
+  /** A first question asked again the same day gets the same answer, without Claude. */
+  reuseAnswers: boolean("reuse_answers").notNull().default(true),
   /**
    * The company's Teams workflow that sends one person a 1:1 Teams chat
    * (lib/alerts/direct.ts). A secret: set by admins, never shown again.
@@ -218,8 +222,38 @@ export const aiUsage = pgTable(
     cacheReadTokens: bigint("cache_read_tokens", { mode: "number" }).notNull().default(0),
     outputTokens: bigint("output_tokens", { mode: "number" }).notNull().default(0),
     costMicros: bigint("cost_micros", { mode: "number" }).notNull().default(0),
+    /** model "reused": what the answers given again would have cost. */
+    savedMicros: bigint("saved_micros", { mode: "number" }).notNull().default(0),
   },
   (t) => [primaryKey({ columns: [t.day, t.scope, t.model] })],
+);
+
+/**
+ * Answers worth giving again (lib/ai/reuse.ts): a first question asked again
+ * the same day, of the same bot with the same knowledge, gets the same answer
+ * without asking Claude. The key covers the bot, its knowledge, the UK date,
+ * the channel and the question as typed (tidied); kept two days.
+ */
+export const answerCache = pgTable(
+  "answer_cache",
+  {
+    key: text("key").primaryKey(),
+    botId: uuid("bot_id")
+      .notNull()
+      .references(() => bots.id, { onDelete: "cascade" }),
+    day: date("day").notNull(),
+    answer: jsonb("answer").$type<Record<string, unknown>>().notNull(),
+    /** To forget it when someone marks the answer unhelpful. */
+    answerHash: text("answer_hash").notNull(),
+    /** What it cost to work out, for "saved" on Settings → AI. */
+    costMicros: bigint("cost_micros", { mode: "number" }).notNull().default(0),
+    hits: integer("hits").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("answer_cache_bot_idx").on(t.botId, t.answerHash),
+    index("answer_cache_day_idx").on(t.day),
+  ],
 );
 
 /** Append-only: a trigger (migration 0001) refuses UPDATE and DELETE. */

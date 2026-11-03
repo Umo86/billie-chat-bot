@@ -1,5 +1,5 @@
 import "server-only";
-import { and, gte, lte, sql } from "drizzle-orm";
+import { and, eq, gte, lte, ne, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { aiUsage, bots } from "@/lib/db/schema";
 import { londonDate } from "@/lib/time";
@@ -74,8 +74,10 @@ export function scopeLabel(scope: string, botNames: Map<string, string>): string
 export async function aiUsageReport(period: Period, now = new Date()) {
   const { from, to } = periodDates(period, now);
   const inPeriod = and(gte(aiUsage.day, from), lte(aiUsage.day, to));
-  const [[totals], byModel, byScope, byDay, names] = await Promise.all([
-    db.select(sums).from(aiUsage).where(inPeriod),
+  // Answers given again didn't ask Claude: counted on their own, not as requests.
+  const claude = and(inPeriod, ne(aiUsage.model, "reused"));
+  const [[totals], byModel, byScope, byDay, names, [reused]] = await Promise.all([
+    db.select(sums).from(aiUsage).where(claude),
     db
       .select({ model: aiUsage.model, ...sums })
       .from(aiUsage)
@@ -89,16 +91,23 @@ export async function aiUsageReport(period: Period, now = new Date()) {
         unpriced: sql<number>`coalesce(sum(${aiUsage.requests}) FILTER (WHERE ${aiUsage.model} = ''), 0)::int`,
       })
       .from(aiUsage)
-      .where(inPeriod)
+      .where(claude)
       .groupBy(aiUsage.scope)
       .orderBy(sql`sum(${aiUsage.costMicros}) DESC`, sql`sum(${aiUsage.requests}) DESC`),
     db
       .select({ day: aiUsage.day, ...sums })
       .from(aiUsage)
-      .where(inPeriod)
+      .where(claude)
       .groupBy(aiUsage.day)
       .orderBy(aiUsage.day),
     db.select({ id: bots.id, name: bots.name }).from(bots),
+    db
+      .select({
+        count: sql<number>`coalesce(sum(${aiUsage.requests}), 0)::int`,
+        saved: sql<number>`coalesce(sum(${aiUsage.savedMicros}), 0)::float8`,
+      })
+      .from(aiUsage)
+      .where(and(inPeriod, eq(aiUsage.model, "reused"))),
   ]);
   const botNames = new Map(names.map((b) => [b.id, b.name]));
   // Every day of the period, with nothing on the quiet ones.
@@ -116,6 +125,8 @@ export async function aiUsageReport(period: Period, now = new Date()) {
     byModel,
     byScope: byScope.map((s) => ({ ...s, label: scopeLabel(s.scope, botNames) })),
     days,
+    /** Answers given again without Claude, and what they'd have cost. */
+    reused: { count: reused?.count ?? 0, saved: reused?.saved ?? 0 },
     /** Requests from before models were recorded: tokens known, cost not. */
     unpriced: byModel.find((m) => m.model === "")?.requests ?? 0,
   };

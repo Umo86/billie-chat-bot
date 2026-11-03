@@ -18,6 +18,7 @@ import { capReached, recordUsage } from "@/lib/ai/usage";
 import { citeSources } from "@/lib/ai/answer";
 import { answerBotFor, botById } from "@/lib/bots/load";
 import { retrieve } from "@/lib/knowledge/search";
+import { getSettings } from "@/lib/settings";
 import { exhibitorById, exhibitorRecord } from "@/lib/exhibitors/service";
 import type { ReplySuggestion } from "@/lib/types";
 
@@ -108,9 +109,8 @@ export async function writeSuggestion(
           },
         ]
       : found;
-    const result = await structured({
-      purpose: "reply_suggestion",
-      ...(await modelsFor(bot.quality)),
+    const call = {
+      purpose: "reply_suggestion" as const,
       system: suggestReplySystem({
         name: bot.name,
         audience: bot.audience,
@@ -124,10 +124,33 @@ export async function writeSuggestion(
       user: suggestReplyUser(history, new Date(), ex ? passages.length : undefined),
       schema: emailDraftJsonSchema,
       maxTokens: 800,
-      fake: { purpose: "reply_suggestion", history, passages },
-    });
-    await recordUsage("suggestion", result.usage, result.model);
-    const d = emailDraftSchema.parse(result.json);
+      fake: { purpose: "reply_suggestion" as const, history, passages },
+    };
+    // As with answers: Thorough bots try the Fast model first (Settings → AI).
+    const plan =
+      bot.quality === "thorough" && (await getSettings()).tryFastFirst
+        ? [await modelsFor("fast"), await modelsFor("thorough")]
+        : [await modelsFor(bot.quality)];
+    let d: ReturnType<typeof emailDraftSchema.parse> | null = null;
+    for (let i = 0; i < plan.length; i++) {
+      const last = i === plan.length - 1;
+      let result;
+      try {
+        result = await structured({ ...call, ...plan[i] });
+      } catch (err) {
+        if (!last && err instanceof AiError && err.code !== "refused") continue;
+        throw err;
+      }
+      await recordUsage("suggestion", result.usage, result.model);
+      const parsed = emailDraftSchema.safeParse(result.json);
+      if (!parsed.success) {
+        if (!last) continue;
+        throw new AiError("invalid_output", "The suggestion didn't match the expected shape");
+      }
+      d = parsed.data;
+      if ((d.confident && d.draft.trim()) || last) break;
+    }
+    if (!d) throw new AiError("invalid_output", "No suggestion");
     const draft = d.draft.trim();
     const confident = d.confident && Boolean(draft);
     const text = confident ? draft : d.holding.trim() || draft;

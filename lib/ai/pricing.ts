@@ -64,6 +64,7 @@ export function modelInfo(id: string): ModelInfo | null {
 export function modelName(id: string): string {
   if (!id) return "Not recorded";
   if (id === "stand-in") return "Stand-in (tests)";
+  if (id === "reused") return "Answers given again (no tokens)";
   return modelInfo(id)?.name ?? id;
 }
 

@@ -10,6 +10,7 @@ import { Privacy } from "@/components/settings/privacy";
 import { TeamsDirect } from "@/components/settings/teams-direct";
 import { AiUsage } from "@/components/settings/ai-usage";
 import { ModelsForm } from "@/components/settings/models-form";
+import { SavingsForm } from "@/components/settings/savings-form";
 import { aiUsageReport, PERIODS, type Period } from "@/lib/ai/report";
 import { MODELS, priceLine } from "@/lib/ai/pricing";
 import { modelFor } from "@/lib/ai/models";
@@ -69,6 +70,7 @@ export default async function SettingsPage({
           }))}
           initial={{ fast: modelFor("fast", chosen), thorough: modelFor("thorough", chosen) }}
         />
+        <SavingsForm initial={{ tryFastFirst: s.tryFastFirst, reuseAnswers: s.reuseAnswers }} />
         <AiUsage periods={PERIODS} period={period} report={report} />
         <p className="text-sm text-muted-foreground">
           The daily limit on answers ({s.dailyAnswerCap.toLocaleString("en-GB")} a day) is in{" "}

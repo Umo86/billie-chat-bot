@@ -141,10 +141,11 @@ export function answerUser(
 ): string {
   const name = (r: Turn["role"]) =>
     r === "visitor" ? "Person" : r === "agent" ? "Ops team" : r === "bot" ? "You" : "Note";
+  // The last three exchanges are enough for follow-ups, and keep each question small.
   const convo = history
     .filter((t) => t.role !== "system")
-    .slice(-8)
-    .map((t) => `${name(t.role)}: ${quoteUntrusted(t.text, 1500)}`)
+    .slice(-6)
+    .map((t) => `${name(t.role)}: ${quoteUntrusted(t.text, 800)}`)
     .join("\n");
   return [
     `${todayLine(now)}\n`,

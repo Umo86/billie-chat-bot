@@ -5,8 +5,11 @@ import { answerSchema } from "./schemas";
 import { answerJsonSchema } from "./schemas";
 import { answerSystem, answerUser, knowledgeBlock, type PromptPassage, type Turn } from "./prompts";
 import { modelsFor } from "./chosen";
-import { AiError, structured } from "./provider";
+import { AiError, structured, type StructuredResult } from "./provider";
 import { capReached, recordUsage } from "./usage";
+import { costMicros } from "./pricing";
+import { keepForReuse, reuseKey, takeReused } from "./reuse";
+import { getSettings } from "@/lib/settings";
 
 /**
  * The answer engine: one function every channel uses (web chat, hosted
@@ -70,8 +73,30 @@ export async function answerQuestion(input: {
   from?: "visitor" | "staff";
   /** A signed-in exhibitor's own record (lib/exhibitors). */
   person?: { record: string } | null;
+  /** Visitors' chats: a first question asked again can get the earlier answer (lib/ai/reuse.ts). */
+  reuse?: "web" | "whatsapp" | null;
 }): Promise<AnswerResult> {
   const { bot, history, question } = input;
+
+  // Asked before today, as a chat's first question: the same answer, no tokens.
+  const first = !history.some((t) => t.role === "visitor" || t.role === "agent");
+  const reuse =
+    input.reuse && first && !input.person ? await reuseKey(bot, question, input.reuse) : null;
+  if (reuse) {
+    const again = await takeReused(reuse);
+    if (again)
+      return {
+        ...again,
+        meta: {
+          handover: again.handover,
+          confident: again.confident,
+          topic: again.topic,
+          model: "reused",
+          reused: true,
+        },
+      };
+  }
+
   if (input.countUsage !== false && (await capReached(input.from ?? "staff"))) {
     throw new AiError("cap_reached", "Today's answer limit has been reached");
   }
@@ -95,9 +120,8 @@ export async function answerQuestion(input: {
     : null;
   const passages = record ? [...found, record] : found;
 
-  const result = await structured({
-    purpose: "answer",
-    ...(await modelsFor(bot.quality)),
+  const call = {
+    purpose: "answer" as const,
     system: answerSystem({
       name: bot.name,
       audience: bot.audience,
@@ -119,44 +143,64 @@ export async function answerQuestion(input: {
     schema: answerJsonSchema,
     maxTokens: bot.quality === "thorough" ? 1200 : 700,
     fake: {
-      purpose: "answer",
+      purpose: "answer" as const,
       question,
       passages,
       alwaysHuman: bot.rules.alwaysHuman,
       requests: bot.requestTypes.map((r) => ({ id: r.id, name: r.name })),
     },
-  });
+  };
 
-  const parsed = answerSchema.safeParse(result.json);
-  if (!parsed.success)
-    throw new AiError("invalid_output", "The reply didn't match the expected shape");
-  const r = parsed.data;
+  // Thorough bots try the cheaper Fast model first, and ask the Thorough one
+  // only when that isn't sure (Settings → AI).
+  const thorough = await modelsFor(bot.quality);
+  const plan =
+    bot.quality === "thorough" && (await getSettings()).tryFastFirst
+      ? [await modelsFor("fast"), thorough]
+      : [thorough];
 
-  const used = r.used.filter((n) => Number.isInteger(n) && n >= 1 && n <= passages.length);
-  let handover: HandoverKind = r.handover;
-  const answer = r.answer.trim().slice(0, 4000);
-  if (!answer) handover = "unknown";
-  // Only a request this bot really has; making one is not a reason to hand over.
-  const request = bot.requestTypes.some((t) => t.id === r.request) ? r.request : null;
-  if (request && handover !== "always_human" && handover !== "asked_for_person") handover = "none";
-
-  if (input.countUsage !== false) {
-    await recordUsage(`bot:${bot.id}`, result.usage, result.model).catch((err) =>
-      console.error("usage not recorded", err instanceof Error ? err.message : err),
-    );
+  let chosen: { result: StructuredResult; reply: Reply } | null = null;
+  let cost = 0;
+  for (let i = 0; i < plan.length; i++) {
+    const last = i === plan.length - 1;
+    let result: StructuredResult;
+    try {
+      result = await structured({ ...call, ...plan[i] });
+    } catch (err) {
+      // The cheaper try failing (busy, or a reply in the wrong shape) isn't the end.
+      if (!last && err instanceof AiError && err.code !== "refused") continue;
+      throw err;
+    }
+    if (input.countUsage !== false) {
+      await recordUsage(`bot:${bot.id}`, result.usage, result.model).catch((err) =>
+        console.error("usage not recorded", err instanceof Error ? err.message : err),
+      );
+    }
+    cost += costMicros(result.model, billedOf(result.usage)) ?? 0;
+    const reply = readReply(result.json, bot, passages.length);
+    if (!reply) {
+      if (!last) continue;
+      throw new AiError("invalid_output", "The reply didn't match the expected shape");
+    }
+    chosen = { result, reply };
+    const unsure = reply.handover === "unknown" || !reply.confident;
+    // Sure enough, or already the Thorough model (the Fast one was busy and fell back to it).
+    if (!unsure || last || sameModel(result.model, thorough.model)) break;
   }
+  const { result, reply } = chosen!;
+  const { handover, used, answer, request } = reply;
 
-  return {
+  const out: AnswerResult = {
     answer: answer || "I don't have that information yet.",
     sources: handover === "none" ? citeSources(used, passages) : [],
     handover,
-    confident: r.confident,
-    topic: r.topic.slice(0, 60),
+    confident: reply.confident,
+    topic: reply.topic,
     request: handover === "none" ? request : null,
     meta: {
       handover,
-      confident: r.confident,
-      topic: r.topic.slice(0, 60),
+      confident: reply.confident,
+      topic: reply.topic,
       model: result.model,
       latencyMs: result.latencyMs,
       inputTokens: result.usage.inputTokens,
@@ -165,6 +209,44 @@ export async function answerQuestion(input: {
       passages: passages.length,
     },
   };
+  if (reuse) await keepForReuse(reuse, out, cost).catch(() => undefined);
+  return out;
+}
+
+type Reply = {
+  handover: HandoverKind;
+  used: number[];
+  answer: string;
+  confident: boolean;
+  topic: string;
+  request: string | null;
+};
+
+/** Claude's reply, checked: only passages that exist, only requests the bot has. */
+function readReply(json: unknown, bot: AnswerBot, passageCount: number): Reply | null {
+  const parsed = answerSchema.safeParse(json);
+  if (!parsed.success) return null;
+  const r = parsed.data;
+  const used = r.used.filter((n) => Number.isInteger(n) && n >= 1 && n <= passageCount);
+  let handover: HandoverKind = r.handover;
+  const answer = r.answer.trim().slice(0, 4000);
+  if (!answer) handover = "unknown";
+  // Only a request this bot really has; making one is not a reason to hand over.
+  const request = bot.requestTypes.some((t) => t.id === r.request) ? r.request : null;
+  if (request && handover !== "always_human" && handover !== "asked_for_person") handover = "none";
+  return { handover, used, answer, confident: r.confident, topic: r.topic.slice(0, 60), request };
+}
+
+const billedOf = (u: StructuredResult["usage"]) => ({
+  input: Math.max(0, u.inputTokens - u.cachedTokens - u.cacheWriteTokens),
+  cacheWrite: u.cacheWriteTokens,
+  cacheRead: u.cachedTokens,
+  output: u.outputTokens,
+});
+
+/** The same model, allowing for dated versions ("claude-sonnet-5-5-20261015"). */
+function sameModel(a: string, b: string): boolean {
+  return a === b || a.startsWith(`${b}-`) || b.startsWith(`${a}-`);
 }
 
 /** What the person sees when Claude can't be reached; the chat is then offered to the team. */
