@@ -122,7 +122,8 @@ export default async function RequestsPage({
           </ul>
           {detail ? (
             <RequestView
-              key={detail.id}
+              // A new version (someone saved) starts the form again from it.
+              key={`${detail.id}:${detail.updatedAt}`}
               request={{ ...detail, emailOn: emailConfigured() }}
               handlers={handlers}
               canHandle={can(actor, "inbox.reply")}

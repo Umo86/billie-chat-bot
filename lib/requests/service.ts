@@ -1,5 +1,4 @@
 import "server-only";
-import { createHash } from "node:crypto";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { auditLog, bots, chatRequests, conversations, users } from "@/lib/db/schema";
@@ -179,16 +178,24 @@ export type RequestPatch = {
   assignedTo?: string | null;
 };
 
-function updateKey(id: string, status: string, note: string): string {
-  const v = createHash("sha256").update(status).update("\u0000").update(note).digest("hex");
-  return `request-update:${id}:${v.slice(0, 16)}`;
-}
-
-/** Changes a request; emails the person when its status or message changes. */
-export async function updateRequest(actor: Actor, id: string, patch: RequestPatch): Promise<void> {
+/**
+ * Changes a request; emails the person when its status or message changes.
+ * Only the fields given change. With `base` (when the screen read it), it
+ * refuses to save over a change someone else made meanwhile.
+ */
+export async function updateRequest(
+  actor: Actor,
+  id: string,
+  patch: RequestPatch,
+  base?: string,
+): Promise<void> {
   const emailed = await db.transaction(async (tx) => {
     const [r] = await tx.select().from(chatRequests).where(eq(chatRequests.id, id)).for("update");
     if (!r) throw new UserError("That request no longer exists.");
+    if (base && base !== r.updatedAt.toISOString())
+      throw new UserError(
+        "Someone else changed this request while you had it open. It now shows their change: check it, then save yours again.",
+      );
     const ref = requestRef(r.ref);
     const changes: Partial<typeof chatRequests.$inferInsert> = {};
     const said: string[] = [];
@@ -218,7 +225,11 @@ export async function updateRequest(actor: Actor, id: string, patch: RequestPatc
     }
     if (!said.length) return false;
 
-    await tx.update(chatRequests).set(changes).where(eq(chatRequests.id, r.id));
+    const at = new Date();
+    await tx
+      .update(chatRequests)
+      .set({ ...changes, updatedAt: at })
+      .where(eq(chatRequests.id, r.id));
     const summary = said.join(", ");
     await writeAudit(tx, {
       actorUserId: actor.id,
@@ -227,20 +238,24 @@ export async function updateRequest(actor: Actor, id: string, patch: RequestPatc
       action: changes.status ? "status_change" : "update",
       summary: summary[0].toUpperCase() + summary.slice(1),
     });
-    // The person hears when the status or the team's message changes, once per version.
-    const status = changes.status ?? r.status;
-    const text = changes.note ?? r.note;
+    // The person hears about each change to the status or the team's message, as it was
+    // then (not from a test chat).
     const tell =
       (changes.status || changes.note !== undefined) && (r.contact as ContactDetails).email;
-    if (tell && emailConfigured()) {
-      await enqueue(
-        "send_request_update",
-        { requestId: r.id },
-        { tx, dedupeKey: updateKey(r.id, status, text), once: true },
-      );
-      return true;
+    if (!tell || !emailConfigured()) return false;
+    if (r.conversationId) {
+      const [chat] = await tx
+        .select({ channel: conversations.channel })
+        .from(conversations)
+        .where(eq(conversations.id, r.conversationId));
+      if (chat?.channel === "try") return false;
     }
-    return false;
+    await enqueue(
+      "send_request_update",
+      { requestId: r.id, status: changes.status ?? r.status, note: changes.note ?? r.note },
+      { tx, dedupeKey: `request-update:${r.id}:${at.getTime()}`, once: true },
+    );
+    return true;
   });
   if (emailed) await kickJobs();
 }
@@ -345,23 +360,31 @@ export async function notifyRequest(requestId: string): Promise<void> {
   if (channel) await postToTeams(channel, card);
 }
 
-/** The "send_request_update" job: the person's email when their request changes. */
-export async function sendRequestUpdate(requestId: string): Promise<void> {
+/**
+ * The "send_request_update" job: the person's email about one change to
+ * their request, with the status and message as they were at that change.
+ */
+export async function sendRequestUpdate(
+  requestId: string,
+  change: { status?: RequestStatus; note?: string } = {},
+): Promise<void> {
   const r = await db.query.chatRequests.findFirst({ where: eq(chatRequests.id, requestId) });
   if (!r) throw new PermanentJobError("Request not found");
   const contact = r.contact as ContactDetails;
   if (!contact.email || !emailConfigured()) return;
   const bot = await db.query.bots.findFirst({ where: eq(bots.id, r.botId) });
   const ref = requestRef(r.ref);
+  const status = change.status ?? r.status;
+  const note = change.note ?? r.note;
   const name = (contact.name ?? "").trim().split(/\s+/)[0];
   await sendEmail({
     to: contact.email,
-    subject: `Your request ${ref}: ${REQUEST_STATUS_LABEL[r.status].toLowerCase()}`,
+    subject: `Your request ${ref}: ${REQUEST_STATUS_LABEL[status].toLowerCase()}`,
     text: [
       name ? `Hi ${name},` : "Hello,",
       "",
-      REQUEST_STATUS_TEXT[r.status],
-      ...(r.note ? ["", r.note] : []),
+      REQUEST_STATUS_TEXT[status],
+      ...(note ? ["", note] : []),
       "",
       `Request: ${r.typeName} (${ref})${bot?.showName ? `, ${bot.showName}` : ""}`,
       `Follow it here: ${appUrl()}/r/${r.trackToken}`,

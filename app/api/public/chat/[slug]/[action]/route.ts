@@ -19,6 +19,7 @@ import {
   cleanContact,
   handover,
   rateMessage,
+  requestOffered,
   submitDetails,
   submitRequest,
   visitorMessage,
@@ -177,16 +178,22 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
     if (action === "request") {
       const parsed = requestBody.safeParse(body);
       if (!parsed.success) return problem(400, "Check the form.");
-      if (!(await allow(`chat:request:${ip}`, LIMITS.chatRequest)))
-        return problem(429, "You've sent a lot of requests. Wait a while, or email the team.");
-      // WhatsApp can't show forms; and only this bot's own requests.
+      // Only this bot's own requests, and only one Billie offered in this chat (not WhatsApp).
       const type =
         channel === "whatsapp" ? null : bot.requestTypes.find((t) => t.id === parsed.data.typeId);
-      if (!type) return problem(404, "That request isn't available any more. Ask again.");
+      if (!type || !(await requestOffered(conversation.id, type.id)))
+        return problem(404, "That request isn't available any more. Ask again.");
       const { answers, errors } = cleanAnswers(type, parsed.data.answers);
       const { contact, errors: contactErrors } = cleanContact(REQUEST_CONTACT, parsed.data.contact);
       if (Object.keys(errors).length || Object.keys(contactErrors).length)
         return problem(400, "Check the form.", { fieldErrors: { ...errors, ...contactErrors } });
+      // Counted once the form is complete. Per chat, and generously per address: a whole
+      // hall of exhibitors can share one venue Wi-Fi address.
+      if (
+        !(await allow(`chat:request:conv:${conversation.id}`, LIMITS.chatRequestConversation)) ||
+        !(await allow(`chat:request:${ip}`, LIMITS.chatRequest))
+      )
+        return problem(429, "You've sent a lot of requests. Wait a while, or email the team.");
       return json(await submitRequest(bot, conversation.id, type, answers, contact));
     }
     if (action === "details") {

@@ -48,13 +48,15 @@ export function RequestView({
 
   function save(e: React.FormEvent) {
     e.preventDefault();
+    // Only what this person changed, and only over the version they're looking at.
     run(
       () =>
         updateRequestAction({
           id: r.id,
-          status,
-          note,
-          assignedTo: assignedTo || null,
+          base: r.updatedAt,
+          ...(status !== r.status ? { status } : {}),
+          ...(note !== r.note ? { note } : {}),
+          ...(assignedTo !== (r.assignedTo ?? "") ? { assignedTo: assignedTo || null } : {}),
         }),
       {
         done: () => {
@@ -63,6 +65,7 @@ export function RequestView({
           const tab = status === "new" || status === "in_progress" ? status : "finished";
           router.push(`/requests?tab=${tab}&r=${r.id}`);
         },
+        failed: () => router.refresh(),
       },
     );
   }

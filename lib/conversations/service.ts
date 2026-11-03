@@ -11,6 +11,7 @@ import { recordGap } from "@/lib/knowledge/gap-store";
 import { hashToken, newToken } from "@/lib/chat/token";
 import type { Actor } from "@/lib/authz";
 import type {
+  AnswerMeta,
   ContactDetails,
   ContactField,
   MessageSource,
@@ -280,16 +281,18 @@ export async function visitorMessage(input: {
     return out;
   }
 
+  const offered = offerFor(input.bot.requestTypes, answer.request);
   const botRow = await db.transaction((tx) =>
     insertMessage(tx, convId, {
       role: "bot",
       text: answer.answer,
       sources: answer.sources,
-      meta: answer.meta,
+      // The form offered is kept with the answer: it comes back if the page reloads.
+      meta: offered ? { ...answer.meta, request: offered.typeId } : answer.meta,
     }),
   );
   out.messages.push(...(await view([botRow])));
-  out.request = offerFor(input.bot.requestTypes, answer.request);
+  out.request = offered;
 
   const decision = afterAnswer(answer.handover);
   if (out.request) {
@@ -605,14 +608,40 @@ export async function visitorUpdates(
     )
     .orderBy(asc(messages.createdAt))
     .limit(200);
+  // Opening the chat again (a reload, or the next page of the website): a form Billie
+  // offered in its last message, with nothing said since, is shown again.
+  const last = rows.at(-1);
+  const pending =
+    !after &&
+    last?.role === "bot" &&
+    conversation.status === "bot" &&
+    conversation.channel !== "whatsapp"
+      ? offerFor(bot.requestTypes, (last.meta as AnswerMeta).request ?? null)
+      : null;
   return {
     conversationId: conversation.id,
     status: conversation.status,
     messages: await view(rows),
     offer: null,
     form: conversation.status === "collecting" ? formFor(bot) : null,
-    request: null,
+    request: pending,
   };
+}
+
+/** Whether Billie offered this request's form in this chat (the only way to send one). */
+export async function requestOffered(conversationId: string, typeId: string): Promise<boolean> {
+  const [m] = await db
+    .select({ id: messages.id })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.conversationId, conversationId),
+        eq(messages.role, "bot"),
+        sql`${messages.meta}->>'request' = ${typeId}`,
+      ),
+    )
+    .limit(1);
+  return Boolean(m);
 }
 
 /* ------------------------------------------------------------- staff side */

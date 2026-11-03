@@ -4,14 +4,15 @@ import "server-only";
  * Start working on queued jobs straight after the current response is sent
  * (Next.js after()), so a file is read in seconds rather than at the next
  * cron sweep. Outside a request (scripts, tests) it does nothing: the cron
- * sweep or the test itself runs the queue.
+ * sweep or the test itself runs the queue. `long` only from pages whose
+ * functions have five minutes (maxDuration 300), for the long kinds.
  */
-export async function kickJobs(): Promise<void> {
+export async function kickJobs(opts: { long?: boolean } = {}): Promise<void> {
   try {
     const { after } = await import("next/server");
     after(async () => {
       const { runJobsNow } = await import("./run");
-      await runJobsNow({ budgetMs: 55_000 });
+      await runJobsNow({ budgetMs: 55_000, long: opts.long });
     });
   } catch {
     // Not inside a request: nothing to schedule.

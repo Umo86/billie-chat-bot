@@ -11,7 +11,13 @@ import {
   messages,
   settings,
 } from "@/lib/db/schema";
-import { startConversation, submitRequest, visitorMessage } from "@/lib/conversations/service";
+import {
+  requestOffered,
+  startConversation,
+  submitRequest,
+  visitorMessage,
+  visitorUpdates,
+} from "@/lib/conversations/service";
 import { botById } from "@/lib/bots/load";
 import { saveMailbox } from "@/lib/emails/mailboxes";
 import { setDirectLink } from "@/lib/alerts/direct";
@@ -84,6 +90,16 @@ describe.skipIf(!hasDb)("requests from chat (Postgres, stand-in Claude)", () => 
       text: "We need extra hours on Wednesday evening. Can we book them?",
     });
     expect(wa.request).toBeNull();
+
+    // The form comes back when the chat is opened again, until something else is said.
+    const chat = (await db.query.conversations.findFirst({
+      where: eq(conversations.id, web.conversationId),
+    }))!;
+    expect((await visitorUpdates(bot, chat, null)).request).toMatchObject({ typeId: "hours001" });
+    expect(await requestOffered(chat.id, "hours001")).toBe(true);
+    expect(await requestOffered(chat.id, "other001")).toBe(false);
+    await visitorMessage({ bot, conversation: chat, channel: "web", text: "Thanks, bye" });
+    expect((await visitorUpdates(bot, chat, null)).request).toBeNull();
   });
 
   it("saves a request once, tells the person how to follow it and the team in Teams", async () => {
@@ -186,12 +202,27 @@ describe.skipIf(!hasDb)("requests from chat (Postgres, stand-in Claude)", () => 
       status: "done",
       note: "Approved: build until 22:00 on Wednesday.",
     });
-    expect(
-      await db
+    const updates = () =>
+      db
         .select()
         .from(jobs)
-        .where(like(jobs.dedupeKey, `request-update:${req.id}:%`)),
-    ).toHaveLength(1);
+        .where(like(jobs.dedupeKey, `request-update:${req.id}:%`))
+        .orderBy(jobs.createdAt);
+    expect(await updates()).toHaveLength(1);
+    // Every real change is emailed, as it was then: reopened, then done again.
+    await updateRequest(admin, req.id, { status: "in_progress" });
+    await updateRequest(admin, req.id, { status: "done" });
+    expect((await updates()).map((j) => (j.payload as { status: string }).status)).toEqual([
+      "done",
+      "in_progress",
+      "done",
+    ]);
+    // A screen that read an older version can't save over a newer one.
+    const seen = (await requestDetail(req.id))!.updatedAt;
+    await updateRequest(admin, req.id, { note: "Approved until 22:30." });
+    await expect(updateRequest(admin, req.id, { status: "new" }, seen)).rejects.toThrow(
+      /Someone else changed this request/,
+    );
 
     const detail = await requestDetail(req.id);
     expect(detail?.answers).toEqual([
@@ -200,6 +231,9 @@ describe.skipIf(!hasDb)("requests from chat (Postgres, stand-in Claude)", () => 
     expect(detail?.history.map((h) => h.what)).toEqual([
       `New request R-${req.ref} (${hours.name}) in a chat with ${bot.name}`,
       `Gave R-${req.ref} to Sam Tester, updated the message on R-${req.ref}, marked R-${req.ref} as done`,
+      `Marked R-${req.ref} as in progress`,
+      `Marked R-${req.ref} as done`,
+      `Updated the message on R-${req.ref}`,
     ]);
 
     // The person's page: their request and the team's message, never their email or phone.
@@ -208,7 +242,7 @@ describe.skipIf(!hasDb)("requests from chat (Postgres, stand-in Claude)", () => 
       ref: `R-${req.ref}`,
       status: "done",
       statusText: "Your request is done.",
-      note: "Approved: build until 22:00 on Wednesday.",
+      note: "Approved until 22:30.",
     });
     expect(JSON.stringify(page)).not.toContain("jo@stands.test");
     expect(JSON.stringify(page)).not.toContain("07700");
@@ -216,7 +250,7 @@ describe.skipIf(!hasDb)("requests from chat (Postgres, stand-in Claude)", () => 
   });
 
   it("marks requests from test chats, and messages nobody about them", async () => {
-    const { bot } = await botWithRequests();
+    const { bot, admin } = await botWithRequests();
     const { conversation } = await startConversation({ bot, channel: "try" });
     await submitRequest(bot, conversation.id, hours, [{ label: "When", value: "Friday" }], {
       name: "Tester",
@@ -234,6 +268,16 @@ describe.skipIf(!hasDb)("requests from chat (Postgres, stand-in Claude)", () => 
         .select()
         .from(jobs)
         .where(and(eq(jobs.kind, "teams_direct"), like(jobs.dedupeKey, `dm:request:${req.id}:%`))),
+    ).toHaveLength(0);
+    // Nor emails, even with email set up.
+    process.env.RESEND_API_KEY = "re_test_not_real";
+    process.env.EMAIL_FROM = "Billie <billie@media10.test>";
+    await updateRequest(admin, req.id, { status: "done", note: "Test done." });
+    expect(
+      await db
+        .select()
+        .from(jobs)
+        .where(like(jobs.dedupeKey, `request-update:${req.id}:%`)),
     ).toHaveLength(0);
   });
 

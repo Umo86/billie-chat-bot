@@ -412,9 +412,9 @@ export function ChatApp({
           ) : m.role === "system" ? (
             <li
               key={m.id}
-              className="self-center px-3 text-center text-[0.84rem] text-muted-foreground"
+              className="self-center break-words px-3 text-center text-[0.84rem] text-muted-foreground"
             >
-              {m.text}
+              <Linked text={m.text} />
             </li>
           ) : (
             <li key={m.id} className="flex max-w-[88%] flex-col gap-1">

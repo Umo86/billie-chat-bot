@@ -248,12 +248,14 @@ export async function editSourceAction(input: unknown) {
       kind: z.literal("text"),
       title: z.string().trim().max(200),
       body: z.string().trim().min(1, "Write some text.").max(2_000_000),
+      version: z.string().max(40).optional(),
     }),
     z.object({
       id: z.uuid(),
       kind: z.literal("qa"),
       question: z.string().trim().min(3, "Write the question.").max(300),
       answer: z.string().trim().min(2, "Write the answer.").max(4000),
+      version: z.string().max(40).optional(),
     }),
   ]);
   return runAction("knowledge.edit", schema, input, async (actor, d) => {
@@ -263,6 +265,7 @@ export async function editSourceAction(input: unknown) {
       d.kind === "text"
         ? { kind: "text", title: d.title, body: d.body }
         : { kind: "qa", question: d.question, answer: d.answer },
+      d.version,
     );
     if (changed) refresh();
     return { changed };

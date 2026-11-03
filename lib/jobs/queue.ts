@@ -72,17 +72,44 @@ export async function enqueue(
   return rows[0]?.id ?? null;
 }
 
-/** Takes up to `limit` due jobs (queued and due, or running with an expired lease). */
-export async function claim(limit: number, now = new Date()): Promise<Job[]> {
+/**
+ * Jobs that can take minutes (one long Claude call): only run where the
+ * function has the time, the every-minute sweep and the pages that queue
+ * them (maxDuration 300), never straight after a chat message (60 seconds).
+ */
+export const LONG_KINDS: JobKind[] = ["knowledge_check"];
+
+/**
+ * Takes up to `limit` due jobs: queued and due, or running with an expired
+ * lease (the worker died) and tries left. A job whose lease ran out on its
+ * last try is failed instead, so a job that keeps getting cut off can't run
+ * for ever.
+ */
+export async function claim(
+  limit: number,
+  now = new Date(),
+  opts: { skipKinds?: string[] } = {},
+): Promise<Job[]> {
+  const at = now.toISOString();
+  await query(
+    db,
+    sql`
+    UPDATE jobs
+    SET status = 'failed', locked_until = NULL, finished_at = ${at}, updated_at = now(),
+        last_error = 'It ran out of time on its last try.'
+    WHERE status = 'running' AND locked_until < ${at} AND attempts >= max_attempts`,
+  );
   const lease = new Date(now.getTime() + LEASE_MS).toISOString();
+  const skip = opts.skipKinds?.length ? sql`AND kind NOT IN ${opts.skipKinds}` : sql``;
   const rows = await query<{ id: string }>(
     db,
     sql`
     UPDATE jobs SET status = 'running', attempts = attempts + 1, locked_until = ${lease}, updated_at = now()
     WHERE id IN (
       SELECT id FROM jobs
-      WHERE (status = 'queued' AND run_at <= ${now.toISOString()})
-         OR (status = 'running' AND locked_until < ${now.toISOString()})
+      WHERE ((status = 'queued' AND run_at <= ${at})
+          OR (status = 'running' AND locked_until < ${at} AND attempts < max_attempts))
+        ${skip}
       ORDER BY run_at
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED
@@ -135,15 +162,20 @@ export type Handlers = Partial<
   Record<JobKind, (payload: Record<string, unknown>, job: Job) => Promise<void>>
 >;
 
-/** Runs due jobs until none are left or the time budget is used. */
+/**
+ * Runs due jobs until none are left or the time budget is used. `long` says
+ * whether this function has time for the long kinds (LONG_KINDS).
+ */
 export async function runDueJobs(
   handlers: Handlers,
-  opts: { budgetMs?: number; batch?: number } = {},
+  opts: { budgetMs?: number; batch?: number; long?: boolean } = {},
 ): Promise<{ done: number; retried: number; failed: number }> {
   const deadline = Date.now() + (opts.budgetMs ?? 50_000);
   const result = { done: 0, retried: 0, failed: 0 };
   while (Date.now() < deadline) {
-    const batch = await claim(opts.batch ?? 5);
+    const batch = await claim(opts.batch ?? 5, new Date(), {
+      skipKinds: opts.long ? [] : LONG_KINDS,
+    });
     if (!batch.length) break;
     await Promise.all(
       batch.map(async (job) => {

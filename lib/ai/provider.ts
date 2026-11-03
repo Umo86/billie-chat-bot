@@ -90,8 +90,8 @@ async function callAnthropic(call: StructuredCall, model: string): Promise<Struc
       messages: [{ role: "user", content: call.user }],
       output_config: { format: { type: "json_schema", schema: call.schema } },
     },
-    // A long read gets more time but one retry, so it finishes inside the job's lease.
-    call.timeoutMs ? { timeout: call.timeoutMs, maxRetries: 1 } : undefined,
+    // A long read gets more time and no retries here, so it finishes inside the job's lease.
+    call.timeoutMs ? { timeout: call.timeoutMs, maxRetries: 0 } : undefined,
   );
   if (res.stop_reason === "refusal") throw new AiError("refused", "Claude declined to answer");
   if (res.stop_reason === "max_tokens")

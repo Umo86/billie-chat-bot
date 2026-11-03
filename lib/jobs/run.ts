@@ -24,8 +24,16 @@ const handlers: Handlers = {
   teams_direct: async (p) => (await import("@/lib/alerts/direct")).sendDirect(String(p.to), p.card),
   notify_request: async (p) =>
     (await import("@/lib/requests/service")).notifyRequest(String(p.requestId)),
-  send_request_update: async (p) =>
-    (await import("@/lib/requests/service")).sendRequestUpdate(String(p.requestId)),
+  send_request_update: async (p) => {
+    const { sendRequestUpdate } = await import("@/lib/requests/service");
+    const status = ["new", "in_progress", "done", "declined"].includes(String(p.status))
+      ? (p.status as "new" | "in_progress" | "done" | "declined")
+      : undefined;
+    await sendRequestUpdate(String(p.requestId), {
+      status,
+      note: typeof p.note === "string" ? p.note : undefined,
+    });
+  },
   send_staff_reply: async (p) =>
     (await import("@/lib/conversations/delivery")).deliverStaffReply(
       String(p.messageId),
@@ -66,7 +74,7 @@ const handlers: Handlers = {
   },
 };
 
-export function runJobsNow(opts: { budgetMs?: number } = {}) {
+export function runJobsNow(opts: { budgetMs?: number; long?: boolean } = {}) {
   return runDueJobs(handlers, opts);
 }
 
@@ -102,7 +110,8 @@ export async function minuteTick(now = new Date()) {
     if (await hasMailboxToSync())
       await enqueue("outlook_sync", {}, { dedupeKey: `outlook:${minute}`, maxAttempts: 1 });
   }
-  return runJobsNow({ budgetMs: 50_000 });
+  // The sweep's function has five minutes, so it also takes the long jobs.
+  return runJobsNow({ budgetMs: 50_000, long: true });
 }
 
 /** Once a day (Vercel Cron). */
@@ -121,6 +130,6 @@ export async function dailyTick(now = new Date()) {
   const pruned = await pruneJobs(now);
   const { pruneRateLimits } = await import("@/lib/rate-limit");
   const limits = await pruneRateLimits(now.getTime());
-  const ran = await runJobsNow({ budgetMs: 240_000 });
+  const ran = await runJobsNow({ budgetMs: 200_000, long: true });
   return { pruned, limits, ...ran, at: now.toISOString() };
 }

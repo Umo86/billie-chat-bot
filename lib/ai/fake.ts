@@ -235,7 +235,7 @@ function fakeCheck(ctx: Extract<FakeContext, { purpose: "knowledge_check" }>): K
         title: `${m[0]} has passed`,
         detail: "This date has passed. Update it or take it out, so the bot doesn't offer it.",
         quotes: [sentence],
-        sources: [src.title],
+        sources: [src.label],
       });
     }
     for (const line of src.text.split("\n")) {
@@ -243,7 +243,7 @@ function fakeCheck(ctx: Extract<FakeContext, { purpose: "knowledge_check" }>): K
       if (!m) continue;
       const key = m[1].trim().toLowerCase();
       const list = values.get(key) ?? [];
-      list.push({ value: m[2].trim().toLowerCase(), line: line.trim(), title: src.title });
+      list.push({ value: m[2].trim().toLowerCase(), line: line.trim(), title: src.label });
       values.set(key, list);
     }
   }

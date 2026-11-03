@@ -1,10 +1,10 @@
 import "server-only";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { passages, sources } from "@/lib/db/schema";
 import { readStoredFile } from "@/lib/storage";
-import { PermanentJobError } from "@/lib/jobs/queue";
+import { enqueue, PermanentJobError } from "@/lib/jobs/queue";
 import { chunkSegments, type Chunk, type Segment } from "./chunk";
 import { capSegments, extractFile, UnreadableFileError, webPageSegments } from "./extract";
 import { embed } from "./embed";
@@ -99,13 +99,23 @@ export async function ingestSource(sourceId: string): Promise<void> {
   const chars = chunks.reduce((n, c) => n + c.text.length, 0);
   await db.transaction(async (tx) => {
     if (src.kind === "text" || src.kind === "qa") {
-      // Edited while this read was running: the read queued by the edit writes the new text.
       const [now] = await tx
         .select({ title: sources.title, body: sources.body })
         .from(sources)
         .where(eq(sources.id, sourceId))
         .for("update");
-      if (!now || now.title !== src.title || now.body !== src.body) return;
+      if (!now) return;
+      if (now.title !== src.title || now.body !== src.body) {
+        // Edited while this read was running: this read writes nothing, and a fresh read is
+        // queued for the newest text (the edit's own read may have been skipped while a read
+        // with its key was running).
+        await enqueue(
+          "ingest_source",
+          { sourceId },
+          { tx, dedupeKey: `ingest:${sourceId}:${randomUUID().slice(0, 12)}` },
+        );
+        return;
+      }
     }
     await tx.delete(passages).where(eq(passages.sourceId, sourceId));
     for (let i = 0; i < chunks.length; i += 200) {

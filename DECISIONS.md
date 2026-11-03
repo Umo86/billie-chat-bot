@@ -68,6 +68,13 @@ Each request that queues work starts it straight after the response
 (`after()`); Vercel Cron (Pro) sweeps every minute as a safety net and
 checks the event mailboxes. No extra service to run or pay for.
 
+A job whose worker is stopped mid-way (a function's time limit) is taken
+again when its lease runs out, but only while it has tries left; on its
+last try it's failed instead, so it can't run for ever. Long jobs (the
+knowledge check, one Claude call of up to a few minutes) only run where the
+function has five minutes: the sweep, and the page that queued them. Never
+straight after a chat message, whose function stops at 60 seconds.
+
 ## Event mailboxes: one per bot, drafts in Outlook, a post in Teams
 
 Each event has its own Microsoft 365 mailbox and Teams channel, so both
@@ -154,20 +161,29 @@ pages can't be changed by Billie: the preview lists them, to be changed at
 the source and read again. Each change queues a read with a key of its own
 for that version of the text, so it isn't blocked by a read of the old
 text still running; and a read only writes its passages if the text it
-read is still the text in the database. Bots keep answering from the old
-passages until the new ones are written, in one transaction.
+read is still the text in the database (if not, it queues a fresh read of
+the newest text). Bots keep answering from the old passages until the new
+ones are written, in one transaction: search uses sources that are ready,
+or waiting or reading again. The Edit dialog won't save over a change made
+after it opened, and the history records that text was replaced, never the
+text itself (it's often an email address or phone number, and the history
+is kept for good).
 
 ## The knowledge check is one call, on demand
 
 A bot repeats whatever its knowledge says, so two sections that disagree
 become two answers to one question. The check sends a whole knowledge
-base (up to about 180,000 characters; larger ones are checked in part, and
-the screen says how much) to the thorough model with today's date, and
-gets back contradictions, passed dates, mismatched contact details and
-unclear wording, each with the exact words and the sources' titles. It
-runs on the job queue (it can take a minute), only when someone presses
-the button, and counts towards the daily cap. Results are kept per
-knowledge base, so the team sees the latest one and when it was made.
+base (up to about 160,000 characters, loaded source by source until it's
+full; larger ones are checked in part, and the screen says how much) to
+the thorough model with today's date, and gets back at most 20 problems:
+contradictions, passed dates, mismatched contact details and unclear
+wording, each with the exact words and the sources' labels (S1, S2…, so two
+sources with one title can't be mixed up). Titles are quoted like the rest,
+as a web page's title is written by the page. It runs on the job queue,
+only when someone presses the button, and counts towards the daily cap.
+Each try is bounded (100 seconds, no SDK retries, one try on the fallback
+model) and a job has three tries, so a check can't keep costing money; one
+still open after 15 minutes shows as not finished and can be run again.
 
 ## Requests from chat are forms, not free text
 
@@ -186,6 +202,14 @@ up. Forms show on websites and the chat page, not WhatsApp. Files aren't
 taken yet: uploads from a public chat need their own safe path (size and
 type checks, private storage, clean-up), so people add a link for now.
 Requests follow the chat retention period and the privacy tools.
+
+A request can only be sent for a form Billie offered in that chat (the
+offer is kept with Billie's answer, which also brings the form back when
+the page reloads). The team's screen saves only what the person changed,
+and never over a newer version someone else saved. Each change to the
+status or the message is emailed as it was at that change; test chats
+email nobody. Rate limits count complete forms only, per chat and
+generously per address, as exhibitors at a venue share its Wi-Fi.
 
 ## Search: hybrid full-text + vectors
 

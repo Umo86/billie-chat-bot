@@ -60,6 +60,8 @@ export type AnswerMeta = {
   cachedTokens?: number;
   passages?: number;
   error?: string;
+  /** The request form offered under this answer (lib/requests/rules.ts). */
+  request?: string;
 };
 
 export type EmailTags = {

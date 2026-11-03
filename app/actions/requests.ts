@@ -12,17 +12,20 @@ export async function updateRequestAction(input: unknown) {
     status: z.enum(["new", "in_progress", "done", "declined"]).optional(),
     note: z.string().max(2000, "Keep the message under 2,000 characters.").optional(),
     assignedTo: z.uuid().nullable().optional(),
+    /** When the screen read the request (its updatedAt). */
+    base: z.string().max(40).optional(),
   });
   return runAction(
     "inbox.reply",
     schema,
     input,
     async (actor, d) => {
-      await updateRequest(actor, d.id, {
-        status: d.status,
-        note: d.note,
-        assignedTo: d.assignedTo,
-      });
+      await updateRequest(
+        actor,
+        d.id,
+        { status: d.status, note: d.note, assignedTo: d.assignedTo },
+        d.base,
+      );
       revalidatePath("/requests");
     },
     "Saved.",

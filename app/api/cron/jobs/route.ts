@@ -7,7 +7,8 @@ import { cronAuthorised } from "@/lib/cron";
  * safety net that retries failures and picks up anything left over.
  */
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// Five minutes: a long job (the knowledge check) claimed near the end of the sweep still finishes.
+export const maxDuration = 300;
 
 export async function GET(request: Request) {
   if (!cronAuthorised(request)) return new Response("Unauthorised", { status: 401 });

@@ -25,7 +25,7 @@ test("a request from chat, handled by the team and followed by the exhibitor", a
   );
   await shot(page, "bot-requests");
   await panel.getByRole("button", { name: "Save requests" }).click();
-  await expect(page.getByText("Saved.")).toBeVisible();
+  await expect(page.getByText("Saved.").first()).toBeVisible();
 
   // An exhibitor on the chat page asks for extra hours and gets the form.
   const visitor = await browser.newContext();
@@ -50,7 +50,10 @@ test("a request from chat, handled by the team and followed by the exhibitor", a
   await expect(thanks).toBeVisible();
   const line = (await thanks.textContent()) ?? "";
   const ref = /R-\d+/.exec(line)![0];
-  const track = /https?:\/\/\S+\/r\/[A-Za-z0-9_-]+/.exec(line)![0];
+  // The link to follow it is a real link in the chat.
+  const link = chat.getByRole("link", { name: /\/r\/[A-Za-z0-9_-]+/ });
+  await expect(link).toBeVisible();
+  const track = (await link.getAttribute("href"))!;
   await expect(form).toBeHidden();
 
   // The team: the Requests page shows it, given to whoever manages the event mailbox.
@@ -71,7 +74,8 @@ test("a request from chat, handled by the team and followed by the exhibitor", a
     .getByLabel(/Message to them/)
     .fill("Approved: you can build until 22:00 on Wednesday.");
   await view.getByRole("button", { name: "Save" }).click();
-  await expect(page.getByText("Saved.")).toBeVisible();
+  // The toast from saving the bot can still be showing; the history proves this save.
+  await expect(page.getByText("Saved.").first()).toBeVisible();
   await expect(view).toContainText(`marked ${ref} as done`);
   await shot(page, "requests");
 

@@ -148,11 +148,11 @@ function SourceItem({
             <Pencil /> Edit
           </Button>
         ) : null}
-        {canEdit && (s.status === "failed" || s.kind === "web" || s.kind === "file") ? (
+        {canEdit && (s.status === "failed" || s.stuck || s.kind === "web" || s.kind === "file") ? (
           <Button
             size="sm"
             variant="ghost"
-            disabled={pending || s.status === "queued" || s.status === "reading"}
+            disabled={pending || ((s.status === "queued" || s.status === "reading") && !s.stuck)}
             onClick={() => run(() => rereadAction({ id: s.id }))}
           >
             <RotateCw /> {s.status === "failed" ? "Try again" : "Read again"}

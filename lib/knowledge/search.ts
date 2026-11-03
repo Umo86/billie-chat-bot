@@ -26,10 +26,14 @@ type Row = {
   text: string;
 };
 
-/** Ready, not-deleted sources in live (not-deleted) knowledge bases. */
+/**
+ * Not-deleted sources in live (not-deleted) knowledge bases that have been
+ * read: ready, or being read again after an edit or "Read again", whose old
+ * passages stay in use until the new ones replace them in one transaction.
+ */
 function liveFilter(kbIds: string[]) {
   return sql`p.knowledge_base_id IN ${kbIds}
-    AND s.status = 'ready' AND s.deleted_at IS NULL AND kb.deleted_at IS NULL`;
+    AND s.status IN ('ready', 'queued', 'reading') AND s.deleted_at IS NULL AND kb.deleted_at IS NULL`;
 }
 
 function toPrompt(r: Row): PromptPassage {

@@ -1,4 +1,5 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { knowledgeBases, sources } from "@/lib/db/schema";
@@ -106,7 +107,12 @@ export async function rereadSource(actor: Actor, sourceId: string): Promise<void
       action: "update",
       summary: `Asked Billie to read "${row.title}" again`,
     });
-    await enqueue("ingest_source", { sourceId: row.id }, { tx, dedupeKey: `ingest:${row.id}` });
+    // A key of its own: a read that got stuck mustn't block this one.
+    await enqueue(
+      "ingest_source",
+      { sourceId: row.id },
+      { tx, dedupeKey: `ingest:${row.id}:again:${randomUUID().slice(0, 8)}` },
+    );
   });
   await kickJobs();
 }

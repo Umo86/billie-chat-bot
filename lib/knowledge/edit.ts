@@ -25,6 +25,16 @@ import { countMatches, matchSnippets, replaceAllText, splitQa, type Snippet } fr
 export type EditableSource =
   { kind: "text"; title: string; body: string } | { kind: "qa"; question: string; answer: string };
 
+/** Which version of a source's text an edit started from (so it can't undo a newer change). */
+export function textVersion(title: string, body: string | null): string {
+  return createHash("sha256")
+    .update(title)
+    .update("\u0000")
+    .update(body ?? "")
+    .digest("hex")
+    .slice(0, 16);
+}
+
 function readKey(id: string, title: string, body: string): string {
   const v = createHash("sha256").update(title).update("\u0000").update(body).digest("hex");
   return `ingest:${id}:${v.slice(0, 16)}`;
@@ -36,27 +46,35 @@ function textTitle(title: string, body: string): string {
 
 const quoted = (s: string) => `"${s.length > 60 ? `${s.slice(0, 57)}…` : s}"`;
 
-export async function sourceForEdit(sourceId: string): Promise<EditableSource> {
+export async function sourceForEdit(
+  sourceId: string,
+): Promise<EditableSource & { version: string }> {
   const s = await db.query.sources.findFirst({
     where: and(eq(sources.id, sourceId), isNull(sources.deletedAt)),
     columns: { kind: true, title: true, body: true },
   });
   if (!s) throw new KnowledgeError("That source no longer exists.");
-  if (s.kind === "text") return { kind: "text", title: s.title, body: s.body ?? "" };
+  const version = textVersion(s.title, s.body);
+  if (s.kind === "text") return { kind: "text", title: s.title, body: s.body ?? "", version };
   if (s.kind === "qa") {
     const { question, answer } = splitQa(s.body ?? "");
-    return { kind: "qa", question: question || s.title, answer };
+    return { kind: "qa", question: question || s.title, answer, version };
   }
   throw new KnowledgeError(
     "Files and web pages can't be edited here. Change the original, then read it again.",
   );
 }
 
-/** Saves the new text and has Billie read it again. False when nothing changed. */
+/**
+ * Saves the new text and has Billie read it again. False when nothing
+ * changed. With `base` (the version the Edit dialog opened), it refuses to
+ * save over a newer change, such as a find and replace made meanwhile.
+ */
 export async function editSource(
   actor: Actor,
   sourceId: string,
   edit: EditableSource,
+  base?: string,
 ): Promise<boolean> {
   const changed = await db.transaction(async (tx) => {
     const [s] = await tx
@@ -66,6 +84,10 @@ export async function editSource(
       .for("update");
     if (!s) throw new KnowledgeError("That source no longer exists.");
     if (s.kind !== edit.kind) throw new KnowledgeError("This source can't be edited here.");
+    if (base && base !== textVersion(s.title, s.body))
+      throw new KnowledgeError(
+        "This text changed after you opened it, perhaps by a find and replace. Close it, open it again and make your change.",
+      );
     const next =
       edit.kind === "text"
         ? { title: textTitle(edit.title, edit.body), body: edit.body.slice(0, 2_000_000) }
@@ -230,7 +252,8 @@ export async function replaceInKnowledge(
         entityType: "source",
         entityId: s.id,
         action: "update",
-        summary: `Replaced ${quoted(find)} with ${quoted(replace)} in ${quoted(s.title)} (${kb.name})`,
+        // Never the text itself: it's often an email address or phone number, and the log is kept.
+        summary: `Replaced text in ${quoted(s.title)} (${kb.name})`,
       });
       await enqueue(
         "ingest_source",

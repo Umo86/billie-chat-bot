@@ -35,7 +35,7 @@ export function EditSourceDialog({
 
 function EditForm({ id, onDone }: { id: string; onDone: () => void }) {
   const router = useRouter();
-  const [form, setForm] = useState<EditableSource | null>(null);
+  const [form, setForm] = useState<(EditableSource & { version?: string }) | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const { pending, run } = useRunner();
   // Loaded once per source: the list refreshing behind the dialog mustn't reset what's typed.

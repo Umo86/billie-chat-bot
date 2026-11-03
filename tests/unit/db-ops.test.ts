@@ -2,7 +2,15 @@ import { describe, expect, it } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { conversations, emailThreads, jobs, settings } from "@/lib/db/schema";
-import { backoffMs, claim, enqueue, fail, PermanentJobError, runDueJobs } from "@/lib/jobs/queue";
+import {
+  backoffMs,
+  claim,
+  enqueue,
+  fail,
+  LONG_KINDS,
+  PermanentJobError,
+  runDueJobs,
+} from "@/lib/jobs/queue";
 import { consume } from "@/lib/rate-limit";
 import { processEmail } from "@/lib/emails/process";
 import { runRetention, retentionCutoff } from "@/lib/privacy/retention";
@@ -47,6 +55,37 @@ describe.skipIf(!hasDb)("job queue (Postgres)", () => {
     );
     row = await db.query.jobs.findFirst({ where: eq(jobs.id, id) });
     expect(row).toMatchObject({ status: "failed", lastError: "bad input" });
+  });
+});
+
+describe.skipIf(!hasDb)("jobs that run out of time (Postgres)", () => {
+  it("fails a job cut off on its last try instead of running it again", async () => {
+    const id = (await enqueue("outlook_sync", { cut: 1 }, { maxAttempts: 2 }))!;
+    const cutOff = () =>
+      db
+        .update(jobs)
+        .set({ lockedUntil: new Date(Date.now() - 1000) })
+        .where(eq(jobs.id, id));
+    expect((await claim(50)).some((j) => j.id === id)).toBe(true); // try 1
+    await cutOff(); // the function was stopped mid-way
+    expect((await claim(50)).some((j) => j.id === id)).toBe(true); // try 2
+    await cutOff();
+    expect((await claim(50)).some((j) => j.id === id)).toBe(false); // no third
+    const row = await db.query.jobs.findFirst({ where: eq(jobs.id, id) });
+    expect(row).toMatchObject({
+      status: "failed",
+      attempts: 2,
+      lastError: "It ran out of time on its last try.",
+    });
+  });
+
+  it("leaves long jobs for a runner that has the time", async () => {
+    const id = (await enqueue("knowledge_check", { checkId: "none" }))!;
+    expect((await claim(50, new Date(), { skipKinds: LONG_KINDS })).some((j) => j.id === id)).toBe(
+      false,
+    );
+    expect((await claim(50)).some((j) => j.id === id)).toBe(true);
+    await db.delete(jobs).where(eq(jobs.id, id));
   });
 });
 

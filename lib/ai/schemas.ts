@@ -126,7 +126,7 @@ export const knowledgeCheckJsonSchema = {
           sources: {
             type: "array",
             items: { type: "string" },
-            description: "The titles of the sources involved, exactly as given.",
+            description: "The labels of the sources involved, e.g. S3.",
           },
         },
         required: ["kind", "title", "detail", "quotes", "sources"],

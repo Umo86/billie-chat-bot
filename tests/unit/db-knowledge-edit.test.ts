@@ -9,6 +9,7 @@ import {
   replaceInKnowledge,
   sourceForEdit,
 } from "@/lib/knowledge/edit";
+import { retrieve } from "@/lib/knowledge/search";
 import { addAndRead, hasDb, makeBot, makeUser } from "../helpers/db";
 
 // Lets a test change the source while Billie is half-way through reading it.
@@ -56,10 +57,11 @@ describe.skipIf(!hasDb)("editing knowledge in place (Postgres)", () => {
       title: "Electrics",
       body: "The 2KW socket is 8amp.",
     });
-    expect(await sourceForEdit(id)).toEqual({
+    expect(await sourceForEdit(id)).toMatchObject({
       kind: "text",
       title: "Electrics",
       body: "The 2KW socket is 8amp.",
+      version: expect.stringMatching(/^[0-9a-f]{16}$/),
     });
 
     const changed = await editSource(editor, id, {
@@ -93,7 +95,7 @@ describe.skipIf(!hasDb)("editing knowledge in place (Postgres)", () => {
       question: "When does build-up start?",
       answer: "Monday at 8am.",
     });
-    expect(await sourceForEdit(id)).toEqual({
+    expect(await sourceForEdit(id)).toMatchObject({
       kind: "qa",
       question: "When does build-up start?",
       answer: "Monday at 8am.",
@@ -127,6 +129,70 @@ describe.skipIf(!hasDb)("editing knowledge in place (Postgres)", () => {
     // The edit queued its own read, which isn't blocked by the one that was running.
     await readQueued(id);
     expect(await textOf(id)).toBe("New.");
+  });
+
+  it("keeps answering from the old text until the new one is read", async () => {
+    const editor = await makeUser("editor");
+    const { kb } = await makeBot();
+    const id = await addAndRead(editor, kb.id, {
+      kind: "text",
+      title: "Breakdown",
+      body: "Breakdown ends at 22:00 on Sunday.",
+    });
+    await editSource(editor, id, {
+      kind: "text",
+      title: "Breakdown",
+      body: "Breakdown ends at 22:30 on Sunday.",
+    });
+    // Waiting to be read again: bots still have the old passage.
+    const before = await retrieve([kb.id], "When does breakdown end?");
+    expect(before.map((p) => p.text)).toEqual(["Breakdown ends at 22:00 on Sunday."]);
+    await readQueued(id);
+    const after = await retrieve([kb.id], "When does breakdown end?");
+    expect(after.map((p) => p.text)).toEqual(["Breakdown ends at 22:30 on Sunday."]);
+  });
+
+  it("never saves over a newer change made while the Edit dialog was open", async () => {
+    const editor = await makeUser("editor");
+    const { kb } = await makeBot();
+    const id = await addAndRead(editor, kb.id, { kind: "text", title: "Contacts", body: "Old." });
+    const opened = await sourceForEdit(id);
+    await replaceInKnowledge(editor, kb.id, "Old", "Newer");
+    await expect(
+      editSource(editor, id, { kind: "text", title: "Contacts", body: "Mine." }, opened.version),
+    ).rejects.toThrow(/changed after you opened it/);
+    const fresh = await sourceForEdit(id);
+    expect(fresh).toMatchObject({ body: "Newer." });
+    expect(
+      await editSource(
+        editor,
+        id,
+        { kind: "text", title: "Contacts", body: "Mine." },
+        fresh.version,
+      ),
+    ).toBe(true);
+  });
+
+  it("reads the newest text even after a run of quick edits", async () => {
+    const editor = await makeUser("editor");
+    const { kb } = await makeBot();
+    const id = await addAndRead(editor, kb.id, { kind: "text", title: "T", body: "v1" });
+    await editSource(editor, id, { kind: "text", title: "T", body: "v2" });
+    await editSource(editor, id, { kind: "text", title: "T", body: "v3" });
+    // Both reads are running (both read v3) when v2 is saved again.
+    await db
+      .update(jobs)
+      .set({ status: "running" })
+      .where(and(eq(jobs.kind, "ingest_source"), like(jobs.dedupeKey, `ingest:${id}:%`)));
+    during.embed = async () => {
+      during.embed = null;
+      await editSource(editor, id, { kind: "text", title: "T", body: "v2" });
+    };
+    await ingestSource(id); // reads v3, finds v2: writes nothing, queues a fresh read
+    await ingestSource(id); // the other running read: the same
+    await readQueued(id);
+    expect(await textOf(id)).toBe("v2");
+    expect((await db.query.sources.findFirst({ where: eq(sources.id, id) }))?.status).toBe("ready");
   });
 
   it("won't edit files or web pages", async () => {
@@ -204,9 +270,9 @@ describe.skipIf(!hasDb)("find and replace across a knowledge base (Postgres)", (
     expect(await textOf(file.id)).toContain("idealhomeshow@eventcreate.co.uk"); // files aren't changed
 
     const audit = await db.select().from(auditLog).where(eq(auditLog.entityId, text));
-    expect(audit.map((a) => a.summary)).toContain(
-      `Replaced "${find}" with "ops@media10.test" in "Contacts" (${kb.name})`,
-    );
+    expect(audit.map((a) => a.summary)).toContain(`Replaced text in "Contacts" (${kb.name})`);
+    // The text itself (often an email address or phone number) never goes in the log.
+    expect(JSON.stringify(audit)).not.toContain("ops@media10.test");
     // Nothing left to replace.
     expect(await replaceInKnowledge(editor, kb.id, find, "ops@media10.test")).toEqual({
       sources: 0,

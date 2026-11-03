@@ -17,6 +17,8 @@ import { storageBackend } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Knowledge" };
+// The knowledge check starts straight after it's asked for, in this page's function.
+export const maxDuration = 300;
 
 export default async function KnowledgePage({
   searchParams,
