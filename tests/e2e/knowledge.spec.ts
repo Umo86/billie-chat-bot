@@ -2,19 +2,29 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { shot, signInAsAdmin } from "./helpers";
 
 /**
- * Changing knowledge in place: edit a pasted text, then replace an email
- * address everywhere in the knowledge base, with a preview first.
+ * Each bot's own knowledge, changed in place: a second bot starts with
+ * empty knowledge; edit a pasted text, then replace an email address
+ * everywhere in it, with a preview first. The first bot's knowledge is
+ * never touched.
  */
-test("edit knowledge, then find and replace across a knowledge base", async ({ page }) => {
+test("a bot's own knowledge: edit it, then find and replace across it", async ({ page }) => {
   await signInAsAdmin(page);
-  await page
-    .getByRole("navigation", { name: "Main" })
-    .getByRole("link", { name: "Knowledge" })
-    .click();
-  await page.getByRole("button", { name: "New knowledge base" }).click();
-  await page.getByLabel("Name").fill("Christmas show contacts");
-  await page.getByRole("button", { name: "Create" }).click();
-  await expect(page.getByRole("heading", { name: "Christmas show contacts" })).toBeVisible();
+  const main = page.getByRole("navigation", { name: "Main" });
+  await main.getByRole("link", { name: "Home" }).click();
+  await page.getByRole("link", { name: "New bot" }).first().click();
+  await page.getByLabel("Bot name").fill("Christmas Show Help");
+  await page.getByLabel("Show name").fill("Ideal Home Show Christmas 2026");
+  await page.getByRole("button", { name: "Create bot and continue" }).click();
+  await expect(page.getByText("Bot created.")).toBeVisible();
+
+  // The Knowledge page has each bot's knowledge; the new bot's is empty.
+  await main.getByRole("link", { name: "Knowledge" }).click();
+  const bots = page.getByRole("navigation", { name: "Bots" });
+  await expect(bots.getByRole("link")).toHaveCount(2);
+  await bots.getByRole("link", { name: /Christmas Show Help/ }).click();
+  await expect(page.getByRole("heading", { name: "Christmas Show Help" })).toBeVisible();
+  await expect(page.getByText("Nothing in here yet")).toBeVisible();
+  await expect(page.getByRole("button", { name: "New knowledge base" })).toHaveCount(0);
 
   await page.getByRole("tab", { name: "Paste text" }).click();
   await page.getByLabel("Title").fill("Who to contact");
@@ -77,6 +87,14 @@ test("edit knowledge, then find and replace across a knowledge base", async ({ p
   );
   await page.keyboard.press("Escape");
   await expect(check.getByRole("button", { name: "Check again" })).toBeEnabled();
+
+  // The first bot's knowledge is its own: none of this is in it.
+  await bots.getByRole("link", { name: /Exhibitor Help/ }).click();
+  await expect(page.getByRole("heading", { name: "Exhibitor Help" })).toBeVisible();
+  await expect(
+    page.getByTestId("source-row").filter({ hasText: "When does build-up start?" }),
+  ).toBeVisible();
+  await expect(page.getByTestId("source-row").filter({ hasText: "Who to contact" })).toHaveCount(0);
 });
 
 /** Billie reads in the background: open View until the passages show the new text. */

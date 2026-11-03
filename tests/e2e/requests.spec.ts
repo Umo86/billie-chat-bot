@@ -13,7 +13,7 @@ test("a request from chat, handled by the team and followed by the exhibitor", a
   browser,
 }) => {
   await signInAsAdmin(page);
-  await page.getByRole("link", { name: "Edit", exact: true }).first().click(); // the only bot
+  await page.getByRole("link", { name: "Edit", exact: true }).first().click(); // Exhibitor Help, the first bot
   await page.getByRole("link", { name: "4 Rules" }).click();
   const panel = page.getByTestId("requests-panel");
   await expect(panel).toContainText("This bot doesn't take any requests yet.");

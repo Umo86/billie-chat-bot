@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import QRCode from "qrcode";
-import { Chip, Note, PageHeader } from "@/components/ui/bits";
+import { Chip, Note, PageHeader, Panel } from "@/components/ui/bits";
 import { BotAvatar } from "@/components/bots/bot-avatar";
 import { STEPS, WizardSteps, type StepKey } from "@/components/bots/wizard-steps";
 import { LookForm } from "@/components/bots/look-form";
 import { PersonalityStep } from "@/components/bots/personality-step";
 import { KnowledgeStep } from "@/components/bots/knowledge-step";
+import { ReplaceDialog } from "@/components/knowledge/replace-dialog";
+import { KnowledgeWorkspace } from "@/components/knowledge/workspace";
 import { RulesStep } from "@/components/bots/rules-step";
 import { RequestsPanel } from "@/components/bots/requests-panel";
 import { EmailStep } from "@/components/bots/email-step";
@@ -14,8 +16,8 @@ import { TestStep } from "@/components/bots/test-step";
 import { LiveStep } from "@/components/bots/live-step";
 import { requireActor } from "@/lib/auth/actor";
 import { can } from "@/lib/authz";
-import { botById, knowledgeBaseIdsFor } from "@/lib/bots/load";
-import { knowledgeBaseList } from "@/lib/knowledge/queries";
+import { botById } from "@/lib/bots/load";
+import { knowledgeBaseOf } from "@/lib/knowledge/bases";
 import { appUrl, microsoftConfigured, teamsConfigured, whatsappConfigured } from "@/lib/config";
 import { botEmailSetup, mailboxManagers } from "@/lib/emails/mailboxes";
 import { getSettings } from "@/lib/settings";
@@ -76,15 +78,23 @@ export default async function BotPage({
       />
     );
   } else if (step === "knowledge") {
-    const [kbs, chosen] = await Promise.all([knowledgeBaseList(), knowledgeBaseIdsFor(bot.id)]);
+    const kb = await knowledgeBaseOf(bot.id);
+    const canTeach = can(actor, "knowledge.edit");
     body = (
-      <KnowledgeStep
-        botId={bot.id}
-        kbs={kbs}
-        chosen={chosen}
-        quality={bot.quality}
-        canEdit={canEdit}
-      />
+      <div className="flex flex-col gap-4">
+        <Panel className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-[1.05rem]">What it knows</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {bot.name} answers only from what&apos;s here, and passes anything else to the team.
+              This knowledge is only for this bot.
+            </p>
+          </div>
+          {canTeach ? <ReplaceDialog kbId={kb.id} kbName={bot.name} /> : null}
+        </Panel>
+        <KnowledgeWorkspace kbId={kb.id} canEdit={canTeach} />
+        <KnowledgeStep botId={bot.id} quality={bot.quality} canEdit={canEdit} />
+      </div>
     );
   } else if (step === "rules") {
     const people = await mailboxManagers();

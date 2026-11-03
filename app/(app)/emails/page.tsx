@@ -47,7 +47,7 @@ export default async function EmailsPage({
       <AutoRefresh active={writing || email?.status === "new" || email?.status === "working"} />
       <PageHeader
         title="Emails"
-        lede="Exhibitor emails with a draft reply from the knowledge base. You check every draft before it goes."
+        lede="Exhibitor emails with a draft reply from the bot's knowledge. You check every draft before it goes."
         actions={
           <PasteEmail bots={choices} defaultBotId={settings.emailBotId ?? choices[0]?.id ?? null} />
         }

@@ -1,17 +1,17 @@
 import "server-only";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { botKnowledgeBases, bots, knowledgeBases } from "@/lib/db/schema";
+import { bots, knowledgeBases } from "@/lib/db/schema";
 import type { AnswerBot } from "@/lib/ai/answer";
 
 export type BotRow = typeof bots.$inferSelect;
 
+/** What a bot answers from: its own knowledge base (none only for a bot made mid-release). */
 export async function knowledgeBaseIdsFor(botId: string): Promise<string[]> {
   const rows = await db
-    .select({ id: botKnowledgeBases.knowledgeBaseId })
-    .from(botKnowledgeBases)
-    .innerJoin(knowledgeBases, eq(knowledgeBases.id, botKnowledgeBases.knowledgeBaseId))
-    .where(and(eq(botKnowledgeBases.botId, botId), isNull(knowledgeBases.deletedAt)));
+    .select({ id: knowledgeBases.id })
+    .from(knowledgeBases)
+    .where(and(eq(knowledgeBases.botId, botId), isNull(knowledgeBases.deletedAt)));
   return rows.map((r) => r.id);
 }
 

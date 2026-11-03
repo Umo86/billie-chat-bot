@@ -16,9 +16,8 @@ import {
 } from "@/lib/conversations/inbox";
 import { agentsAvailable, extendIfAvailable, isAvailable } from "@/lib/conversations/presence";
 import { markRead } from "@/lib/conversations/service";
-import { knowledgeBaseIdsFor } from "@/lib/bots/load";
 import { directLink } from "@/lib/alerts/direct";
-import { knowledgeBaseList } from "@/lib/knowledge/queries";
+import { knowledgeBaseOf } from "@/lib/knowledge/bases";
 import { withinReplyWindow } from "@/lib/channels/whatsapp";
 import { timeAgo } from "@/lib/time";
 import type { ContactDetails } from "@/lib/types";
@@ -73,17 +72,8 @@ export default async function InboxPage({
   const detail = selectedId ? await conversationDetail(selectedId) : null;
   if (detail) await markRead(detail.conversation.id);
   const canTeach = can(actor, "knowledge.edit");
-  const kbs =
-    detail && canTeach
-      ? await (async () => {
-          const [all, own] = await Promise.all([
-            knowledgeBaseList(),
-            knowledgeBaseIdsFor(detail.conversation.botId),
-          ]);
-          const preferred = all.filter((k) => own.includes(k.id));
-          return (preferred.length ? preferred : all).map((k) => ({ id: k.id, name: k.name }));
-        })()
-      : [];
+  // "Save an answer" goes into the knowledge of the bot that was asked.
+  const kbs = detail && canTeach ? [await knowledgeBaseOf(detail.conversation.botId)] : [];
   const live = counts.needs + counts.live > 0;
 
   return (

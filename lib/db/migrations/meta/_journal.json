@@ -78,6 +78,13 @@
       "when": 1793719352596,
       "tag": "0010_chat_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793724943306,
+      "tag": "0011_bot_knowledge",
+      "breakpoints": true
     }
   ]
 }

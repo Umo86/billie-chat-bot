@@ -19,18 +19,15 @@ export async function makeUser(role: Actor["role"] = "admin"): Promise<Actor> {
   return { id: u.id, email: u.email, name: u.fullName, role: u.role, status: u.status };
 }
 
+/** A bot with its own knowledge base, as createBot makes them. */
 export async function makeBot(
-  opts: { audience?: "visitors" | "exhibitors"; status?: "draft" | "live" } = {},
+  opts: { audience?: "visitors" | "exhibitors"; status?: "draft" | "live"; name?: string } = {},
 ) {
   const audience = opts.audience ?? "exhibitors";
-  const [kb] = await db
-    .insert(knowledgeBases)
-    .values({ name: `KB ${randomUUID().slice(0, 6)}` })
-    .returning();
   const [bot] = await db
     .insert(bots)
     .values({
-      name: "Exhibitor Help",
+      name: opts.name ?? "Exhibitor Help",
       slug: `bot-${randomUUID().slice(0, 8)}`,
       audience,
       showName: "UKCW London 2027",
@@ -38,6 +35,10 @@ export async function makeBot(
       status: opts.status ?? "live",
       quality: "fast",
     })
+    .returning();
+  const [kb] = await db
+    .insert(knowledgeBases)
+    .values({ botId: bot.id, name: `${bot.name} ${randomUUID().slice(0, 6)}` })
     .returning();
   await db.insert(botKnowledgeBases).values({ botId: bot.id, knowledgeBaseId: kb.id });
   return { bot, kb };

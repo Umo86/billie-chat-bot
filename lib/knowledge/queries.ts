@@ -4,34 +4,59 @@ import { db, query } from "@/lib/db/client";
 import { passages, sources } from "@/lib/db/schema";
 import type { FreshStatus } from "./learning";
 
-export type KbSummary = {
+export type KbBot = {
   id: string;
   name: string;
-  description: string;
-  sources: number;
-  passages: number;
-  usedBy: { id: string; name: string }[];
+  color: string;
+  avatarUrl: string | null;
+  status: "draft" | "live";
 };
 
+export type KbSummary = {
+  id: string;
+  /** The bot's name (an old shared base keeps its own). */
+  name: string;
+  sources: number;
+  passages: number;
+  /** Whose knowledge it is; null for an old shared base no bot answers from. */
+  bot: KbBot | null;
+};
+
+/** Each bot's knowledge, by bot name, then any old shared bases no bot uses. */
 export async function knowledgeBaseList(): Promise<KbSummary[]> {
   const rows = await query<{
     id: string;
     name: string;
-    description: string;
     sources: number;
     passages: number;
-    used_by: { id: string; name: string }[] | null;
+    bot_id: string | null;
+    color: string | null;
+    avatar_url: string | null;
+    status: "draft" | "live" | null;
   }>(
     db,
-    sql`SELECT kb.id, kb.name, kb.description,
+    sql`SELECT kb.id, coalesce(b.name, kb.name) AS name, b.id AS bot_id, b.color, b.avatar_url, b.status,
           (SELECT count(*)::int FROM sources s WHERE s.knowledge_base_id = kb.id AND s.deleted_at IS NULL) AS sources,
-          (SELECT coalesce(sum(s.passage_count), 0)::int FROM sources s WHERE s.knowledge_base_id = kb.id AND s.deleted_at IS NULL AND s.status = 'ready') AS passages,
-          (SELECT json_agg(json_build_object('id', b.id, 'name', b.name) ORDER BY b.name)
-             FROM bot_knowledge_bases bk JOIN bots b ON b.id = bk.bot_id
-            WHERE bk.knowledge_base_id = kb.id AND b.deleted_at IS NULL) AS used_by
-        FROM knowledge_bases kb WHERE kb.deleted_at IS NULL ORDER BY kb.name`,
+          (SELECT coalesce(sum(s.passage_count), 0)::int FROM sources s WHERE s.knowledge_base_id = kb.id AND s.deleted_at IS NULL AND s.status = 'ready') AS passages
+        FROM knowledge_bases kb LEFT JOIN bots b ON b.id = kb.bot_id
+        WHERE kb.deleted_at IS NULL AND (kb.bot_id IS NULL OR b.deleted_at IS NULL)
+        ORDER BY kb.bot_id IS NULL, lower(coalesce(b.name, kb.name)), kb.created_at`,
   );
-  return rows.map((r) => ({ ...r, usedBy: r.used_by ?? [] }));
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    sources: r.sources,
+    passages: r.passages,
+    bot: r.bot_id
+      ? {
+          id: r.bot_id,
+          name: r.name,
+          color: r.color ?? "#0d6a5b",
+          avatarUrl: r.avatar_url,
+          status: r.status ?? "draft",
+        }
+      : null,
+  }));
 }
 
 export type SourceRow = {
@@ -122,7 +147,6 @@ export type GapRow = {
   question: string;
   askCount: number;
   lastAskedAt: string;
-  kbIds: string[];
 };
 
 export async function openGaps(): Promise<GapRow[]> {
@@ -133,11 +157,9 @@ export async function openGaps(): Promise<GapRow[]> {
     question: string;
     ask_count: number;
     last_asked_at: Date;
-    kb_ids: string[] | null;
   }>(
     db,
-    sql`SELECT g.id, g.bot_id, b.name AS bot_name, g.question, g.ask_count, g.last_asked_at,
-          (SELECT array_agg(bk.knowledge_base_id) FROM bot_knowledge_bases bk WHERE bk.bot_id = g.bot_id) AS kb_ids
+    sql`SELECT g.id, g.bot_id, b.name AS bot_name, g.question, g.ask_count, g.last_asked_at
         FROM gaps g JOIN bots b ON b.id = g.bot_id
         WHERE g.status = 'open' AND b.deleted_at IS NULL
         ORDER BY g.ask_count DESC, g.last_asked_at DESC
@@ -150,6 +172,5 @@ export async function openGaps(): Promise<GapRow[]> {
     question: r.question,
     askCount: r.ask_count,
     lastAskedAt: new Date(r.last_asked_at).toISOString(),
-    kbIds: r.kb_ids ?? [],
   }));
 }

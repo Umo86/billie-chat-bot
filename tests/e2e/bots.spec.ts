@@ -3,29 +3,43 @@ import { expect, test } from "@playwright/test";
 import { shot, signInAsAdmin } from "./helpers";
 
 /**
- * Knowledge in, bot out: a knowledge base with a typed answer and a file,
- * then the bot's steps (look, personality, knowledge, rules, email and
- * Teams, test) through to a passing test run and going live.
+ * A bot and its own knowledge: the bot's steps (look, personality, its
+ * knowledge with a typed answer and a file, rules, email and Teams, test)
+ * through to a passing test run and going live.
  */
 test.describe.configure({ mode: "serial" });
 
-test("build knowledge, then a bot that answers from it", async ({ page }) => {
+test("build a bot with its own knowledge, test it and put it live", async ({ page }) => {
   await signInAsAdmin(page);
 
-  // Knowledge: a base, a typed answer and a CSV file.
-  await page
-    .getByRole("navigation", { name: "Main" })
-    .getByRole("link", { name: "Knowledge" })
-    .click();
-  await page.getByRole("button", { name: "New knowledge base" }).click();
-  await page.getByLabel("Name").fill("Exhibitor knowledge");
-  await page.getByRole("button", { name: "Create" }).click();
-  await expect(page.getByRole("heading", { name: "Exhibitor knowledge" })).toBeVisible();
+  // Step 1: look.
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Home" }).click();
+  await page.getByRole("link", { name: "New bot" }).first().click();
+  await expect(page.getByText(/^Seven short steps/)).toBeVisible();
+  await page.getByLabel("Bot name").fill("Exhibitor Help");
+  await page.getByLabel("Show name").fill("UK Construction Week 2027");
+  await page.getByRole("button", { name: "Suggest a welcome message" }).click();
+  await expect(page.getByLabel("Welcome message")).toHaveValue(/Exhibitor Help/);
+  await shot(page, "bot-look");
+  await page.getByRole("button", { name: "Create bot and continue" }).click();
 
+  // Step 2: personality.
+  await expect(page.getByText("Bot created.")).toBeVisible();
+  await page.getByRole("tab", { name: "Formal" }).click();
+  await page.getByRole("button", { name: "Use the example" }).click();
+  await expect(page.getByLabel("Personality, in your own words")).toHaveValue(/ops manager/);
+  await page.getByRole("switch", { name: "Emoji in chats" }).click();
+  await page.getByLabel("Email sign-off").fill("Best wishes,\nThe UKCW team");
+  await shot(page, "bot-personality");
+  await page.getByRole("button", { name: "Save and continue" }).click();
+
+  // Step 3: its own knowledge, starting empty: a typed answer and a CSV file.
+  await expect(page.getByRole("heading", { name: "What it knows" })).toBeVisible();
+  await expect(page.getByText("Nothing in here yet")).toBeVisible();
   await page.getByRole("tab", { name: "Typed answer" }).click();
   await page.getByLabel("Question").fill("When does build-up start?");
   await page
-    .getByLabel("Answer")
+    .getByLabel("Answer", { exact: true })
     .fill("Build-up starts on Monday 8 March at 8am. Bring your contractor badge.");
   await page.getByRole("button", { name: "Save answer" }).click();
   const qa = page.getByTestId("source-row").filter({ hasText: "When does build-up start?" });
@@ -51,36 +65,6 @@ test("build knowledge, then a bot that answers from it", async ({ page }) => {
   await file.getByRole("button", { name: "View" }).click();
   await expect(page.getByRole("dialog")).toContainText(/passage|Row|Sheet|park/i);
   await page.keyboard.press("Escape");
-
-  // Step 1: look.
-  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Home" }).click();
-  await page.getByRole("link", { name: "New bot" }).first().click();
-  await expect(page.getByText(/^Seven short steps/)).toBeVisible();
-  await page.getByLabel("Bot name").fill("Exhibitor Help");
-  await page.getByLabel("Show name").fill("UK Construction Week 2027");
-  await page.getByRole("button", { name: "Suggest a welcome message" }).click();
-  await expect(page.getByLabel("Welcome message")).toHaveValue(/Exhibitor Help/);
-  await shot(page, "bot-look");
-  await page.getByRole("button", { name: "Create bot and continue" }).click();
-
-  // Step 2: personality.
-  await expect(page.getByText("Bot created.")).toBeVisible();
-  await page.getByRole("tab", { name: "Formal" }).click();
-  await page.getByRole("button", { name: "Use the example" }).click();
-  await expect(page.getByLabel("Personality, in your own words")).toHaveValue(/ops manager/);
-  await page.getByRole("switch", { name: "Emoji in chats" }).click();
-  await page.getByLabel("Email sign-off").fill("Best wishes,\nThe UKCW team");
-  await shot(page, "bot-personality");
-  await page.getByRole("button", { name: "Save and continue" }).click();
-
-  // Step 3: knowledge.
-  await expect(
-    page.getByRole("heading", { name: "Which knowledge should it answer from?" }),
-  ).toBeVisible();
-  // The tick box is named after the knowledge base, with its contents as the description.
-  const kb = page.getByRole("checkbox", { name: "Exhibitor knowledge", exact: true });
-  await kb.check();
-  await expect(kb).toBeChecked();
   await page.getByRole("button", { name: "Save and continue" }).click();
 
   // Step 4: rules (defaults are fine).

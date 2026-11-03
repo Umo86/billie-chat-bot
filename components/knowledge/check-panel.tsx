@@ -32,7 +32,7 @@ function when(iso: string) {
 }
 
 /**
- * The knowledge check: Claude reads the whole knowledge base and lists
+ * The knowledge check: Claude reads all of a bot's knowledge and lists
  * contradictions, dates that have passed and contact details that don't
  * match. Pasted text and typed answers can be fixed straight from the list.
  */
@@ -63,7 +63,7 @@ export function CheckPanel({
           <h2 className="text-[1.05rem]">Knowledge check</h2>
           {busy ? (
             <p className="mt-1 text-sm text-muted-foreground" role="status">
-              Billie is reading the whole knowledge base. This takes about a minute.
+              Billie is reading all of this bot&apos;s knowledge. This takes about a minute.
             </p>
           ) : check?.status === "failed" ? (
             <p className="mt-1 text-sm text-bad">
@@ -82,9 +82,9 @@ export function CheckPanel({
             </p>
           ) : (
             <p className="mt-1 text-sm text-muted-foreground">
-              Billie reads the whole knowledge base and lists contradictions, dates that have passed
-              and contact details that don&apos;t match, so a bot never gives two answers to one
-              question.
+              Billie reads all of this bot&apos;s knowledge and lists contradictions, dates that
+              have passed and contact details that don&apos;t match, so the bot never gives two
+              answers to one question.
             </p>
           )}
         </div>

@@ -102,9 +102,7 @@ export function LearningPanel({
         ) : phase === "ready" ? (
           <>
             <h3 className="text-[1.2rem]">Billie is ready</h3>
-            <p className="break-words">
-              {learnedSummary(items)} Bots that use this knowledge base can answer from it now.
-            </p>
+            <p className="break-words">{learnedSummary(items)} The bot can answer from it now.</p>
           </>
         ) : (
           <h3 className="break-words text-[1.2rem]">

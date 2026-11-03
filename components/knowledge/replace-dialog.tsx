@@ -16,7 +16,7 @@ const KIND = { text: "Pasted text", qa: "Typed answer", file: "File", web: "Web 
 const times = (n: number) => `${n} ${n === 1 ? "time" : "times"}`;
 
 /**
- * Find and replace across a knowledge base, e.g. a new email address for
+ * Find and replace across a bot's knowledge, e.g. a new email address for
  * exhibitor questions. Preview first; pasted text and typed answers change,
  * files and web pages are listed to change at the source.
  */
@@ -119,7 +119,7 @@ export function ReplaceDialog({ kbId, kbName }: { kbId: string; kbName: string }
             <p className="font-semibold">
               {total
                 ? `Found ${times(total)} in ${preview.editable.length + preview.elsewhere.length} ${preview.editable.length + preview.elsewhere.length === 1 ? "source" : "sources"}.`
-                : "Not found in this knowledge base."}
+                : "Not found in this bot's knowledge."}
             </p>
             {preview.editable.length ? (
               <ul className="flex flex-col gap-2" aria-label="Sources that will change">

@@ -1,19 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BookOpen } from "lucide-react";
-import { EmptyState, PageHeader, Panel } from "@/components/ui/bits";
+import { Archive, Bot, Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Chip, EmptyState, PageHeader, Panel } from "@/components/ui/bits";
 import { TabsNav } from "@/components/ui/tabs-nav";
-import { AddSource } from "@/components/knowledge/add-source";
-import { SourceList } from "@/components/knowledge/source-list";
+import { BotAvatar } from "@/components/bots/bot-avatar";
 import { GapList } from "@/components/knowledge/gap-list";
-import { KbActions, NewKbButton } from "@/components/knowledge/kb-dialog";
-import { CheckPanel } from "@/components/knowledge/check-panel";
+import { DeleteOldKb } from "@/components/knowledge/kb-dialog";
+import { ReplaceDialog } from "@/components/knowledge/replace-dialog";
+import { KnowledgeWorkspace } from "@/components/knowledge/workspace";
 import { requireActor } from "@/lib/auth/actor";
 import { can } from "@/lib/authz";
-import { knowledgeBaseList, openGaps, sourcesFor } from "@/lib/knowledge/queries";
-import { latestCheck } from "@/lib/knowledge/check";
-import { ACCEPTED_EXTENSIONS, MAX_FILE_BYTES } from "@/lib/knowledge/files";
-import { storageBackend } from "@/lib/storage";
+import { ensureBotKnowledgeBases } from "@/lib/knowledge/bases";
+import { knowledgeBaseList, openGaps } from "@/lib/knowledge/queries";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Knowledge" };
@@ -29,28 +28,27 @@ export default async function KnowledgePage({
   const canEdit = can(actor, "knowledge.edit");
   const params = await searchParams;
   const tab = params.tab === "gaps" ? "gaps" : "bases";
+  await ensureBotKnowledgeBases();
   const [kbs, gaps] = await Promise.all([knowledgeBaseList(), openGaps()]);
-  const selected = kbs.find((k) => k.id === params.kb) ?? kbs[0] ?? null;
-  const [sources, check] =
-    tab === "bases" && selected
-      ? await Promise.all([sourcesFor(selected.id), latestCheck(selected.id)])
-      : [[], null];
-  const storage = storageBackend();
+  const selected =
+    kbs.find((k) => k.id === params.kb) ??
+    kbs.find((k) => k.bot && k.bot.id === params.bot) ??
+    kbs[0] ??
+    null;
+  const owned = kbs.filter((k) => k.bot);
+  const old = kbs.filter((k) => !k.bot);
 
   return (
     <>
       <PageHeader
         title="Knowledge"
-        lede="What your bots know. Billie answers only from what's here, and passes anything else to the team."
-        actions={
-          canEdit && tab === "bases" && kbs.length ? <NewKbButton variant="default" /> : null
-        }
+        lede="What each bot knows. A bot answers only from its own knowledge, and passes anything else to the team."
       />
       <TabsNav
         label="Knowledge sections"
         current={tab}
         tabs={[
-          { key: "bases", href: "/knowledge", label: "Knowledge bases" },
+          { key: "bases", href: "/knowledge", label: "Each bot's knowledge" },
           {
             key: "gaps",
             href: "/knowledge?tab=gaps",
@@ -60,86 +58,110 @@ export default async function KnowledgePage({
       />
 
       {tab === "gaps" ? (
-        <GapList gaps={gaps} kbs={kbs.map((k) => ({ id: k.id, name: k.name }))} canEdit={canEdit} />
+        <GapList gaps={gaps} canEdit={canEdit} />
       ) : !selected ? (
-        <EmptyState title="No knowledge bases yet" action={canEdit ? <NewKbButton /> : null}>
-          Create a knowledge base, then drop your files into it. Start with two: one for exhibitors
-          (the exhibitor manual, price lists, deadlines) and one for visitors (opening times,
-          travel, tickets). Each bot answers from the ones you give it.
+        <EmptyState
+          title="No bots yet"
+          action={
+            can(actor, "bots.edit") ? (
+              <Button asChild variant="primary">
+                <Link href="/bots/new">
+                  <Plus /> New bot
+                </Link>
+              </Button>
+            ) : null
+          }
+        >
+          Each bot has its own knowledge. Create a bot, then add the exhibitor manual, price lists
+          and the show&apos;s FAQ to it.
         </EmptyState>
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
-          <nav aria-label="Knowledge bases" className="flex flex-col gap-1.5">
-            {kbs.map((k) => (
-              <Link
-                key={k.id}
-                href={`/knowledge?kb=${k.id}`}
-                aria-current={k.id === selected.id ? "page" : undefined}
-                className={cn(
-                  "flex items-start gap-2.5 rounded-[12px] border border-border bg-card px-3.5 py-3 hover:border-primary/50",
-                  k.id === selected.id && "border-primary bg-accent",
-                )}
-              >
-                <BookOpen className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
-                <span className="min-w-0">
-                  <span className="block truncate font-semibold">{k.name}</span>
-                  <span className="block text-sm text-muted-foreground">
-                    {k.sources} {k.sources === 1 ? "source" : "sources"} · {k.passages}{" "}
-                    {k.passages === 1 ? "passage" : "passages"}
-                  </span>
-                </span>
-              </Link>
+          <nav aria-label="Bots" className="flex flex-col gap-1.5">
+            {owned.map((k) => (
+              <KbLink key={k.id} kb={k} current={k.id === selected.id} />
             ))}
+            {old.length ? (
+              <>
+                <p className="mt-3 px-1 text-sm font-semibold text-muted-foreground">
+                  Not used by a bot
+                </p>
+                {old.map((k) => (
+                  <KbLink key={k.id} kb={k} current={k.id === selected.id} />
+                ))}
+              </>
+            ) : null}
           </nav>
           <div className="flex min-w-0 flex-col gap-4">
             <Panel className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <h2 className="break-words">{selected.name}</h2>
-                {selected.description ? (
-                  <p className="mt-1 text-muted-foreground">{selected.description}</p>
-                ) : null}
                 <p className="mt-1.5 text-sm text-muted-foreground">
-                  {selected.usedBy.length
-                    ? `Used by ${selected.usedBy.map((b) => b.name).join(", ")}`
-                    : "No bot uses this yet. Choose it in a bot's Knowledge step."}
+                  {selected.bot
+                    ? `${selected.bot.status === "live" ? "Live" : "Draft"} bot. It answers only from what's here.`
+                    : "No bot answers from this. Each bot has its own knowledge now: add anything you still need to a bot, then delete this."}
                 </p>
               </div>
-              {canEdit ? (
-                <KbActions
-                  kb={{
-                    id: selected.id,
-                    name: selected.name,
-                    description: selected.description,
-                  }}
-                  usedBy={selected.usedBy.length}
-                />
-              ) : null}
+              <div className="flex flex-wrap gap-2">
+                {selected.bot ? (
+                  <>
+                    {canEdit ? <ReplaceDialog kbId={selected.id} kbName={selected.name} /> : null}
+                    {can(actor, "bots.view") ? (
+                      <Button asChild size="sm">
+                        <Link href={`/bots/${selected.bot.id}`}>
+                          <Bot /> Open the bot
+                        </Link>
+                      </Button>
+                    ) : null}
+                  </>
+                ) : canEdit ? (
+                  <DeleteOldKb kb={{ id: selected.id, name: selected.name }} />
+                ) : null}
+              </div>
             </Panel>
-            {sources.length ? (
-              <CheckPanel kbId={selected.id} check={check} canEdit={canEdit} />
-            ) : null}
-            {canEdit ? (
-              storage === "none" ? (
-                <AddSource
-                  kbId={selected.id}
-                  accept={ACCEPTED_EXTENSIONS}
-                  maxBytes={0}
-                  blobUploads={false}
-                  filesOff
-                />
-              ) : (
-                <AddSource
-                  kbId={selected.id}
-                  accept={ACCEPTED_EXTENSIONS}
-                  maxBytes={MAX_FILE_BYTES}
-                  blobUploads={storage === "vercel-blob"}
-                />
-              )
-            ) : null}
-            <SourceList sources={sources} canEdit={canEdit} />
+            <KnowledgeWorkspace
+              kbId={selected.id}
+              canEdit={canEdit}
+              canAdd={canEdit && !!selected.bot}
+            />
           </div>
         </div>
       )}
     </>
+  );
+}
+
+function KbLink({
+  kb,
+  current,
+}: {
+  kb: Awaited<ReturnType<typeof knowledgeBaseList>>[number];
+  current: boolean;
+}) {
+  return (
+    <Link
+      href={`/knowledge?kb=${kb.id}`}
+      aria-current={current ? "page" : undefined}
+      className={cn(
+        "flex items-start gap-2.5 rounded-[12px] border border-border bg-card px-3.5 py-3 hover:border-primary/50",
+        current && "border-primary bg-accent",
+      )}
+    >
+      {kb.bot ? (
+        <BotAvatar name={kb.bot.name} color={kb.bot.color} avatarUrl={kb.bot.avatarUrl} size={22} />
+      ) : (
+        <Archive className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+      )}
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-2">
+          <span className="truncate font-semibold">{kb.name}</span>
+          {kb.bot?.status === "live" ? <Chip tone="good">Live</Chip> : null}
+        </span>
+        <span className="block text-sm text-muted-foreground">
+          {kb.sources} {kb.sources === 1 ? "source" : "sources"} · {kb.passages}{" "}
+          {kb.passages === 1 ? "passage" : "passages"}
+        </span>
+      </span>
+    </Link>
   );
 }

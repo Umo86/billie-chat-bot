@@ -4,7 +4,8 @@ Chatbots, live handover and an email assistant for Media10 shows.
 
 - **Bots** for visitors and exhibitors, each answering only from its own
   knowledge (exhibitor manual, price lists, FAQs, web pages, typed answers),
-  with sources under every answer.
+  with sources under every answer. Bots never share knowledge: each bot's is
+  managed in its Knowledge step, or on the Knowledge page.
 - **A chat widget** for the show websites (one line of code), a chat page
   with a QR code, and **WhatsApp**.
 - **Live handover** to the team: the Inbox, availability, contact details
@@ -25,11 +26,12 @@ Chatbots, live handover and an email assistant for Media10 shows.
   owner, shows on the Requests page with a Teams message to whoever handles
   it, and the person follows it on a page of its own (and by email once
   email is set up).
-- **Knowledge gaps**: questions the bots couldn't answer, fixed in one click.
+- **Knowledge gaps**: questions the bots couldn't answer, fixed in one click
+  (the answer goes into the knowledge of the bot that was asked).
 - **Knowledge you can change in place**: edit pasted text and typed answers,
-  and find and replace across a knowledge base (a new email address, say),
+  and find and replace across a bot's knowledge (a new email address, say),
   with every change shown before it's made.
-- **Knowledge check**: one button and Claude reads a whole knowledge base,
+- **Knowledge check**: one button and Claude reads all of a bot's knowledge,
   listing contradictions, dates that have passed and contact details that
   don't match, with Edit next to each pasted text or typed answer involved.
 - **Roles** (admin, editor, agent), an audit log, UK GDPR retention.

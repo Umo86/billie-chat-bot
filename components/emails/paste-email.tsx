@@ -40,7 +40,7 @@ export function PasteEmail({
       </DialogTrigger>
       <DialogContent
         title="Paste an email"
-        description="Billie drafts a reply from the knowledge base. You check it and send it from your mailbox."
+        description="Billie drafts a reply from the bot's knowledge. You check it and send it from your mailbox."
       >
         <form
           className="flex flex-col gap-3"

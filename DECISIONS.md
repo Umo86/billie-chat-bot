@@ -152,10 +152,28 @@ Each bot's tone, personality (in the team's own words), emoji choice and
 email sign-off go into its prompts as style. The prompt says the rules win,
 answers still come only from the knowledge, and emails never get emoji.
 
+## Each bot has its own knowledge, never shared
+
+A bot is made with a knowledge base of its own, named after it
+(`knowledge_bases.bot_id`, unique). Bots used to choose shared bases, but
+then a change for one show could change another show's answers, and
+nobody could tell from a bot what it knew. Now a bot's knowledge is
+managed in its Knowledge step (the same view as on the Knowledge page),
+unanswered questions and "Save an answer" in the Inbox go straight into
+the asking bot's knowledge, and a bot's knowledge goes with the bot (its
+files too, when the bin is emptied; a file another source still uses is
+kept). Moving over (migration 0011), each bot took the least shared base
+it answered from, and anything else it answered from was copied into it,
+so no bot lost an answer. A base no bot used is listed apart ("Not used by
+a bot") so it can be deleted. `bot_knowledge_bases` is kept in step for a
+release (one row per bot) so a rollback still answers; nothing reads it.
+A bot made by the old release while both were running gets its knowledge
+base the first time it, or the Knowledge page, is opened.
+
 ## Knowledge is changed in place, never half-read
 
 Pasted text and typed answers can be edited, and a piece of text can be
-replaced across a whole knowledge base (when exhibitor questions move to a
+replaced across a bot's whole knowledge (when exhibitor questions move to a
 new address, every section must change on the same day). Files and web
 pages can't be changed by Billie: the preview lists them, to be changed at
 the source and read again. Each change queues a read with a key of its own

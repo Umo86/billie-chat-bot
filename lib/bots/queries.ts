@@ -39,10 +39,9 @@ export async function botCards(): Promise<BotCardData[]> {
           (SELECT count(*)::int FROM conversations c WHERE c.bot_id = b.id AND c.channel <> 'try' AND c.created_at > now() - interval '7 days') AS chats,
           (SELECT count(*)::int FROM conversations c WHERE c.bot_id = b.id AND c.channel <> 'try' AND c.handover_at > now() - interval '7 days') AS handed,
           (SELECT count(*)::int FROM passages p
-             JOIN bot_knowledge_bases bk ON bk.knowledge_base_id = p.knowledge_base_id
              JOIN sources s ON s.id = p.source_id
              JOIN knowledge_bases kb ON kb.id = p.knowledge_base_id
-            WHERE bk.bot_id = b.id AND s.deleted_at IS NULL AND s.status = 'ready' AND kb.deleted_at IS NULL) AS passages
+            WHERE kb.bot_id = b.id AND s.deleted_at IS NULL AND s.status = 'ready' AND kb.deleted_at IS NULL) AS passages
         FROM bots b WHERE b.deleted_at IS NULL
         ORDER BY b.created_at`,
   );

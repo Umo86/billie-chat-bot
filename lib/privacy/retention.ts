@@ -1,5 +1,5 @@
 import "server-only";
-import { and, isNotNull, lt, sql } from "drizzle-orm";
+import { and, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { db, query } from "@/lib/db/client";
 import {
   bots,
@@ -56,7 +56,14 @@ export async function runRetention(now = new Date()): Promise<Record<string, num
     .delete(sources)
     .where(and(isNotNull(sources.deletedAt), lt(sources.deletedAt, binCutoff)))
     .returning({ id: sources.id, fileKey: sources.fileKey });
-  for (const s of oldSources) await deleteStoredFile(s.fileKey);
+  // A bot takes its own knowledge with it: note the files of its sources first.
+  const botFiles = await query<{ file_key: string | null }>(
+    db,
+    sql`SELECT s.file_key FROM sources s
+          JOIN knowledge_bases kb ON kb.id = s.knowledge_base_id
+          JOIN bots b ON b.id = kb.bot_id
+        WHERE b.deleted_at IS NOT NULL AND b.deleted_at < ${binCutoff.toISOString()} AND s.file_key IS NOT NULL`,
+  );
   const oldBots = await db
     .delete(bots)
     .where(and(isNotNull(bots.deletedAt), lt(bots.deletedAt, binCutoff)))
@@ -67,11 +74,15 @@ export async function runRetention(now = new Date()): Promise<Record<string, num
     sql`SELECT s.file_key FROM sources s JOIN knowledge_bases kb ON kb.id = s.knowledge_base_id
         WHERE kb.deleted_at IS NOT NULL AND kb.deleted_at < ${binCutoff.toISOString()} AND s.file_key IS NOT NULL`,
   );
-  for (const f of kbFiles) await deleteStoredFile(f.file_key);
   const oldKbs = await db
     .delete(knowledgeBases)
     .where(and(isNotNull(knowledgeBases.deletedAt), lt(knowledgeBases.deletedAt, binCutoff)))
     .returning({ id: knowledgeBases.id });
+  await deleteUnusedFiles([
+    ...oldSources.map((s) => s.fileKey),
+    ...botFiles.map((f) => f.file_key),
+    ...kbFiles.map((f) => f.file_key),
+  ]);
 
   const counts = {
     chats: chats.length,
@@ -91,4 +102,16 @@ export async function runRetention(now = new Date()): Promise<Record<string, num
     });
   }
   return counts;
+}
+
+/** Deletes stored files that no remaining source uses (a copied source can share one). */
+async function deleteUnusedFiles(keys: (string | null)[]): Promise<void> {
+  const gone = [...new Set(keys.filter((k): k is string => Boolean(k)))];
+  if (!gone.length) return;
+  const used = new Set(
+    (
+      await db.select({ key: sources.fileKey }).from(sources).where(inArray(sources.fileKey, gone))
+    ).map((r) => r.key),
+  );
+  for (const key of gone) if (!used.has(key)) await deleteStoredFile(key);
 }

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Check, MessageSquarePlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Chip, EmptyState, Panel } from "@/components/ui/bits";
-import { Field, Select, Textarea } from "@/components/ui/form";
+import { Field, Textarea } from "@/components/ui/form";
 import { useRunner } from "@/components/ui/use-runner";
 import { answerGapAction, dismissGapAction } from "@/app/actions/knowledge";
 import type { GapRow } from "@/lib/knowledge/queries";
@@ -17,15 +17,7 @@ function ago(iso: string) {
   return `${Math.round(hours / 24)} days ago`;
 }
 
-export function GapList({
-  gaps,
-  kbs,
-  canEdit,
-}: {
-  gaps: GapRow[];
-  kbs: { id: string; name: string }[];
-  canEdit: boolean;
-}) {
+export function GapList({ gaps, canEdit }: { gaps: GapRow[]; canEdit: boolean }) {
   if (!gaps.length)
     return (
       <EmptyState title="Nothing unanswered">
@@ -36,31 +28,21 @@ export function GapList({
   return (
     <div className="flex flex-col gap-3">
       <p className="text-muted-foreground">
-        Questions your bots couldn&apos;t answer from their knowledge, most asked first. Each answer
-        you add here becomes a typed answer the bot uses straight away.
+        Questions your bots couldn&apos;t answer from their knowledge, most asked first. An answer
+        you add here goes into that bot&apos;s knowledge as a typed answer, and it uses it straight
+        away.
       </p>
       <ul className="flex flex-col gap-3" aria-label="Unanswered questions">
         {gaps.map((g) => (
-          <GapItem key={g.id} gap={g} kbs={kbs} canEdit={canEdit} />
+          <GapItem key={g.id} gap={g} canEdit={canEdit} />
         ))}
       </ul>
     </div>
   );
 }
 
-function GapItem({
-  gap,
-  kbs,
-  canEdit,
-}: {
-  gap: GapRow;
-  kbs: { id: string; name: string }[];
-  canEdit: boolean;
-}) {
-  const own = kbs.filter((k) => gap.kbIds.includes(k.id));
-  const choices = own.length ? own : kbs;
+function GapItem({ gap, canEdit }: { gap: GapRow; canEdit: boolean }) {
   const [open, setOpen] = useState(false);
-  const [kbId, setKbId] = useState(choices[0]?.id ?? "");
   const [answer, setAnswer] = useState("");
   const { pending, run } = useRunner();
 
@@ -100,7 +82,7 @@ function GapItem({
             className="flex flex-col gap-3 border-t border-border pt-3"
             onSubmit={(e) => {
               e.preventDefault();
-              run(() => answerGapAction({ gapId: gap.id, kbId, answer }), {
+              run(() => answerGapAction({ gapId: gap.id, answer }), {
                 done: () => setOpen(false),
               });
             }}
@@ -115,23 +97,8 @@ function GapItem({
                 autoFocus
               />
             </Field>
-            {choices.length > 1 ? (
-              <Field id={`gap-${gap.id}-kb`} label="Save it in">
-                <Select
-                  id={`gap-${gap.id}-kb`}
-                  value={kbId}
-                  onChange={(e) => setKbId(e.target.value)}
-                >
-                  {choices.map((k) => (
-                    <option key={k.id} value={k.id}>
-                      {k.name}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            ) : null}
             <div className="flex flex-wrap gap-2">
-              <Button type="submit" variant="primary" disabled={pending || !answer.trim() || !kbId}>
+              <Button type="submit" variant="primary" disabled={pending || !answer.trim()}>
                 <Check /> Save answer
               </Button>
               <Button onClick={() => setOpen(false)}>Cancel</Button>

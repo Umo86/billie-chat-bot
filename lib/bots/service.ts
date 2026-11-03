@@ -1,13 +1,14 @@
 import "server-only";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { botKnowledgeBases, bots, knowledgeBases } from "@/lib/db/schema";
+import { bots } from "@/lib/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { answerQuestion } from "@/lib/ai/answer";
 import { normaliseDomain } from "@/lib/chat/domains";
 import type { Actor } from "@/lib/authz";
 import type { BotRules, RequestType, TestQuestion, TestResult, TestRun } from "@/lib/types";
 import { UserError } from "@/lib/errors";
+import { createBotKnowledgeBase, renameBotKnowledgeBase } from "@/lib/knowledge/bases";
 import { answerBotFor, botById } from "./load";
 import { defaultQuality, defaultRules } from "./defaults";
 import { uniqueSlug } from "./slug";
@@ -15,7 +16,8 @@ import { uniqueSlug } from "./slug";
 /**
  * Bots: create, edit, test, put live. A bot can only go live once its saved
  * test questions have been run (build plan), and taking it back to draft
- * stops it answering on websites and WhatsApp at once.
+ * stops it answering on websites and WhatsApp at once. Each bot is made with
+ * its own knowledge base, named after it.
  */
 export type BotLook = {
   name: string;
@@ -54,6 +56,7 @@ export async function createBot(actor: Actor, look: BotLook): Promise<string> {
         createdBy: actor.id,
       })
       .returning({ id: bots.id, name: bots.name });
+    await createBotKnowledgeBase(tx, bot, actor.id);
     await writeAudit(tx, {
       actorUserId: actor.id,
       entityType: "bot",
@@ -81,39 +84,13 @@ export async function updateBot(actor: Actor, id: string, patch: BotPatch): Prom
       .where(and(eq(bots.id, id), isNull(bots.deletedAt)))
       .returning({ id: bots.id, name: bots.name });
     if (!bot) throw new UserError("That bot no longer exists.");
+    if (patch.name !== undefined) await renameBotKnowledgeBase(tx, bot.id, bot.name);
     await writeAudit(tx, {
       actorUserId: actor.id,
       entityType: "bot",
       entityId: bot.id,
       action: "update",
       summary: `Changed ${Object.keys(patch).join(", ")} on "${bot.name}"`,
-    });
-  });
-}
-
-export async function setKnowledge(actor: Actor, botId: string, kbIds: string[]): Promise<void> {
-  const valid = kbIds.length
-    ? (
-        await db
-          .select({ id: knowledgeBases.id })
-          .from(knowledgeBases)
-          .where(and(inArray(knowledgeBases.id, kbIds), isNull(knowledgeBases.deletedAt)))
-      ).map((r) => r.id)
-    : [];
-  await db.transaction(async (tx) => {
-    const bot = await tx.query.bots.findFirst({
-      where: and(eq(bots.id, botId), isNull(bots.deletedAt)),
-    });
-    if (!bot) throw new UserError("That bot no longer exists.");
-    await tx.delete(botKnowledgeBases).where(eq(botKnowledgeBases.botId, botId));
-    if (valid.length)
-      await tx.insert(botKnowledgeBases).values(valid.map((k) => ({ botId, knowledgeBaseId: k })));
-    await writeAudit(tx, {
-      actorUserId: actor.id,
-      entityType: "bot",
-      entityId: botId,
-      action: "update",
-      summary: `Set "${bot.name}" to answer from ${valid.length} knowledge base${valid.length === 1 ? "" : "s"}`,
     });
   });
 }

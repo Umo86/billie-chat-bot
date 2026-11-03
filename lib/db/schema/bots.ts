@@ -121,20 +121,33 @@ export const botMailboxes = pgTable(
   ],
 );
 
+/**
+ * What a bot knows. Every bot has exactly one, made with the bot and named
+ * after it; bots never share. botId is null only for an old shared base
+ * that no bot answers from any more (shown apart, so it can be deleted).
+ */
 export const knowledgeBases = pgTable(
   "knowledge_bases",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    botId: uuid("bot_id").references(() => bots.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     description: text("description").notNull().default(""),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     ...timestamps,
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
-  (t) => [index("knowledge_bases_created_by_idx").on(t.createdBy)],
+  (t) => [
+    uniqueIndex("knowledge_bases_bot_unique").on(t.botId),
+    index("knowledge_bases_created_by_idx").on(t.createdBy),
+  ],
 );
 
-/** Which knowledge bases a bot answers from (a shared one can sit under several bots). */
+/**
+ * Before each bot had its own knowledge, this said which bases a bot
+ * answered from. It now mirrors knowledge_bases.bot_id (one row per bot), so
+ * rolling back to an older release still answers. Nothing reads it.
+ */
 export const botKnowledgeBases = pgTable(
   "bot_knowledge_bases",
   {

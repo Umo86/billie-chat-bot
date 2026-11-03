@@ -52,9 +52,8 @@ export function SourceList({ sources, canEdit }: { sources: SourceRow[]; canEdit
   if (!sources.length)
     return (
       <EmptyState title="Nothing in here yet">
-        Add the exhibitor manual, a price list or the show&apos;s FAQ page above. Billie answers
-        only from what&apos;s in the knowledge base, so the more complete it is, the fewer questions
-        go to the team.
+        Add the exhibitor manual, a price list or the show&apos;s FAQ page above. The bot answers
+        only from what&apos;s here, so the more complete it is, the fewer questions go to the team.
       </EmptyState>
     );
 

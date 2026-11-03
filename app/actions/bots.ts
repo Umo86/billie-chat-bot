@@ -10,7 +10,6 @@ import {
   deleteBot,
   restoreBot,
   runTests,
-  setKnowledge,
   setStatus,
   updateBot,
 } from "@/lib/bots/service";
@@ -140,18 +139,6 @@ export async function updateBotAction(input: unknown) {
       refresh(data.id);
     },
     "Saved.",
-  );
-}
-
-export async function setBotKnowledgeAction(input: unknown) {
-  return runAction(
-    "bots.edit",
-    z.object({ id: z.uuid(), kbIds: z.array(z.uuid()).max(20) }),
-    input,
-    async (actor, d) => {
-      await setKnowledge(actor, d.id, d.kbIds);
-      refresh(d.id);
-    },
   );
 }
 

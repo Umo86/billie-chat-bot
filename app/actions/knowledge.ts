@@ -13,13 +13,7 @@ import {
   replaceInKnowledge,
   sourceForEdit,
 } from "@/lib/knowledge/edit";
-import {
-  answerGap,
-  createKnowledgeBase,
-  dismissGap,
-  renameKnowledgeBase,
-  setKnowledgeBaseDeleted,
-} from "@/lib/knowledge/bases";
+import { answerGap, dismissGap, setKnowledgeBaseDeleted } from "@/lib/knowledge/bases";
 import { passagesOf, sourceStatuses } from "@/lib/knowledge/queries";
 import { latestCheck, requestCheck } from "@/lib/knowledge/check";
 import { fileKind, MAX_FILE_BYTES } from "@/lib/knowledge/files";
@@ -34,36 +28,7 @@ function refresh() {
   revalidatePath("/");
 }
 
-export async function createKbAction(input: unknown) {
-  const schema = z.object({
-    name: z.string().trim().min(1, "Give it a name.").max(80),
-    description: z.string().max(200).default(""),
-  });
-  return runAction("knowledge.edit", schema, input, async (actor, d) => {
-    const kbId = await createKnowledgeBase(actor, d.name, d.description);
-    refresh();
-    return { id: kbId };
-  });
-}
-
-export async function renameKbAction(input: unknown) {
-  const schema = z.object({
-    id: z.uuid(),
-    name: z.string().trim().min(1).max(80),
-    description: z.string().max(200).default(""),
-  });
-  return runAction(
-    "knowledge.edit",
-    schema,
-    input,
-    async (actor, d) => {
-      await renameKnowledgeBase(actor, d.id, d.name, d.description);
-      refresh();
-    },
-    "Saved.",
-  );
-}
-
+/** Only an old shared knowledge base no bot answers from (a bot's own goes with the bot). */
 export async function deleteKbAction(input: unknown) {
   return runAction("knowledge.edit", id, input, async (actor, d) => {
     await setKnowledgeBaseDeleted(actor, d.id, true);
@@ -292,10 +257,10 @@ export async function replaceAction(input: unknown) {
   });
 }
 
+/** The answer goes into the knowledge of the bot that was asked. */
 export async function answerGapAction(input: unknown) {
   const schema = z.object({
     gapId: z.uuid(),
-    kbId: z.uuid(),
     answer: z.string().trim().min(2, "Write the answer.").max(4000),
   });
   return runAction(
@@ -303,7 +268,7 @@ export async function answerGapAction(input: unknown) {
     schema,
     input,
     async (actor, d) => {
-      await answerGap(actor, d.gapId, d.kbId, d.answer);
+      await answerGap(actor, d.gapId, d.answer);
       refresh();
     },
     "Saved. Billie will use this answer from now on.",
