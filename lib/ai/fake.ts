@@ -261,6 +261,33 @@ function fakeCheck(ctx: Extract<FakeContext, { purpose: "knowledge_check" }>): K
   return { issues: issues.slice(0, 20) };
 }
 
+/** A suggested reply: the best passage for the person's last messages, or a holding reply. */
+function fakeSuggestion(
+  ctx: Extract<FakeContext, { purpose: "reply_suggestion" }>,
+): EmailDraftJson {
+  const asked = ctx.history
+    .filter((t) => t.role === "visitor")
+    .slice(-2)
+    .map((t) => t.text)
+    .join(" ");
+  const hit = bestPassage(asked, ctx.passages);
+  if (!hit)
+    return {
+      draft: "",
+      used: [],
+      confident: false,
+      missing: asked.slice(0, 120),
+      holding: "Thanks for waiting. We're checking this now and will come back to you shortly.",
+    };
+  return {
+    draft: `Thanks for waiting. ${hit.sentences}`,
+    used: [hit.index + 1],
+    confident: true,
+    missing: "",
+    holding: "",
+  };
+}
+
 export function fakeStructured(ctx: FakeContext): unknown {
   switch (ctx.purpose) {
     case "answer":
@@ -271,5 +298,7 @@ export function fakeStructured(ctx: FakeContext): unknown {
       return fakeDraft(ctx);
     case "knowledge_check":
       return fakeCheck(ctx);
+    case "reply_suggestion":
+      return fakeSuggestion(ctx);
   }
 }

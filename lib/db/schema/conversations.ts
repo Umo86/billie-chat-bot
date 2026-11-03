@@ -9,7 +9,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import type { AnswerMeta, ContactDetails, MessageSource } from "@/lib/types";
+import type { AnswerMeta, ContactDetails, MessageSource, ReplySuggestion } from "@/lib/types";
 import { channel, conversationStatus, gapStatus, handoverReason, messageRole } from "./enums";
 import { bots, sources } from "./bots";
 import { users } from "./users";
@@ -37,6 +37,8 @@ export const conversations = pgTable(
     /** Thumbs-down in a row; two hands the chat over. */
     thumbsDownStreak: integer("thumbs_down_streak").notNull().default(0),
     pageUrl: text("page_url"),
+    /** Billie's suggested reply for the team (lib/conversations/suggest.ts). */
+    suggestion: jsonb("suggestion").$type<ReplySuggestion | null>(),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }).notNull().defaultNow(),
     /** Last message from the person (WhatsApp's 24-hour reply window counts from here). */
     lastVisitorAt: timestamp("last_visitor_at", { withTimezone: true }),

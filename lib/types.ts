@@ -114,3 +114,23 @@ export type RequestOffer = {
 };
 
 export type RequestStatus = "new" | "in_progress" | "done" | "declined";
+
+/**
+ * Billie's suggested reply in a chat handed to the team: written from the
+ * bot's knowledge when the chat is handed over (or on "Suggest again"),
+ * for a person to edit and send. Never sent by itself.
+ */
+export type ReplySuggestion = {
+  status: "writing" | "ready" | "none" | "failed";
+  /** The reply (or a holding reply when the knowledge doesn't cover it). */
+  text: string;
+  /** False when the knowledge doesn't answer it: the text is a holding reply. */
+  confident: boolean;
+  /** What the knowledge doesn't cover, in a few words. */
+  missing: string;
+  sources: { title: string; label: string }[];
+  /** The last message from the person it answers (newer ones make it out of date). */
+  afterMessageId: string | null;
+  at: string;
+  error?: string;
+};

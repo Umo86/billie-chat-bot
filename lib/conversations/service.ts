@@ -30,6 +30,7 @@ import {
 } from "./handover";
 import { botPaused, nextStatus, type ConversationEvent, type ConversationStatus } from "./status";
 import { agentsAvailable } from "./presence";
+import { queueSuggestion } from "./suggest";
 
 /**
  * One conversation engine for every channel. Visitors' turns come from the
@@ -337,6 +338,7 @@ export async function handover(
         { conversationId: c.id, kind: "ticket" },
         { tx, dedupeKey: `notify:${c.id}:ticket` },
       );
+      await queueSuggestion(tx, c.id);
       return { status, rows: [line], changed: true };
     }
     const line = await insertMessage(tx, c.id, {
@@ -357,9 +359,11 @@ export async function handover(
         { tx, dedupeKey: `notify:${c.id}:live` },
       );
     }
+    // A suggested reply from the knowledge, ready for whoever picks it up.
+    await queueSuggestion(tx, c.id);
     return { status, rows: [line], changed: true };
   });
-  if (result.changed && (route === "live" || result.status === "ticket")) await kickJobs();
+  if (result.changed) await kickJobs();
   return {
     conversationId,
     status: result.status,

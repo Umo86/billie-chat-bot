@@ -27,7 +27,8 @@ export type JobKind =
   | "outlook_sync"
   | "refresh_web_sources"
   | "retention"
-  | "weekly_summary";
+  | "weekly_summary"
+  | "suggest_reply";
 
 export type Job = typeof jobs.$inferSelect;
 

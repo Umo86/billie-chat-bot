@@ -1,7 +1,7 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { aiProvider } from "@/lib/config";
-import type { CheckSource, PromptEmail, PromptPassage } from "./prompts";
+import type { CheckSource, PromptEmail, PromptPassage, Turn } from "./prompts";
 import { fakeStructured } from "./fake";
 
 /**
@@ -11,7 +11,7 @@ import { fakeStructured } from "./fake";
  * and token usage returned for the daily cap and Reports.
  */
 export type StructuredCall = {
-  purpose: "answer" | "email_tag" | "email_draft" | "knowledge_check";
+  purpose: "answer" | "email_tag" | "email_draft" | "knowledge_check" | "reply_suggestion";
   model: string;
   fallbackModel?: string;
   /** Instructions: who Billie is and the rules. */
@@ -37,7 +37,8 @@ export type FakeContext =
     }
   | { purpose: "email_tag"; email: PromptEmail; alwaysHuman: string[] }
   | { purpose: "email_draft"; email: PromptEmail; passages: PromptPassage[] }
-  | { purpose: "knowledge_check"; sources: CheckSource[]; now: Date };
+  | { purpose: "knowledge_check"; sources: CheckSource[]; now: Date }
+  | { purpose: "reply_suggestion"; history: Turn[]; passages: PromptPassage[] };
 
 export type Usage = { inputTokens: number; outputTokens: number; cachedTokens: number };
 

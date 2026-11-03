@@ -5,6 +5,7 @@ import { z } from "zod";
 import { runAction } from "@/lib/actions/run";
 import { setAvailable } from "@/lib/conversations/presence";
 import { closeConversation, handBack, staffReply } from "@/lib/conversations/service";
+import { askForSuggestion } from "@/lib/conversations/suggest";
 import { addSource } from "@/lib/knowledge/sources";
 import { UserError } from "@/lib/errors";
 import { assertOnBotOf } from "@/lib/auth/bots";
@@ -80,4 +81,13 @@ export async function saveAsAnswerAction(input: unknown) {
     },
     "Saved. The bot will use this answer from now on.",
   );
+}
+
+/** Billie writes a suggested reply from the bot's knowledge (it shows in the Inbox in a moment). */
+export async function suggestReplyAction(input: unknown) {
+  return runAction("inbox.reply", conv, input, async (actor, d) => {
+    await assertOnBotOf(actor, "inbox.reply", "conversation", d.conversationId);
+    await askForSuggestion(d.conversationId);
+    refresh();
+  });
 }

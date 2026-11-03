@@ -34,6 +34,9 @@ Chatbots, live handover and an email assistant for Media10 shows.
 - **Knowledge check**: one button and Claude reads all of a bot's knowledge,
   listing contradictions, dates that have passed and contact details that
   don't match, with Edit next to each pasted text or typed answer involved.
+- **Suggested replies in the Inbox**: when a chat is handed to the team,
+  Billie drafts a reply from the bot's knowledge (or a holding reply when
+  it isn't covered) for the person to use, edit and send.
 - **Copy a bot for the next show**: the look, personality, rules, requests,
   test questions, people and all the knowledge come across to a draft, with
   every date in it listed to check.

@@ -263,6 +263,11 @@ test("live handover: the team replies from the Inbox and hands back", async ({ p
   const row = page.getByTestId("inbox-row").filter({ hasText: "speak to a person" });
   await expect(row).toBeVisible({ timeout: 15_000 });
   await row.click();
+  // Billie suggests a reply from the knowledge: a holding reply here, as nothing in it covers this.
+  const suggestion = page.getByTestId("suggestion");
+  await expect(suggestion).toContainText("Billie suggests a holding reply", { timeout: 15_000 });
+  await suggestion.getByRole("button", { name: "Use this" }).click();
+  await expect(page.getByLabel("Reply")).toHaveValue(/checking this now/);
   await page.getByLabel("Reply").fill("Hi, it's Umit from the ops team. How can I help?");
   await page.getByRole("button", { name: "Send", exact: true }).click();
 
@@ -277,6 +282,13 @@ test("live handover: the team replies from the Inbox and hands back", async ({ p
   await expect(page.getByText("Where do we unload on build-up day?")).toBeVisible({
     timeout: 15_000,
   });
+  // They've written since: ask for a new suggestion.
+  await expect(page.getByTestId("suggestion")).toContainText("They've written since");
+  await page.getByTestId("suggestion").getByRole("button", { name: "Suggest again" }).click();
+  await expect(page.getByTestId("suggestion")).not.toContainText("They've written since", {
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId("suggestion")).toContainText("Billie suggests");
   await shot(page, "inbox");
 
   // Teach Billie from the chat, then hand back.

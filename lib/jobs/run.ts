@@ -16,6 +16,10 @@ const handlers: Handlers = {
     (await import("@/lib/knowledge/check")).runKnowledgeCheck(String(p.checkId), {
       lastTry: job.attempts >= job.maxAttempts,
     }),
+  suggest_reply: async (p, job) =>
+    (await import("@/lib/conversations/suggest")).writeSuggestion(String(p.conversationId), {
+      lastTry: job.attempts >= job.maxAttempts,
+    }),
   notify_handover: async (p) =>
     (await import("@/lib/alerts/notify")).notifyHandover(
       String(p.conversationId),

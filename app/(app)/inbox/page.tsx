@@ -91,7 +91,12 @@ export default async function InboxPage({
 
   return (
     <>
-      <AutoRefresh active every={live || mine ? 4000 : 10000} />
+      <AutoRefresh
+        active
+        every={
+          detail?.conversation.suggestion?.status === "writing" ? 2500 : live || mine ? 4000 : 10000
+        }
+      />
       <PageHeader
         title="Inbox"
         lede="Chats with your bots that need a person. Reply here and it reaches them in the chat, on WhatsApp, or by email if they've gone."
@@ -234,6 +239,10 @@ export default async function InboxPage({
                 lines={detail.lines}
                 kbs={kbs}
                 canTeach={canTeach}
+                suggestion={detail.conversation.suggestion ?? null}
+                lastAskedId={
+                  [...detail.lines].reverse().find((l) => l.role === "visitor")?.id ?? null
+                }
                 replyHint={replyHint(
                   detail.conversation.status,
                   detail.conversation.channel,

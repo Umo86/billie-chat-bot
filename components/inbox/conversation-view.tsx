@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { BookmarkPlus, Download, RotateCcw, Send, XCircle } from "lucide-react";
+import { BookmarkPlus, Download, RotateCcw, Send, Sparkles, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Chip, Note, Panel } from "@/components/ui/bits";
 import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog";
@@ -12,9 +12,10 @@ import {
   handBackAction,
   replyAction,
   saveAsAnswerAction,
+  suggestReplyAction,
 } from "@/app/actions/inbox";
 import type { TranscriptLine } from "@/lib/conversations/inbox";
-import type { ContactDetails } from "@/lib/types";
+import type { ContactDetails, ReplySuggestion } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type Status = "bot" | "waiting" | "live" | "collecting" | "ticket" | "replied" | "closed";
@@ -52,6 +53,8 @@ export function ConversationView({
   kbs,
   canTeach,
   replyHint,
+  suggestion,
+  lastAskedId,
 }: {
   id: string;
   status: Status;
@@ -65,6 +68,10 @@ export function ConversationView({
   kbs: { id: string; name: string }[];
   canTeach: boolean;
   replyHint: string | null;
+  /** Billie's suggested reply from the knowledge (none for chats still with Billie). */
+  suggestion: ReplySuggestion | null;
+  /** The person's last message, to tell when the suggestion is out of date. */
+  lastAskedId: string | null;
 }) {
   const [text, setText] = useState("");
   const [teach, setTeach] = useState<{ question: string; answer: string; kbId: string } | null>(
@@ -206,6 +213,19 @@ export function ConversationView({
           }}
         >
           {replyHint ? <Note className="text-sm">{replyHint}</Note> : null}
+          {status !== "bot" ? (
+            <Suggestion
+              conversationId={id}
+              suggestion={suggestion}
+              replied={[...lines].reverse().find((l) => l.role !== "system")?.role === "agent"}
+              stale={
+                suggestion?.status === "ready" &&
+                !!lastAskedId &&
+                suggestion.afterMessageId !== lastAskedId
+              }
+              onUse={(t) => setText(t)}
+            />
+          ) : null}
           <label htmlFor="reply" className="sr-only">
             Reply
           </label>
@@ -296,5 +316,97 @@ export function ConversationView({
         ) : null}
       </Dialog>
     </Panel>
+  );
+}
+
+/**
+ * Billie's suggested reply, written from the knowledge when the chat was
+ * handed over. "Use this" puts it in the reply box to edit; nothing is sent
+ * until the person presses Send.
+ */
+function Suggestion({
+  conversationId,
+  suggestion,
+  replied,
+  stale,
+  onUse,
+}: {
+  conversationId: string;
+  suggestion: ReplySuggestion | null;
+  /** The team has written since: the old suggestion is put away. */
+  replied: boolean;
+  stale: boolean;
+  onUse: (text: string) => void;
+}) {
+  const again = useRunner();
+  const ask = (
+    <Button
+      type="button"
+      size="sm"
+      variant="ghost"
+      disabled={again.pending || suggestion?.status === "writing"}
+      onClick={() => again.run(() => suggestReplyAction({ conversationId }))}
+    >
+      <Sparkles /> {suggestion ? "Suggest again" : "Suggest a reply"}
+    </Button>
+  );
+  if (!suggestion || (replied && suggestion.status !== "writing"))
+    return <div className="flex justify-end">{ask}</div>;
+  if (suggestion.status === "writing")
+    return (
+      <p
+        role="status"
+        className="rounded-[10px] bg-muted px-3 py-2 text-sm text-muted-foreground"
+        data-testid="suggestion"
+      >
+        Billie is writing a suggested reply from the knowledge…
+      </p>
+    );
+  if (suggestion.status === "failed" || suggestion.status === "none")
+    return (
+      <div
+        className="flex flex-wrap items-center justify-between gap-2 rounded-[10px] bg-muted px-3 py-2 text-sm"
+        data-testid="suggestion"
+      >
+        <span className="text-muted-foreground">
+          {suggestion.error ?? "Billie couldn't suggest a reply from the knowledge."}
+        </span>
+        {ask}
+      </div>
+    );
+  return (
+    <div
+      className="flex flex-col gap-2 rounded-[10px] border border-primary/30 bg-accent px-3 py-2.5"
+      data-testid="suggestion"
+    >
+      <p className="flex items-center gap-1.5 text-[0.8rem] font-semibold text-primary">
+        <Sparkles className="size-3.5" aria-hidden />
+        {suggestion.confident
+          ? "Billie suggests (from the knowledge)"
+          : "Billie suggests a holding reply: the knowledge doesn't cover this"}
+      </p>
+      <p className="whitespace-pre-wrap break-words text-[0.92rem]">{suggestion.text}</p>
+      {suggestion.sources.length ? (
+        <p className="text-[0.74rem] text-muted-foreground">
+          Source:{" "}
+          {suggestion.sources.map((s) => `${s.title}${s.label ? ` (${s.label})` : ""}`).join("; ")}
+        </p>
+      ) : !suggestion.confident && suggestion.missing ? (
+        <p className="text-[0.74rem] text-muted-foreground">
+          Not in the knowledge: {suggestion.missing}
+        </p>
+      ) : null}
+      {stale ? (
+        <p className="text-[0.74rem] font-semibold text-warn">
+          They&apos;ve written since this was suggested.
+        </p>
+      ) : null}
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" size="sm" onClick={() => onUse(suggestion.text)}>
+          Use this
+        </Button>
+        {ask}
+      </div>
+    </div>
   );
 }

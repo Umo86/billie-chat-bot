@@ -152,6 +152,18 @@ Each bot's tone, personality (in the team's own words), emoji choice and
 email sign-off go into its prompts as style. The prompt says the rules win,
 answers still come only from the knowledge, and emails never get emoji.
 
+## Suggested replies are written once, on the queue, and never sent
+
+Handovers are the hard questions, so a starting draft saves the most time
+there. When a chat is handed to the team, a "suggest_reply" job asks Claude
+for a reply from the bot's knowledge (same rules as answers: only the
+passages, today's date, no invented facts), or a holding reply when the
+knowledge doesn't cover it. It's stored on the chat, so everyone who opens
+it sees the same suggestion and it costs one call per handover, not one per
+look. "Use this" only fills the reply box; a person always presses Send. A
+newer message from the person marks it out of date, and "Suggest again"
+writes a fresh one.
+
 ## Copying a bot copies its knowledge, not its show
 
 Media10 runs the same shows every year, some in two cities, so most of a
