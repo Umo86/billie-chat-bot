@@ -41,6 +41,7 @@ export async function copyBot(
         avatarUrl: from.avatarUrl,
         welcome: from.welcome,
         starters: from.starters,
+        pageStarters: from.pageStarters,
         tone: from.tone,
         personality: from.personality,
         emoji: from.emoji,

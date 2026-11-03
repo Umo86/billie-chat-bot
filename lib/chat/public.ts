@@ -6,6 +6,7 @@ import { getSettings } from "@/lib/settings";
 import { signInOpen } from "@/lib/exhibitors/sign-in";
 import { bearer } from "./token";
 import { normaliseDomain } from "./domains";
+import { startersForPage } from "@/lib/bots/page-starters";
 import {
   conversationForToken,
   type Channel,
@@ -35,7 +36,8 @@ export type PublicBot = {
   signIn: boolean;
 };
 
-export async function publicBot(bot: BotRow): Promise<PublicBot> {
+/** The bot as the chat sees it; on a website page, with that page's starter questions. */
+export async function publicBot(bot: BotRow, pageUrl: string | null = null): Promise<PublicBot> {
   const s = await getSettings();
   return {
     slug: bot.slug,
@@ -45,7 +47,7 @@ export async function publicBot(bot: BotRow): Promise<PublicBot> {
     color: bot.color,
     avatarUrl: bot.avatarUrl,
     welcome: bot.welcome,
-    starters: bot.starters,
+    starters: startersForPage(bot.pageStarters, bot.starters, pageUrl),
     consent: s.consentText,
     collect: bot.rules.collect,
     promise: bot.rules.promise,

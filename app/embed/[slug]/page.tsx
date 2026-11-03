@@ -41,12 +41,13 @@ export default async function EmbedPage({
     const actor = await getActor();
     if (!actor || !can(actor, "bots.view")) notFound();
   }
+  const pageUrl = cleanPageUrl(sp.page);
   return (
     <ChatApp
-      bot={await publicBot(bot)}
+      bot={await publicBot(bot, pageUrl)}
       mode="widget"
       channel={trying ? "try" : "web"}
-      pageUrl={cleanPageUrl(sp.page)}
+      pageUrl={pageUrl}
     />
   );
 }

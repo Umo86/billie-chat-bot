@@ -146,6 +146,16 @@ channel links (admins only, never shown again).
 - **Answering stays in Billie.** Answering visitors from inside Teams would
   need the Teams app; the message links to the chat in the Inbox instead.
 
+## Starter questions follow the page, worked out where the chat opens
+
+A bot can have rules on its Look step: "the page address contains …" with
+up to three questions, at most ten rules, first match wins, and a rule
+with no questions shows none on those pages. The chat frame already gets
+the page it's on (`?page=`, its address without the query string), so the
+embed page picks the starters before it renders, and the rules never go
+to the browser. The hosted chat page isn't on the website, so it gets the
+usual starters. Copies keep the rules: the website usually stays.
+
 ## Personality is style only
 
 Each bot's tone, personality (in the team's own words), emoji choice and

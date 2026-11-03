@@ -14,6 +14,7 @@ import { addToBot } from "./people";
 import { defaultQuality, defaultRules } from "./defaults";
 import { uniqueSlug } from "./slug";
 import type { ShowDays } from "./show-days";
+import type { PageStarters } from "./page-starters";
 
 /**
  * Bots: create, edit, test, put live. A bot can only go live once its saved
@@ -29,6 +30,8 @@ export type BotLook = {
   avatarUrl: string | null;
   welcome: string;
   starters: string[];
+  /** Different starters on some pages (lib/bots/page-starters.ts). */
+  pageStarters?: PageStarters[];
   /** Build-up to breakdown; null clears them (lib/bots/show-days.ts). */
   showDays?: ShowDays | null;
 };

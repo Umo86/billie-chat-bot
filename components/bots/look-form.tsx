@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ImagePlus, Sparkles, Trash2 } from "lucide-react";
+import { ImagePlus, Plus, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Note, Panel } from "@/components/ui/bits";
 import { Field, Input, Textarea } from "@/components/ui/form";
@@ -12,6 +12,7 @@ import { useRunner } from "@/components/ui/use-runner";
 import { BotAvatar } from "@/components/bots/bot-avatar";
 import { BOT_COLOURS, textOn } from "@/lib/bots/slug";
 import { STARTER_EXAMPLES, suggestedWelcome } from "@/lib/bots/defaults";
+import { MAX_PAGE_RULES, MAX_STARTERS } from "@/lib/bots/page-starters";
 import { createBotAction, updateBotAction } from "@/app/actions/bots";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +24,8 @@ export type Look = {
   avatarUrl: string | null;
   welcome: string;
   starters: string[];
+  /** Different starters on some pages ("the page address contains …"). */
+  pageStarters: { match: string; starters: string[] }[];
   /** Show days, "YYYY-MM-DD" or "" for none. */
   showFrom: string;
   showTo: string;
@@ -81,6 +84,7 @@ export function LookForm({
       avatarUrl: null,
       welcome: "",
       starters: ["", "", ""],
+      pageStarters: [],
       showFrom: "",
       showTo: "",
     },
@@ -101,6 +105,10 @@ export function LookForm({
     const payload = {
       ...rest,
       starters: starters.map((s) => s.trim()).filter(Boolean),
+      pageStarters: look.pageStarters.map((r) => ({
+        match: r.match,
+        starters: r.starters.map((s) => s.trim()).filter(Boolean),
+      })),
       showDays: showFrom || showTo ? { from: showFrom, to: showTo } : null,
     };
     if (botId) {
@@ -285,6 +293,86 @@ export function LookForm({
               }}
             />
           ))}
+        </fieldset>
+        <fieldset className="flex flex-col gap-3">
+          <legend className="mb-1 text-[0.9rem] font-semibold">
+            Starters for some pages (optional)
+          </legend>
+          <p className="text-sm text-muted-foreground">
+            On a page of the show&apos;s website whose address contains these words, the chat shows
+            these questions instead, e.g. &ldquo;/travel&rdquo; with &ldquo;Where can I
+            park?&rdquo;. The first that matches is used. Leave the questions empty to show none
+            there.
+          </p>
+          {look.pageStarters.map((rule, i) => {
+            const update = (next: Partial<(typeof look.pageStarters)[number]>) =>
+              set(
+                "pageStarters",
+                look.pageStarters.map((r, k) => (k === i ? { ...r, ...next } : r)),
+              );
+            const qs = [...rule.starters, "", "", ""].slice(0, MAX_STARTERS);
+            return (
+              <div
+                key={i}
+                className="flex flex-col gap-2 rounded-[10px] border border-border p-3"
+                data-testid="page-starters"
+              >
+                <div className="flex items-end gap-2">
+                  <Field
+                    id={`page-${i}-match`}
+                    label="The page address contains"
+                    error={err(`pageStarters.${i}.match`)}
+                    className="flex-1"
+                  >
+                    <Input
+                      id={`page-${i}-match`}
+                      value={rule.match}
+                      maxLength={200}
+                      placeholder="/travel"
+                      onChange={(e) => update({ match: e.target.value })}
+                    />
+                  </Field>
+                  <Button
+                    variant="ghost"
+                    aria-label={`Remove the starters for page ${i + 1}`}
+                    onClick={() =>
+                      set(
+                        "pageStarters",
+                        look.pageStarters.filter((_, k) => k !== i),
+                      )
+                    }
+                  >
+                    <Trash2 />
+                  </Button>
+                </div>
+                {qs.map((q, j) => (
+                  <Input
+                    key={j}
+                    aria-label={`Page ${i + 1}, starter question ${j + 1}`}
+                    value={q}
+                    maxLength={80}
+                    onChange={(e) => {
+                      const next = [...qs];
+                      next[j] = e.target.value;
+                      update({ starters: next });
+                    }}
+                  />
+                ))}
+              </div>
+            );
+          })}
+          {look.pageStarters.length < MAX_PAGE_RULES ? (
+            <div>
+              <Button
+                size="sm"
+                onClick={() =>
+                  set("pageStarters", [...look.pageStarters, { match: "", starters: [] }])
+                }
+              >
+                <Plus /> Add starters for a page
+              </Button>
+            </div>
+          ) : null}
         </fieldset>
         <div>
           <Button type="submit" variant="primary" disabled={pending || !look.name.trim()}>

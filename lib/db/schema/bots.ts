@@ -18,6 +18,7 @@ import {
 import type { BotRules, CheckIssue, RequestType, TestQuestion, TestRun } from "@/lib/types";
 import { audience, botStatus, checkStatus, quality, sourceKind, sourceStatus, tone } from "./enums";
 import { users } from "./users";
+import type { PageStarters } from "@/lib/bots/page-starters";
 
 /** Postgres full-text search vector (generated from a passage's label and text). */
 const tsvector = customType<{ data: string }>({
@@ -53,6 +54,8 @@ export const bots = pgTable(
     avatarUrl: text("avatar_url"),
     welcome: text("welcome").notNull().default(""),
     starters: jsonb("starters").$type<string[]>().notNull().default([]),
+    /** Different starters on some pages ("the address contains …"; lib/bots/page-starters.ts). */
+    pageStarters: jsonb("page_starters").$type<PageStarters[]>().notNull().default([]),
     tone: tone("tone").notNull().default("friendly"),
     /** How it should come across, in the team's own words (style only; the rules always win). */
     personality: text("personality").notNull().default(""),

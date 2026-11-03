@@ -88,6 +88,7 @@ export default async function BotPage({
           avatarUrl: bot.avatarUrl,
           welcome: bot.welcome,
           starters: bot.starters,
+          pageStarters: bot.pageStarters,
           showFrom: bot.showStartsOn ?? "",
           showTo: bot.showEndsOn ?? "",
         }}

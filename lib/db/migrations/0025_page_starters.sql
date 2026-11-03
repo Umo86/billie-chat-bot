@@ -1,0 +1,1 @@
+ALTER TABLE "bots" ADD COLUMN "page_starters" jsonb DEFAULT '[]'::jsonb NOT NULL;

@@ -21,6 +21,7 @@ import { setBotPeople } from "@/lib/bots/people";
 import { copyBot, markDatesChecked } from "@/lib/bots/copy";
 import { MAX_REQUEST_FIELDS, MAX_REQUEST_TYPES } from "@/lib/requests/rules";
 import { showDaysProblem } from "@/lib/bots/show-days";
+import { cleanPageRules, MAX_PAGE_RULES, MAX_STARTERS } from "@/lib/bots/page-starters";
 
 const AVATAR = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
 
@@ -43,6 +44,17 @@ const look = z.object({
     .array(z.string().trim().max(80))
     .max(3)
     .transform((a) => a.filter(Boolean)),
+  /** Different starters on some pages: "the page address contains …". */
+  pageStarters: z
+    .array(
+      z.object({
+        match: z.string().trim().min(1, "Say which pages, e.g. /travel.").max(200),
+        starters: z.array(z.string().trim().max(80)).max(MAX_STARTERS),
+      }),
+    )
+    .max(MAX_PAGE_RULES, `Up to ${MAX_PAGE_RULES} page rules.`)
+    .transform(cleanPageRules)
+    .optional(),
   /** Build-up to breakdown, or null for none. */
   showDays: z
     .object({ from: z.string().max(10), to: z.string().max(10) })

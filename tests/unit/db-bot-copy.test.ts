@@ -18,6 +18,9 @@ describe.skipIf(!hasDb)("copying a bot for the next show (Postgres)", () => {
       .set({
         welcome: "Welcome to Ideal Home Show Christmas 2026.",
         starters: ["When can we build?"],
+        pageStarters: [{ match: "/deliveries", starters: ["When can we unload?"] }],
+        showStartsOn: "2026-11-20",
+        showEndsOn: "2026-12-06",
         domains: ["idealhomeshowchristmas.co.uk"],
         tests: [{ id: "t1", question: "When does build-up start?", mustMention: "24 November" }],
         lastTestRun: { at: new Date().toISOString(), passed: 1, total: 1, results: [] },
@@ -47,6 +50,10 @@ describe.skipIf(!hasDb)("copying a bot for the next show (Postgres)", () => {
       domains: [],
       lastTestRun: null,
       welcome: "Welcome to Ideal Home Show Christmas 2026.",
+      pageStarters: [{ match: "/deliveries", starters: ["When can we unload?"] }],
+      // Each show has its own days.
+      showStartsOn: null,
+      showEndsOn: null,
       copiedFromId: bot.id,
       datesCheckedAt: null,
     });

@@ -20,6 +20,10 @@ test("build a bot with its own knowledge, test it and put it live", async ({ pag
   await page.getByLabel("Show name").fill("UK Construction Week 2027");
   await page.getByLabel("First day of build-up").fill("2027-03-08");
   await page.getByLabel("Last day of breakdown").fill("2027-03-12");
+  // Its own questions on the website's exhibit pages (the widget test checks them).
+  await page.getByRole("button", { name: "Add starters for a page" }).click();
+  await page.getByLabel("The page address contains").fill("/exhibit");
+  await page.getByLabel("Page 1, starter question 1").fill("Where do we unload?");
   await page.getByRole("button", { name: "Suggest a welcome message" }).click();
   await expect(page.getByLabel("Welcome message")).toHaveValue(/Exhibitor Help/);
   await shot(page, "bot-look");
@@ -324,6 +328,10 @@ test("the website widget shows only on the bot's own websites", async ({ browser
   await expect(chat.getByRole("heading", { name: "Exhibitor Help" })).toBeVisible({
     timeout: 15_000,
   });
+  // On the exhibit page: that page's starter question.
+  await expect(chat.getByLabel("Suggested questions").getByRole("button")).toHaveText([
+    "Where do we unload?",
+  ]);
   await chat.getByLabel("Your message").fill("When does build-up start?");
   await chat.getByLabel("Your message").press("Enter");
   await expect(chat.getByText(/Monday 8 March at 8am/).first()).toBeVisible({ timeout: 20_000 });

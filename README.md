@@ -26,6 +26,9 @@ Chatbots, live handover and an email assistant for Media10 shows.
   owner, shows on the Requests page with a Teams message to whoever handles
   it, and the person follows it on a page of its own (and by email once
   email is set up).
+- **Starter questions for some pages**: on the Look step, "the page
+  address contains /travel" shows "Where can I park?" on the travel pages,
+  instead of the bot's usual starters (up to 10 rules, 3 questions each).
 - **Knowledge gaps**: questions the bots couldn't answer, fixed in one click
   (the answer goes into the knowledge of the bot that was asked).
 - **Answers people found unhelpful**: a thumbs down puts the question and
