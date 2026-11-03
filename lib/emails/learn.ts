@@ -11,7 +11,7 @@ import { AiError, structured } from "@/lib/ai/provider";
 import { modelsFor } from "@/lib/ai/chosen";
 import { learnFromSentSystem, learnFromSentUser } from "@/lib/ai/prompts";
 import { learnFromSentJsonSchema, learnFromSentSchema } from "@/lib/ai/schemas";
-import { capReached, recordUsage } from "@/lib/ai/usage";
+import { aiLimit, LIMIT_LINE, recordUsage } from "@/lib/ai/usage";
 import { knowledgeBaseOf } from "@/lib/knowledge/bases";
 import { addSource } from "@/lib/knowledge/sources";
 import type { SentLearning } from "@/lib/types";
@@ -111,7 +111,8 @@ export async function learnFromSent(emailId: string): Promise<void> {
   if (!e || e.sentOutcome !== "edited" || !e.sentText || !e.botId || e.learning) return;
   const bot = await db.query.bots.findFirst({ where: eq(bots.id, e.botId) });
   if (!bot || bot.deletedAt) return;
-  if (await capReached("staff")) throw new Error("Today's answer limit has been reached.");
+  const limit = await aiLimit("staff");
+  if (limit) throw new Error(`${LIMIT_LINE[limit]}.`);
   try {
     const result = await structured({
       purpose: "learn_from_sent",

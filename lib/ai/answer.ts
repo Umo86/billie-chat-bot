@@ -6,7 +6,7 @@ import { answerJsonSchema } from "./schemas";
 import { answerSystem, answerUser, knowledgeBlock, type PromptPassage, type Turn } from "./prompts";
 import { modelsFor } from "./chosen";
 import { AiError, structured, type StructuredResult } from "./provider";
-import { capReached, recordUsage } from "./usage";
+import { aiLimit, limitError, recordUsage } from "./usage";
 import { costMicros } from "./pricing";
 import { keepForReuse, reuseKey, takeReused } from "./reuse";
 import { getSettings } from "@/lib/settings";
@@ -97,8 +97,10 @@ export async function answerQuestion(input: {
       };
   }
 
-  if (input.countUsage !== false && (await capReached(input.from ?? "staff"))) {
-    throw new AiError("cap_reached", "Today's answer limit has been reached");
+  if (input.countUsage !== false) {
+    // Over a limit: the chat offers the team instead (see aiFailureLine).
+    const limit = await aiLimit(input.from ?? "staff");
+    if (limit) throw limitError(limit);
   }
 
   // Recent questions add context to short follow-ups ("and on Sunday?").

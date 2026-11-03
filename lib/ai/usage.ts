@@ -3,8 +3,9 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { aiUsage, settings, usageDaily } from "@/lib/db/schema";
 import { londonDate } from "@/lib/time";
-import type { Usage } from "./provider";
+import { AiError, type Usage } from "./provider";
 import { costMicros } from "./pricing";
+import { spentThisMonth } from "./budget";
 
 /**
  * Claude use per day (UK date) and the daily safety cap: once the day's
@@ -22,20 +23,52 @@ export async function answersToday(now = new Date()): Promise<number> {
 /** Share of the daily cap that visitors (chats, WhatsApp) may use; the rest is kept for the team. */
 export const VISITOR_SHARE = 0.85;
 
+export type AiLimit = "daily" | "monthly";
+
+/** What to tell people when a limit stops Claude. */
+export const LIMIT_LINE: Record<AiLimit, string> = {
+  daily: "Today's answer limit has been reached",
+  monthly: "This month's Claude budget has been reached",
+};
+
 /**
- * True once today's answers reach the cap. Visitors stop at 85% of it, so a
- * flood of public messages can't use up what the team needs for email drafts
- * and test runs.
+ * Which limit stops Claude now, if any: the day's answers reaching the cap
+ * (visitors stop at 85% of it, so a flood of public messages can't use up
+ * what the team needs for email drafts and test runs), or the month's
+ * budget used up with the stop switched on (lib/ai/budget.ts).
  */
+export async function aiLimit(
+  from: "visitor" | "staff" = "staff",
+  now = new Date(),
+): Promise<AiLimit | null> {
+  const [s] = await db
+    .select({
+      cap: settings.dailyAnswerCap,
+      budgetCents: settings.monthlyBudgetCents,
+      stop: settings.budgetHardStop,
+    })
+    .from(settings)
+    .limit(1);
+  const cap = s?.cap ?? 3000;
+  if (cap > 0) {
+    const limit = from === "visitor" ? Math.floor(cap * VISITOR_SHARE) : cap;
+    if ((await answersToday(now)) >= limit) return "daily";
+  }
+  if (s?.stop && s.budgetCents && (await spentThisMonth(now)) >= s.budgetCents * 10_000)
+    return "monthly";
+  return null;
+}
+
 export async function capReached(
   from: "visitor" | "staff" = "staff",
   now = new Date(),
 ): Promise<boolean> {
-  const [s] = await db.select({ cap: settings.dailyAnswerCap }).from(settings).limit(1);
-  const cap = s?.cap ?? 3000;
-  if (cap <= 0) return false;
-  const limit = from === "visitor" ? Math.floor(cap * VISITOR_SHARE) : cap;
-  return (await answersToday(now)) >= limit;
+  return (await aiLimit(from, now)) !== null;
+}
+
+/** The error to throw when a limit stops Claude. */
+export function limitError(limit: AiLimit): AiError {
+  return new AiError("cap_reached", LIMIT_LINE[limit]);
 }
 
 /**

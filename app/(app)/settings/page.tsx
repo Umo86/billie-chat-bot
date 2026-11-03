@@ -11,8 +11,10 @@ import { TeamsDirect } from "@/components/settings/teams-direct";
 import { AiUsage } from "@/components/settings/ai-usage";
 import { ModelsForm } from "@/components/settings/models-form";
 import { SavingsForm } from "@/components/settings/savings-form";
+import { BudgetForm } from "@/components/settings/budget-form";
+import { budgetNow, monthName } from "@/lib/ai/budget";
 import { aiUsageReport, PERIODS, type Period } from "@/lib/ai/report";
-import { MODELS, priceLine } from "@/lib/ai/pricing";
+import { MODELS, priceLine, usd } from "@/lib/ai/pricing";
 import { modelFor } from "@/lib/ai/models";
 import { requireActor } from "@/lib/auth/actor";
 import { roleWorksOnEveryBot } from "@/lib/authz";
@@ -57,7 +59,11 @@ export default async function SettingsPage({
     const period: Period = PERIODS.some((p) => p.key === sp.period)
       ? (sp.period as Period)
       : "month";
-    const [report, s] = await Promise.all([aiUsageReport(period), getSettings()]);
+    const [report, s, budget] = await Promise.all([
+      aiUsageReport(period),
+      getSettings(),
+      budgetNow(),
+    ]);
     const chosen = { fast: s.fastModel, thorough: s.thoroughModel };
     body = (
       <div className="flex flex-col gap-4">
@@ -69,6 +75,14 @@ export default async function SettingsPage({
             prices: priceLine(m),
           }))}
           initial={{ fast: modelFor("fast", chosen), thorough: modelFor("thorough", chosen) }}
+        />
+        <BudgetForm
+          initial={{
+            dollars: s.monthlyBudgetCents === null ? null : s.monthlyBudgetCents / 100,
+            hardStop: s.budgetHardStop,
+          }}
+          spent={{ label: usd(budget.spentMicros), pct: budget.pct }}
+          month={monthName(budget.month)}
         />
         <SavingsForm initial={{ tryFastFirst: s.tryFastFirst, reuseAnswers: s.reuseAnswers }} />
         <AiUsage periods={PERIODS} period={period} report={report} />

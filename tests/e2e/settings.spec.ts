@@ -126,11 +126,31 @@ test("general settings save, connections and reports render", async ({ page }) =
   const savings = page.getByTestId("ai-savings");
   await expect(savings.getByRole("switch", { name: "Try the Fast model first" })).toBeChecked();
   await expect(savings.getByRole("switch", { name: "Give the same answer again" })).toBeChecked();
+  // A monthly budget, stopping at it.
+  const budget = page.getByTestId("ai-budget");
+  await expect(budget).toContainText("with no budget set");
+  await expect(budget.getByRole("switch", { name: "Stop at the budget" })).toBeDisabled();
+  await budget.getByLabel("Budget each month (US$)").fill("50");
+  await budget.getByRole("switch", { name: "Stop at the budget" }).click();
+  await expect(page.getByText("Saved.", { exact: true })).toHaveCount(0, { timeout: 10_000 });
+  await budget.getByRole("button", { name: "Save budget" }).click();
+  await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByTestId("ai-budget")).toContainText(/used in \w+ \(0% of the budget\)/);
+  await expect(page.getByTestId("ai-budget").getByLabel("Budget each month (US$)")).toHaveValue(
+    "50",
+  );
+  await expect(
+    page.getByTestId("ai-budget").getByRole("switch", { name: "Stop at the budget" }),
+  ).toBeChecked();
   await shot(page, "settings-ai");
   // Back to the default, so later tests run as usual.
   await page.getByTestId("ai-models").getByLabel("Thorough").selectOption("claude-sonnet-5-5");
   await page.getByTestId("ai-models").getByRole("button", { name: "Save models" }).click();
   await expect(page.getByText("Saved. New questions use these models now.").first()).toBeVisible();
+  await page.getByTestId("ai-budget").getByLabel("Budget each month (US$)").fill("");
+  await page.getByTestId("ai-budget").getByRole("button", { name: "Save budget" }).click();
+  await expect(page.getByTestId("ai-budget")).toContainText("with no budget set");
 });
 
 test("a privacy request: find a visitor's chat and delete it", async ({ page }) => {

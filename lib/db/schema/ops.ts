@@ -172,6 +172,10 @@ export const settings = pgTable("settings", {
   tryFastFirst: boolean("try_fast_first").notNull().default(true),
   /** A first question asked again the same day gets the same answer, without Claude. */
   reuseAnswers: boolean("reuse_answers").notNull().default(true),
+  /** What Claude may cost in a UK calendar month, in US cents (null: no budget). */
+  monthlyBudgetCents: integer("monthly_budget_cents"),
+  /** At the budget, stop using Claude: chats go to the team, drafts wait (lib/ai/budget.ts). */
+  budgetHardStop: boolean("budget_hard_stop").notNull().default(false),
   /**
    * The company's Teams workflow that sends one person a 1:1 Teams chat
    * (lib/alerts/direct.ts). A secret: set by admins, never shown again.

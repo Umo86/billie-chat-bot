@@ -18,7 +18,7 @@ import {
 } from "@/lib/ai/prompts";
 import { modelsFor } from "@/lib/ai/chosen";
 import { citeSources } from "@/lib/ai/answer";
-import { capReached, recordUsage } from "@/lib/ai/usage";
+import { aiLimit, limitError, recordUsage } from "@/lib/ai/usage";
 import { answerBotFor, botById } from "@/lib/bots/load";
 import { ALWAYS_HUMAN_DEFAULT } from "@/lib/bots/defaults";
 import { retrieve } from "@/lib/knowledge/search";
@@ -51,8 +51,8 @@ export async function processEmail(emailId: string, opts: { redo?: boolean } = {
     .where(eq(emailThreads.id, emailId));
 
   try {
-    if (await capReached())
-      throw new AiError("cap_reached", "Today's answer limit has been reached");
+    const limit = await aiLimit();
+    if (limit) throw limitError(limit);
     const settings = await getSettings();
     const bot = email.botId
       ? await botById(email.botId)
@@ -152,7 +152,7 @@ export async function processEmail(emailId: string, opts: { redo?: boolean } = {
       err instanceof AiError && err.code === "not_configured"
         ? "Claude isn't connected (ANTHROPIC_API_KEY)."
         : err instanceof AiError && err.code === "cap_reached"
-          ? "Today's answer limit was reached. Billie will try again later."
+          ? `${err.message}. Billie will try again later.`
           : "Billie couldn't draft this one. It will try again.";
     await db
       .update(emailThreads)

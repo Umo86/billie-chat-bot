@@ -26,7 +26,9 @@ export function friendly(err: unknown): string | null {
   if (err instanceof AiError) {
     if (err.code === "not_configured") return "Claude isn't connected yet (ANTHROPIC_API_KEY).";
     if (err.code === "cap_reached")
-      return "Today's answer limit has been reached. Raise it in Settings.";
+      return err.message.startsWith("This month")
+        ? "This month's Claude budget has been reached. An admin can raise it in Settings → AI."
+        : "Today's answer limit has been reached. Raise it in Settings.";
     return "Claude couldn't answer just now. Try again in a moment.";
   }
   return null;

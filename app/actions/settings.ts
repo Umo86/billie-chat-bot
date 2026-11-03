@@ -32,6 +32,34 @@ export async function saveSavingsAction(input: unknown) {
   );
 }
 
+/** Settings → AI: the month's budget for Claude, and whether to stop at it. */
+export async function saveBudgetAction(input: unknown) {
+  return runAction(
+    "settings.manage",
+    z.object({
+      dollars: z
+        .number()
+        .min(1, "Set at least $1, or leave it empty for no budget.")
+        .max(100_000, "Keep it under $100,000.")
+        .nullable(),
+      hardStop: z.boolean(),
+    }),
+    input,
+    async (actor, d) => {
+      const cents = d.dollars === null ? null : Math.round(d.dollars * 100);
+      await updateSettings(
+        actor.id,
+        { monthlyBudgetCents: cents, budgetHardStop: cents !== null && d.hardStop },
+        cents === null
+          ? "Removed the monthly Claude budget"
+          : `Set the monthly Claude budget to $${(cents / 100).toFixed(2)}${d.hardStop ? ", stopping at it" : ""}`,
+      );
+      revalidatePath("/settings");
+    },
+    "Saved.",
+  );
+}
+
 /** Settings → AI: which Claude model answers Fast and Thorough work. */
 export async function saveModelsAction(input: unknown) {
   return runAction(

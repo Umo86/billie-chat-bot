@@ -97,6 +97,9 @@ const handlers: Handlers = {
     (await import("@/lib/exhibitors/reminders")).writeReminders(String(p.batchId), {
       lastTry: job.attempts >= job.maxAttempts,
     }),
+  budget_check: async () => {
+    await (await import("@/lib/ai/budget")).checkBudget();
+  },
   show_days: async () => {
     await (await import("@/lib/reports/show-day")).queueShowDays();
   },
@@ -170,11 +173,17 @@ export async function minuteTick(now = new Date()) {
       {},
       { dedupeKey: `show-days:${uk.date}`, once: true, maxAttempts: 2 },
     );
-  // Every 15 minutes: Teams nudges about chats and emails still waiting for a reply.
+  // Every 15 minutes: Teams nudges about chats and emails still waiting for a reply,
+  // and a look at the month's Claude spend against the budget.
   await enqueue(
     "nudge_waiting",
     {},
     { dedupeKey: `nudge:${Math.floor(minute / 15)}`, once: true, maxAttempts: 1 },
+  );
+  await enqueue(
+    "budget_check",
+    {},
+    { dedupeKey: `budget:${Math.floor(minute / 15)}`, once: true, maxAttempts: 1 },
   );
   // The sweep's function has five minutes, so it also takes the long jobs.
   return runJobsNow({ budgetMs: 50_000, long: true });

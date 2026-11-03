@@ -88,6 +88,10 @@ Chatbots, live handover and an email assistant for Media10 shows.
   the Fast model first and ask the Thorough one only when it isn't sure,
   and a first question asked again the same day, with the knowledge
   unchanged, gets the same answer again without asking Claude.
+- **A monthly budget for Claude** (Settings → AI): admins get a Teams
+  message at 80% and at 100%. Optionally Billie stops using Claude at the
+  budget: chats go to the team and email drafts wait until the month ends
+  or the budget is raised.
 - **Roles** (admin, editor, agent), an audit log, UK GDPR retention.
 
 ## How it's built

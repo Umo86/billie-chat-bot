@@ -23,7 +23,7 @@ import { AiError, structured } from "@/lib/ai/provider";
 import { modelsFor } from "@/lib/ai/chosen";
 import { knowledgeBlock, reminderSystem, reminderUser } from "@/lib/ai/prompts";
 import { reminderJsonSchema, reminderSchema } from "@/lib/ai/schemas";
-import { capReached, recordUsage } from "@/lib/ai/usage";
+import { aiLimit, recordUsage } from "@/lib/ai/usage";
 import { citeSources } from "@/lib/ai/answer";
 import { answerBotFor, botById } from "@/lib/bots/load";
 import { retrieve } from "@/lib/knowledge/search";
@@ -77,9 +77,12 @@ export async function writeReminders(
   ]);
   if (!d || !bot) return void (await failed("The bot or the deadline was deleted."));
   try {
-    if (await capReached("staff"))
+    const limit = await aiLimit("staff");
+    if (limit)
       return void (await failed(
-        "Today's answer limit has been reached. Draft them again tomorrow, or raise the limit in Settings.",
+        limit === "daily"
+          ? "Today's answer limit has been reached. Draft them again tomorrow, or raise the limit in Settings."
+          : "This month's Claude budget has been reached. An admin can raise it in Settings → AI.",
       ));
     const due = dueLabel(d.dueOn);
     const passages = await retrieve(

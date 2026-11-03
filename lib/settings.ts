@@ -36,6 +36,8 @@ export type SettingsPatch = Partial<
     | "thoroughModel"
     | "tryFastFirst"
     | "reuseAnswers"
+    | "monthlyBudgetCents"
+    | "budgetHardStop"
   >
 >;
 

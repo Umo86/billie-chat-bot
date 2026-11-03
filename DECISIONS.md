@@ -210,6 +210,22 @@ isn't offered: it always thinks before answering (billed as output, so
 Billie's short answer limits would cut replies off), it costs five times
 Sonnet, and it needs 30-day data retention on the account.
 
+## A monthly budget, with the stop optional
+
+The daily answer cap counts answers, which keeps a flood of messages from
+running up a bill, but a show team budgets in money by the month. So
+admins can set a monthly budget in US dollars (as Anthropic bills), counted
+from `ai_usage` costs for the UK calendar month. Every 15 minutes a job
+compares the month's spend with it, and admins get a Teams message as it
+passes 80% and 100%: once each, keyed on the month and the budget, so
+raising the budget sets them up again, and past 100% only that message
+goes. The stop is a separate switch, off by default: at a show, an answer
+that costs a fraction of a penny is usually worth more than the budget
+line. With it on, once the budget is used up every Claude call refuses
+(the same path as the daily cap): chats offer the team, email drafts,
+suggested replies, checks and reminders wait and say why, and answers
+given again carry on because they cost nothing.
+
 ## Exhibitors sign in with a code, and only ever see their own row
 
 Personal answers come from the team's own exhibitor list, uploaded on the

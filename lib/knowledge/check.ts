@@ -9,7 +9,7 @@ import { AiError, structured } from "@/lib/ai/provider";
 import { modelsFor } from "@/lib/ai/chosen";
 import { knowledgeCheckSystem, knowledgeCheckUser } from "@/lib/ai/prompts";
 import { knowledgeCheckJsonSchema, knowledgeCheckSchema } from "@/lib/ai/schemas";
-import { capReached, recordUsage } from "@/lib/ai/usage";
+import { aiLimit, limitError, recordUsage } from "@/lib/ai/usage";
 import type { Actor } from "@/lib/authz";
 import type { CheckIssue } from "@/lib/types";
 import { KnowledgeError } from "./sources";
@@ -219,7 +219,11 @@ export async function runKnowledgeCheck(
     if (err instanceof AiError && err.code === "not_configured")
       return void (await fail("Claude isn't connected yet (ANTHROPIC_API_KEY)."));
     if (err instanceof AiError && err.code === "cap_reached")
-      return void (await fail("Today's answer limit has been reached. Try again tomorrow."));
+      return void (await fail(
+        err.message.startsWith("Today")
+          ? "Today's answer limit has been reached. Try again tomorrow."
+          : `${err.message}. An admin can raise it in Settings → AI.`,
+      ));
     if (opts.lastTry) return void (await fail("Billie couldn't finish the check. Try again."));
     throw err; // tried again shortly
   }
@@ -233,7 +237,8 @@ type Picked = Awaited<ReturnType<typeof sourcesToCheck>>["picked"];
  * try on the fallback model; the reply lists at most 20 problems.
  */
 async function askForIssues(kbName: string, picked: Picked, now: Date): Promise<CheckIssue[]> {
-  if (await capReached()) throw new AiError("cap_reached", "Today's answer limit has been reached");
+  const limit = await aiLimit();
+  if (limit) throw limitError(limit);
   const res = await structured({
     purpose: "knowledge_check",
     ...(await modelsFor("thorough")),

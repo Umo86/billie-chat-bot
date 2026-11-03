@@ -14,7 +14,7 @@ import {
   type Turn,
 } from "@/lib/ai/prompts";
 import { emailDraftJsonSchema, emailDraftSchema } from "@/lib/ai/schemas";
-import { capReached, recordUsage } from "@/lib/ai/usage";
+import { aiLimit, LIMIT_LINE, recordUsage } from "@/lib/ai/usage";
 import { citeSources } from "@/lib/ai/answer";
 import { answerBotFor, botById } from "@/lib/bots/load";
 import { retrieve } from "@/lib/knowledge/search";
@@ -90,8 +90,8 @@ export async function writeSuggestion(
   if (!asked.trim()) return void (await save(failed("They haven't asked anything yet.")));
 
   try {
-    if (await capReached("staff"))
-      return void (await save(failed("Today's answer limit has been reached.")));
+    const limit = await aiLimit("staff");
+    if (limit) return void (await save(failed(`${LIMIT_LINE[limit]}.`)));
     const answerBot = await answerBotFor(bot);
     const found = await retrieve(answerBot.knowledgeBaseIds, asked.slice(0, 4000));
     // A signed-in exhibitor's own row of the exhibitor list goes last.
