@@ -14,6 +14,7 @@ import {
   knowledgeBases,
   reminderBatches,
   sources,
+  unhelpfulAnswers,
   users,
 } from "@/lib/db/schema";
 import {
@@ -104,10 +105,28 @@ export async function mayOnBot(
 
 /** The bot a chat, request, email, unanswered question, knowledge or deadline belongs to. */
 export async function botOf(
-  kind: "conversation" | "request" | "email" | "gap" | "kb" | "source" | "deadline" | "reminders",
+  kind:
+    | "conversation"
+    | "request"
+    | "email"
+    | "gap"
+    | "unhelpful"
+    | "kb"
+    | "source"
+    | "deadline"
+    | "reminders",
   id: string,
 ): Promise<string | null> {
   switch (kind) {
+    case "unhelpful":
+      return (
+        (
+          await db.query.unhelpfulAnswers.findFirst({
+            where: eq(unhelpfulAnswers.id, id),
+            columns: { botId: true },
+          })
+        )?.botId ?? null
+      );
     case "deadline":
       return (
         (

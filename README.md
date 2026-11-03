@@ -28,6 +28,10 @@ Chatbots, live handover and an email assistant for Media10 shows.
   email is set up).
 - **Knowledge gaps**: questions the bots couldn't answer, fixed in one click
   (the answer goes into the knowledge of the bot that was asked).
+- **Answers people found unhelpful**: a thumbs down puts the question and
+  Billie's answer on the Knowledge page (To improve), counted across chats.
+  Fix it there and the better answer is saved as a typed answer in that
+  bot's knowledge, or dismiss it.
 - **Knowledge you can change in place**: edit pasted text and typed answers,
   and find and replace across a bot's knowledge (a new email address, say),
   with every change shown before it's made.

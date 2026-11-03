@@ -254,6 +254,20 @@ marked sent or failed as it goes (failed ones can be tried again), replies
 go to the event mailbox when there is one, and every round is in privacy
 requests and goes with retention.
 
+## A thumbs down is a fix to make, not just a number
+
+Unanswered questions were already caught (gaps), but an answer that was
+wrong or weak only showed as a lower "helpful" share in Reports. Now each
+thumbs down notes the visitor's question with Billie's answer, grouped by
+the same wording rule as gaps, on the Knowledge page under To improve. The
+team fixes it in place: the answer box starts as what Billie said, and the
+better answer is saved as a typed answer, which retrieval and the prompt
+already prefer. It's noted after the rating is saved, so a problem with
+the list never fails the rating; the chat row lock keeps double taps to one
+count, and a thumbs down changed to a thumbs up takes it back off. After a
+fix, a thumbs down on an answer given before the fix changes nothing; one
+on a newer answer reopens it, counting afresh. Dismissed stays dismissed.
+
 ## Billie learns from sent drafts, but a person saves what it learns
 
 Message ids are immutable, so Billie's Outlook draft keeps its id once it's

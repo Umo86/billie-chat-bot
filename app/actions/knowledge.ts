@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { dismissUnhelpful, fixUnhelpful } from "@/lib/knowledge/unhelpful";
 import { friendly, runAction } from "@/lib/actions/run";
 import { fail, type ActionResult } from "@/lib/actions/result";
 import { getActor } from "@/lib/auth/actor";
@@ -304,6 +305,32 @@ export async function dismissGapAction(input: unknown) {
   return runAction("knowledge.edit", z.object({ gapId: z.uuid() }), input, async (actor, d) => {
     await assertOnBotOf(actor, "knowledge.edit", "gap", d.gapId);
     await dismissGap(actor, d.gapId);
+    refresh();
+  });
+}
+
+/** A better answer to one people marked unhelpful: saved as a typed answer. */
+export async function fixUnhelpfulAction(input: unknown) {
+  return runAction(
+    "knowledge.edit",
+    z.object({
+      id: z.uuid(),
+      answer: z.string().trim().min(2, "Write the answer.").max(4000),
+    }),
+    input,
+    async (actor, d) => {
+      await assertOnBotOf(actor, "knowledge.edit", "unhelpful", d.id);
+      await fixUnhelpful(actor, d.id, d.answer);
+      refresh();
+    },
+    "Saved. Billie will use this answer from now on.",
+  );
+}
+
+export async function dismissUnhelpfulAction(input: unknown) {
+  return runAction("knowledge.edit", z.object({ id: z.uuid() }), input, async (actor, d) => {
+    await assertOnBotOf(actor, "knowledge.edit", "unhelpful", d.id);
+    await dismissUnhelpful(actor, d.id);
     refresh();
   });
 }

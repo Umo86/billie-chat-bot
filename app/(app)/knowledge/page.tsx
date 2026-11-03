@@ -6,6 +6,8 @@ import { Chip, EmptyState, PageHeader, Panel } from "@/components/ui/bits";
 import { TabsNav } from "@/components/ui/tabs-nav";
 import { BotAvatar } from "@/components/bots/bot-avatar";
 import { GapList } from "@/components/knowledge/gap-list";
+import { UnhelpfulList } from "@/components/knowledge/unhelpful-list";
+import { openUnhelpful } from "@/lib/knowledge/unhelpful";
 import { LearningList } from "@/components/knowledge/learning-list";
 import { learningOffers } from "@/lib/emails/learn";
 import { DeleteOldKb } from "@/components/knowledge/kb-dialog";
@@ -32,11 +34,13 @@ export default async function KnowledgePage({
   const tab = params.tab === "gaps" ? "gaps" : "bases";
   await ensureBotKnowledgeBases();
   const ids = await myBotIds(actor);
-  const [kbs, gaps, offers] = await Promise.all([
+  const [kbs, gaps, offers, unhelpful] = await Promise.all([
     knowledgeBaseList(ids),
     openGaps(ids),
     learningOffers(ids),
+    openUnhelpful(ids),
   ]);
+  const toImprove = gaps.length + offers.length + unhelpful.length;
   const selected =
     kbs.find((k) => k.id === params.kb) ??
     kbs.find((k) => k.bot && k.bot.id === params.bot) ??
@@ -63,13 +67,14 @@ export default async function KnowledgePage({
           {
             key: "gaps",
             href: "/knowledge?tab=gaps",
-            label: `Unanswered questions${gaps.length + offers.length ? ` (${gaps.length + offers.length})` : ""}`,
+            label: `To improve${toImprove ? ` (${toImprove})` : ""}`,
           },
         ]}
       />
 
       {tab === "gaps" ? (
         <div className="flex flex-col gap-6">
+          <UnhelpfulList rows={unhelpful} canEdit={can(actor, "knowledge.edit")} />
           <LearningList offers={offers} canEdit={can(actor, "knowledge.edit")} />
           <GapList gaps={gaps} canEdit={can(actor, "knowledge.edit")} />
         </div>

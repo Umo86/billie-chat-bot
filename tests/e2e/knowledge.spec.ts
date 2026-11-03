@@ -96,6 +96,32 @@ test("a bot's own knowledge: edit it, then find and replace across it", async ({
   ).toBeVisible();
   await expect(page.getByTestId("source-row").filter({ hasText: "Who to contact" })).toHaveCount(0);
 
+  // A widget visitor marked an answer unhelpful (bots.spec): fix it from "To improve".
+  await page
+    .getByRole("navigation", { name: "Knowledge sections" })
+    .getByRole("link", { name: /^To improve/ })
+    .click();
+  const unhelpful = page
+    .getByTestId("unhelpful-row")
+    .filter({ hasText: "When does build-up start?" });
+  await expect(unhelpful).toContainText("Unhelpful once");
+  await expect(unhelpful).toContainText(/Billie said: .*Monday 8 March at 8am/);
+  await unhelpful.getByRole("button", { name: "Fix the answer" }).click();
+  const better = unhelpful.getByLabel("The right answer");
+  await expect(better).toHaveValue(/Monday 8 March at 8am/);
+  await expect(unhelpful.getByRole("button", { name: "Save answer" })).toBeDisabled();
+  await better.fill(
+    "Build-up starts on Monday 8 March at 8am. Bring your contractor badge and park in the orange car park.",
+  );
+  await shot(page, "knowledge-unhelpful");
+  await unhelpful.getByRole("button", { name: "Save answer" }).click();
+  await expect(page.getByText("Saved. Billie will use this answer from now on.")).toBeVisible();
+  await expect(page.getByTestId("unhelpful-row")).toHaveCount(0);
+  await page
+    .getByRole("navigation", { name: "Knowledge sections" })
+    .getByRole("link", { name: "Each bot's knowledge" })
+    .click();
+
   // Copy the second bot for next year's show: everything comes across, with its dates to check.
   await bots.getByRole("link", { name: /Christmas Show Help/ }).click();
   // Wait for the page to switch, or "Open the bot" is still the other bot's link.

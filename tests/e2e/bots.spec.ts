@@ -306,6 +306,12 @@ test("the website widget shows only on the bot's own websites", async ({ browser
   await chat.getByLabel("Your message").press("Enter");
   await expect(chat.getByText(/Monday 8 March at 8am/).first()).toBeVisible({ timeout: 20_000 });
   await shot(page, "widget-open");
+  // This visitor didn't find it helpful: the team sees it on the Knowledge page (knowledge.spec).
+  await chat.getByRole("button", { name: "Not helpful", exact: true }).click();
+  await expect(chat.getByRole("button", { name: "Not helpful", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await chat.getByRole("button", { name: "Close chat" }).click();
   await expect(button).toHaveAttribute("aria-expanded", "false");
 

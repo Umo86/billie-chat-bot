@@ -123,6 +123,41 @@ export const gaps = pgTable(
 );
 
 /**
+ * Answers people marked unhelpful (thumbs down), by question, for the team
+ * to fix on the Knowledge page: the fix is saved as a typed answer. A
+ * question marked again after a fix opens again; a dismissed one stays so.
+ */
+export const unhelpfulAnswers = pgTable(
+  "unhelpful_answers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    botId: uuid("bot_id")
+      .notNull()
+      .references(() => bots.id, { onDelete: "cascade" }),
+    /** Normalised wording, as for gaps (lib/knowledge/gaps.ts:questionKey). */
+    questionKey: text("question_key").notNull(),
+    question: text("question").notNull(),
+    /** The latest answer marked unhelpful. */
+    answer: text("answer").notNull(),
+    count: integer("count").notNull().default(1),
+    status: text("status").$type<"open" | "fixed" | "dismissed">().notNull().default("open"),
+    fixedSourceId: uuid("fixed_source_id").references(() => sources.id, { onDelete: "set null" }),
+    /** When the team saved a better answer: thumbs down on older answers don't reopen it. */
+    fixedAt: timestamp("fixed_at", { withTimezone: true }),
+    firstAt: timestamp("first_at", { withTimezone: true }).notNull().defaultNow(),
+    lastAt: timestamp("last_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    uniqueIndex("unhelpful_bot_question_unique").on(t.botId, t.questionKey),
+    index("unhelpful_status_idx").on(t.status, t.lastAt),
+  ],
+);
+
+/**
  * WhatsApp numbers that have written in: which bot they chose ("Visiting or
  * exhibiting?"), the question waiting for that choice, and the last time
  * they wrote (free-form replies are allowed for 24 hours after it).

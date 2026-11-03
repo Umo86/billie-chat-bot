@@ -6,6 +6,7 @@ import { writeAudit } from "@/lib/audit";
 import { enqueue } from "@/lib/jobs/queue";
 import { kickJobs } from "@/lib/jobs/kick";
 import { forgetReused } from "@/lib/ai/reuse";
+import { recordUnhelpful, withdrawUnhelpful } from "@/lib/knowledge/unhelpful";
 import { answerQuestion, aiFailureLine } from "@/lib/ai/answer";
 import { answerBotFor, type BotRow } from "@/lib/bots/load";
 import { recordGap } from "@/lib/knowledge/gap-store";
@@ -584,8 +585,16 @@ export async function rateMessage(
   messageId: string,
   rating: 1 | -1,
 ): Promise<{ offer: Turn["offer"] }> {
-  const streak = await db.transaction(async (tx) => {
+  const { streak, rated, was } = await db.transaction(async (tx) => {
     const c = await lock(tx, conversationId);
+    const before = await tx.query.messages.findFirst({
+      where: and(
+        eq(messages.id, messageId),
+        eq(messages.conversationId, c.id),
+        eq(messages.role, "bot"),
+      ),
+      columns: { rating: true },
+    });
     const [m] = await tx
       .update(messages)
       .set({ rating })
@@ -596,17 +605,25 @@ export async function rateMessage(
           eq(messages.role, "bot"),
         ),
       )
-      .returning({ id: messages.id, text: messages.text });
+      .returning({ id: messages.id, text: messages.text, createdAt: messages.createdAt });
     if (!m) throw new ChatError("not_found", "That answer isn't in this chat.");
-    // Unhelpful: nobody else gets this answer again without Claude.
+    // Nobody else gets an unhelpful answer again without Claude.
     if (rating === -1) await forgetReused(c.botId, m.text);
     const next = rating === -1 ? c.thumbsDownStreak + 1 : 0;
     await tx
       .update(conversations)
       .set({ thumbsDownStreak: next })
       .where(eq(conversations.id, c.id));
-    return c.status === "bot" ? next : 0;
+    return {
+      streak: c.status === "bot" ? next : 0,
+      rated: { botId: c.botId, conversationId: c.id, answer: m.text, answeredAt: m.createdAt },
+      was: before?.rating ?? null,
+    };
   });
+  // It goes on the Knowledge page for the team to fix: once per answer, and a
+  // change of mind takes it back. (The row lock above keeps double taps apart.)
+  if (rating === -1 && was !== -1) await recordUnhelpful(rated);
+  if (rating === 1 && was === -1) await withdrawUnhelpful(rated);
   const decision = afterRating(streak);
   return { offer: decision.kind === "offer" ? { reason: decision.reason } : null };
 }
