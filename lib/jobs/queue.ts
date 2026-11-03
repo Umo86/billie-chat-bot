@@ -38,7 +38,8 @@ export type JobKind =
   | "send_reminders"
   | "show_days"
   | "show_day_post"
-  | "budget_check";
+  | "budget_check"
+  | "crawl_website";
 
 export type Job = typeof jobs.$inferSelect;
 
@@ -88,7 +89,7 @@ export async function enqueue(
  * function has the time, the every-minute sweep and the pages that queue
  * them (maxDuration 300), never straight after a chat message (60 seconds).
  */
-export const LONG_KINDS: JobKind[] = ["knowledge_check", "send_reminders"];
+export const LONG_KINDS: JobKind[] = ["knowledge_check", "send_reminders", "crawl_website"];
 
 /**
  * Takes up to `limit` due jobs: queued and due, or running with an expired

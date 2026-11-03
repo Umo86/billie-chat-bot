@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { db, query } from "@/lib/db/client";
-import { botMembers, bots, knowledgeBases, passages, sources } from "@/lib/db/schema";
+import { botMembers, bots, knowledgeBases, passages, sources, websites } from "@/lib/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { UserError } from "@/lib/errors";
 import type { Actor } from "@/lib/authz";
@@ -73,6 +73,30 @@ export async function copyBot(
     });
     let copied = 0;
     if (own) {
+      // Whole websites come across too, so the copy keeps reading them every week.
+      const sites = await tx
+        .select()
+        .from(websites)
+        .where(and(eq(websites.knowledgeBaseId, own.id), isNull(websites.deletedAt)));
+      const siteOf = new Map<string, string>();
+      for (const w of sites) {
+        const [made] = await tx
+          .insert(websites)
+          .values({
+            knowledgeBaseId: kbId,
+            url: w.url,
+            host: w.host,
+            leaveOut: w.leaveOut,
+            maxPages: w.maxPages,
+            status: w.status,
+            note: w.note,
+            found: w.found,
+            lastCrawledAt: w.lastCrawledAt,
+            addedBy: actor.id,
+          })
+          .returning({ id: websites.id });
+        siteOf.set(w.id, made.id);
+      }
       const list = await tx
         .select()
         .from(sources)
@@ -93,6 +117,7 @@ export async function copyBot(
             mimeType: s.mimeType,
             url: s.url,
             refreshWeekly: s.refreshWeekly,
+            websiteId: s.websiteId ? (siteOf.get(s.websiteId) ?? null) : null,
             body: s.body,
             contentHash: s.contentHash,
             chars: s.chars,

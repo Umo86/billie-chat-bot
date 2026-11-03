@@ -210,6 +210,38 @@ export const botKnowledgeBases = pgTable(
   ],
 );
 
+/**
+ * A whole website read into a bot's knowledge (lib/knowledge/websites.ts):
+ * its pages come from the sitemap (or the home page's links), each a web
+ * page source, and it's read again every week: new pages added, gone ones
+ * taken out, changed ones read again.
+ */
+export const websites = pgTable(
+  "websites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    knowledgeBaseId: uuid("knowledge_base_id")
+      .notNull()
+      .references(() => knowledgeBases.id, { onDelete: "cascade" }),
+    /** What the team typed: the home page, or the sitemap's address. */
+    url: text("url").notNull(),
+    host: text("host").notNull(),
+    /** Pages whose address contains any of these are left out (lower case). */
+    leaveOut: text("leave_out").array().notNull().default([]),
+    maxPages: integer("max_pages").notNull().default(200),
+    status: text("status").$type<"finding" | "ready" | "failed">().notNull().default("finding"),
+    /** How the pages were found, or why they couldn't be. */
+    note: text("note").notNull().default(""),
+    /** Pages found the last time, before leaving any out. */
+    found: integer("found").notNull().default(0),
+    lastCrawledAt: timestamp("last_crawled_at", { withTimezone: true }),
+    addedBy: uuid("added_by").references(() => users.id, { onDelete: "set null" }),
+    ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (t) => [index("websites_kb_idx").on(t.knowledgeBaseId)],
+);
+
 /** One file, pasted text, typed answer or web page in a knowledge base. */
 export const sources = pgTable(
   "sources",
@@ -230,6 +262,10 @@ export const sources = pgTable(
     /** Web pages: the address, re-read every week when refreshWeekly is on. */
     url: text("url"),
     refreshWeekly: boolean("refresh_weekly").notNull().default(false),
+    /** A page of a whole website the bot reads (its re-reading is the website's). */
+    websiteId: uuid("website_id").references((): AnyPgColumn => websites.id, {
+      onDelete: "set null",
+    }),
     /** Pasted text and typed answers keep their text here (files and pages are re-read). */
     body: text("body"),
     contentHash: text("content_hash"),
@@ -244,6 +280,7 @@ export const sources = pgTable(
     index("sources_kb_idx").on(t.knowledgeBaseId),
     index("sources_status_idx").on(t.status),
     index("sources_added_by_idx").on(t.addedBy),
+    index("sources_website_idx").on(t.websiteId),
   ],
 );
 

@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { FileUp, Globe, MessageSquareText, Type } from "lucide-react";
+import { Earth, FileUp, Globe, MessageSquareText, Type } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/form";
 import { Segmented } from "@/components/ui/segmented";
@@ -10,16 +10,18 @@ import { Switch } from "@/components/ui/switch";
 import { Note, Panel } from "@/components/ui/bits";
 import { useRunner } from "@/components/ui/use-runner";
 import { LearningPanel } from "@/components/knowledge/learning-panel";
+import { LeaveOutFields } from "@/components/knowledge/website-list";
 import type { LearningItem } from "@/lib/knowledge/learning";
 import {
   addQaAction,
   addTextAction,
   addWebAction,
+  addWebsiteAction,
   registerUploadAction,
   uploadFileAction,
 } from "@/app/actions/knowledge";
 
-type Tab = "file" | "text" | "qa" | "web";
+type Tab = "file" | "text" | "qa" | "web" | "site";
 
 /** Under this size a file goes through the server action; above it, straight to Blob. */
 const DIRECT_LIMIT = 4 * 1024 * 1024;
@@ -80,6 +82,14 @@ export function AddSource({
                 </span>
               ),
             },
+            {
+              value: "site",
+              label: (
+                <span className="inline-flex items-center gap-1.5">
+                  <Earth className="size-4" aria-hidden /> Whole website
+                </span>
+              ),
+            },
           ]}
         />
       </div>
@@ -95,8 +105,10 @@ export function AddSource({
         <PasteText kbId={kbId} />
       ) : tab === "qa" ? (
         <TypedAnswer kbId={kbId} />
-      ) : (
+      ) : tab === "web" ? (
         <WebPage kbId={kbId} />
+      ) : (
+        <WholeWebsite kbId={kbId} />
       )}
     </Panel>
   );
@@ -421,6 +433,55 @@ function WebPage({ kbId }: { kbId: string }) {
       <div>
         <Button type="submit" variant="primary" disabled={pending || !url.trim()}>
           Add page
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function WholeWebsite({ kbId }: { kbId: string }) {
+  const [url, setUrl] = useState("");
+  const [leaveOut, setLeaveOut] = useState("");
+  const [max, setMax] = useState("200");
+  const { pending, run } = useRunner();
+  return (
+    <form
+      className="flex flex-col gap-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        run(() => addWebsiteAction({ kbId, url, leaveOut, maxPages: Number(max) }), {
+          done: () => {
+            setUrl("");
+            setLeaveOut("");
+          },
+        });
+      }}
+    >
+      <Field
+        id="site-url"
+        label="Website address"
+        hint="The home page, or the sitemap's address. Billie finds the pages from the sitemap (or the home page's links), reads them all, and looks again every week: new pages are added and gone ones taken out."
+      >
+        <Input
+          id="site-url"
+          type="url"
+          inputMode="url"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://www.example-show.co.uk"
+          required
+        />
+      </Field>
+      <LeaveOutFields
+        id="site-new"
+        leaveOut={leaveOut}
+        setLeaveOut={setLeaveOut}
+        max={max}
+        setMax={setMax}
+      />
+      <div>
+        <Button type="submit" variant="primary" disabled={pending || !url.trim() || !Number(max)}>
+          Read the website
         </Button>
       </div>
     </form>

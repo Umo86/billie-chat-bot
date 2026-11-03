@@ -448,6 +448,28 @@ release (one row per bot) so a rollback still answers; nothing reads it.
 A bot made by the old release while both were running gets its knowledge
 base the first time it, or the Knowledge page, is opened.
 
+## A whole website is a list of web pages, kept up to date weekly
+
+Rather than a crawler, Billie asks the website for its own list: the
+sitemaps robots.txt names (or /sitemap.xml, or a sitemap address typed in),
+up to 10 of them through sitemap indexes. With no sitemap, it takes the
+home page and the pages it links to. Only pages on the same site (with or
+without www) are kept, web pages only (no PDFs, pictures or feeds), each
+once, none robots.txt keeps BillieBot out of (the longest matching rule
+decides), none whose address contains what the team left out, at most the
+number they set (200 to start, 500 at most). Each page is then an ordinary
+web page source, read through the same safe fetcher (no private addresses,
+every redirect checked, 5 MB and 15 seconds a page) and spread out a second
+and a half apart so the show's website isn't hit all at once.
+
+The website is looked at again weekly (and on "Read again now"): new pages
+are added, pages no longer listed go to the bin, and pages are read again
+when the sitemap says they changed or a week has passed, which the existing
+"page unchanged" check makes cheap. The pages show on the website's own
+card, not one by one in the sources list. Removing the website puts its
+pages in the bin; one restored from there stands on its own. Copies of a
+bot keep its websites.
+
 ## Knowledge is changed in place, never half-read
 
 Pasted text and typed answers can be edited, and a piece of text can be

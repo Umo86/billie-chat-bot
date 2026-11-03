@@ -16,6 +16,7 @@ import {
   sources,
   unhelpfulAnswers,
   users,
+  websites,
 } from "@/lib/db/schema";
 import {
   botScopeOf,
@@ -114,10 +115,19 @@ export async function botOf(
     | "kb"
     | "source"
     | "deadline"
-    | "reminders",
+    | "reminders"
+    | "website",
   id: string,
 ): Promise<string | null> {
   switch (kind) {
+    case "website": {
+      const [row] = await db
+        .select({ botId: knowledgeBases.botId })
+        .from(websites)
+        .innerJoin(knowledgeBases, eq(knowledgeBases.id, websites.knowledgeBaseId))
+        .where(eq(websites.id, id));
+      return row?.botId ?? null;
+    }
     case "unhelpful":
       return (
         (

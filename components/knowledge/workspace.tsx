@@ -4,6 +4,8 @@ import { SourceList } from "@/components/knowledge/source-list";
 import { CheckPanel } from "@/components/knowledge/check-panel";
 import { latestCheck } from "@/lib/knowledge/check";
 import { sourcesFor } from "@/lib/knowledge/queries";
+import { websitesFor } from "@/lib/knowledge/websites";
+import { WebsiteList } from "@/components/knowledge/website-list";
 import { ACCEPTED_EXTENSIONS, MAX_FILE_BYTES } from "@/lib/knowledge/files";
 import { storageBackend } from "@/lib/storage";
 
@@ -22,11 +24,17 @@ export async function KnowledgeWorkspace({
   /** False for an old shared base no bot uses: nothing new goes in. */
   canAdd?: boolean;
 }) {
-  const [sources, check] = await Promise.all([sourcesFor(kbId), latestCheck(kbId)]);
+  const [sources, sites, check] = await Promise.all([
+    sourcesFor(kbId),
+    websitesFor(kbId),
+    latestCheck(kbId),
+  ]);
   const storage = storageBackend();
   return (
     <>
-      {sources.length ? <CheckPanel kbId={kbId} check={check} canEdit={canEdit} /> : null}
+      {sources.length || sites.length ? (
+        <CheckPanel kbId={kbId} check={check} canEdit={canEdit} />
+      ) : null}
       {canAdd ? (
         storage === "none" ? (
           <AddSource
@@ -45,7 +53,8 @@ export async function KnowledgeWorkspace({
           />
         )
       ) : null}
-      <SourceList sources={sources} canEdit={canEdit} />
+      <WebsiteList sites={sites} canEdit={canEdit} />
+      {sources.length || !sites.length ? <SourceList sources={sources} canEdit={canEdit} /> : null}
     </>
   );
 }

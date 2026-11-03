@@ -35,6 +35,11 @@ Chatbots, live handover and an email assistant for Media10 shows.
   Billie's answer on the Knowledge page (To improve), counted across chats.
   Fix it there and the better answer is saved as a typed answer in that
   bot's knowledge, or dismiss it.
+- **Whole websites**: add a show's website once (Add knowledge → Whole
+  website) and Billie reads every page in its sitemap (or linked from its
+  home page), leaving out what the team says (/news, /press) and anything
+  robots.txt keeps out, up to 500 pages. Every week it looks again: new
+  pages are added, gone ones taken out, changed ones read again.
 - **Knowledge you can change in place**: edit pasted text and typed answers,
   and find and replace across a bot's knowledge (a new email address, say),
   with every change shown before it's made.

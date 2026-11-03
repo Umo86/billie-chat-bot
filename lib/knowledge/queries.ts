@@ -103,6 +103,7 @@ export async function sourcesFor(kbId: string): Promise<SourceRow[]> {
                (s.status IN ('queued', 'reading') AND s.updated_at < now() - interval '5 minutes') AS stuck
         FROM sources s LEFT JOIN users u ON u.id = s.added_by
         WHERE s.knowledge_base_id = ${kbId} AND s.deleted_at IS NULL
+          AND s.website_id IS NULL -- a website's pages show on its own card
         ORDER BY s.kind = 'qa', s.created_at DESC`,
   );
   return rows.map((r) => ({

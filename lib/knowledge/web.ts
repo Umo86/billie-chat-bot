@@ -138,6 +138,7 @@ type Fetched = { url: string; contentType: string; body: string };
 
 function getOnce(
   url: URL,
+  accept = "text/html,application/xhtml+xml,text/plain;q=0.9",
 ): Promise<{ status: number; location?: string; contentType: string; body: Buffer }> {
   return new Promise((resolve, reject) => {
     const mod = url.protocol === "https:" ? https : http;
@@ -147,7 +148,7 @@ function getOnce(
         lookup: safeLookup as unknown as typeof dnsLookup,
         headers: {
           "user-agent": "BillieBot/1.0 (+knowledge base reader)",
-          accept: "text/html,application/xhtml+xml,text/plain;q=0.9",
+          accept,
         },
         timeout: TIMEOUT_MS,
       },
@@ -214,18 +215,36 @@ function getOnce(
   });
 }
 
-export async function fetchPage(raw: string): Promise<Fetched> {
+/** What each kind of fetch may come back as. */
+const TYPES = {
+  page: /text\/html|application\/xhtml|text\/plain/i,
+  sitemap: /xml|text\/plain/i,
+  robots: /text\/plain/i,
+} as const;
+
+export async function fetchPage(
+  raw: string,
+  opts: { kind?: keyof typeof TYPES } = {},
+): Promise<Fetched> {
+  const kind = opts.kind ?? "page";
   let url = checkUrl(raw);
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    const res = await getOnce(url);
+    const res = await getOnce(
+      url,
+      kind === "page" ? undefined : "application/xml,text/xml,text/plain;q=0.9",
+    );
     if (res.location) {
       url = checkUrl(new URL(res.location, url).toString());
       continue;
     }
     if (res.status >= 400)
       throw new UnsafeUrlError(`That page answered with an error (${res.status}).`);
-    if (!/text\/html|application\/xhtml|text\/plain/i.test(res.contentType)) {
-      throw new UnsafeUrlError("That address isn't a web page. Upload the file itself instead.");
+    if (!TYPES[kind].test(res.contentType)) {
+      throw new UnsafeUrlError(
+        kind === "page"
+          ? "That address isn't a web page. Upload the file itself instead."
+          : "That address isn't a sitemap.",
+      );
     }
     return { url: url.toString(), contentType: res.contentType, body: res.body.toString("utf8") };
   }

@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { dismissUnhelpful, fixUnhelpful } from "@/lib/knowledge/unhelpful";
+import { addWebsite, recrawlWebsite, removeWebsite, updateWebsite } from "@/lib/knowledge/websites";
+import { leaveOutList, MAX_PAGES } from "@/lib/knowledge/sitemap";
 import { friendly, runAction } from "@/lib/actions/run";
 import { fail, type ActionResult } from "@/lib/actions/result";
 import { getActor } from "@/lib/auth/actor";
@@ -102,6 +104,83 @@ export async function addWebAction(input: unknown) {
       refresh();
     },
     "Added. Billie is reading the page.",
+  );
+}
+
+const website = {
+  leaveOut: z.string().max(3000).default(""),
+  maxPages: z
+    .number()
+    .int()
+    .min(1, "Read at least 1 page.")
+    .max(MAX_PAGES, `At most ${MAX_PAGES} pages.`),
+};
+
+/** A whole website: its pages from the sitemap (or the home page's links), read weekly. */
+export async function addWebsiteAction(input: unknown) {
+  return runAction(
+    "knowledge.edit",
+    z.object({
+      kbId: z.uuid(),
+      url: z.string().trim().min(4, "Paste the website's address.").max(2000),
+      ...website,
+    }),
+    input,
+    async (actor, d) => {
+      await assertOnBotOf(actor, "knowledge.edit", "kb", d.kbId);
+      await addWebsite(actor, d.kbId, {
+        url: d.url,
+        leaveOut: leaveOutList(d.leaveOut),
+        maxPages: d.maxPages,
+      });
+      refresh();
+    },
+    "Added. Billie is finding the website's pages.",
+  );
+}
+
+export async function updateWebsiteAction(input: unknown) {
+  return runAction(
+    "knowledge.edit",
+    z.object({ id: z.uuid(), ...website }),
+    input,
+    async (actor, d) => {
+      await assertOnBotOf(actor, "knowledge.edit", "website", d.id);
+      await updateWebsite(actor, d.id, {
+        leaveOut: leaveOutList(d.leaveOut),
+        maxPages: d.maxPages,
+      });
+      refresh();
+    },
+    "Saved. Billie is looking at the website again.",
+  );
+}
+
+export async function recrawlWebsiteAction(input: unknown) {
+  return runAction(
+    "knowledge.edit",
+    z.object({ id: z.uuid() }),
+    input,
+    async (actor, d) => {
+      await assertOnBotOf(actor, "knowledge.edit", "website", d.id);
+      await recrawlWebsite(actor, d.id);
+      refresh();
+    },
+    "Billie is reading the website again.",
+  );
+}
+
+export async function removeWebsiteAction(input: unknown) {
+  return runAction(
+    "knowledge.edit",
+    z.object({ id: z.uuid() }),
+    input,
+    async (actor, d) => {
+      await assertOnBotOf(actor, "knowledge.edit", "website", d.id);
+      await removeWebsite(actor, d.id);
+      refresh();
+    },
+    "Removed. Its pages are in the bin for 30 days.",
   );
 }
 

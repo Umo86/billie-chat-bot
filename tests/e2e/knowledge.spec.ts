@@ -67,6 +67,24 @@ test("a bot's own knowledge: edit it, then find and replace across it", async ({
   await expect(page.getByRole("dialog")).not.toContainText("eventcreate");
   await page.keyboard.press("Escape");
 
+  // A whole website: its card shows what happened (here no website can be reached), then it goes.
+  await page.getByRole("tab", { name: "Whole website" }).click();
+  await page.getByLabel("Website address").fill("https://www.christmas-show.test");
+  await page.getByLabel("Leave out pages whose address contains").fill("/news\n/press");
+  await page.getByRole("button", { name: "Read the website" }).click();
+  await expect(page.getByText("Added. Billie is finding the website's pages.")).toBeVisible();
+  const site = page.getByTestId("website").filter({ hasText: "christmas-show.test" });
+  await expect(site).toContainText("Leaving out pages with:");
+  await expect(site).toContainText(/couldn't be loaded|isn't on the public web/, {
+    timeout: 45_000,
+  });
+  await shot(page, "knowledge-website");
+  await site.getByRole("button", { name: "Remove" }).click();
+  await site.getByRole("button", { name: "Yes, remove" }).click();
+  await expect(page.getByText("Removed. Its pages are in the bin for 30 days.")).toBeVisible();
+  await expect(page.getByTestId("website")).toHaveCount(0);
+  await page.getByRole("tab", { name: "Paste text" }).click();
+
   // Knowledge check: a deadline that has passed is listed, with Edit to fix it.
   await page.getByLabel("Title").fill("Deadlines");
   await page

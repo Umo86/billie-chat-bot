@@ -75,6 +75,11 @@ const handlers: Handlers = {
   },
   refresh_web_sources: async () => {
     await queueWebRefresh();
+    // Whole websites: looked at again weekly (new pages added, gone ones taken out).
+    await (await import("@/lib/knowledge/websites")).queueWebsiteRecrawls();
+  },
+  crawl_website: async (p) => {
+    await (await import("@/lib/knowledge/websites")).crawlWebsite(String(p.websiteId));
   },
   retention: async () => {
     await (await import("@/lib/privacy/retention")).runRetention();
