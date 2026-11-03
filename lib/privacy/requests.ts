@@ -68,7 +68,9 @@ async function matchingIds(q: PersonQuery) {
           sql`SELECT id FROM chat_requests
               WHERE regexp_replace(regexp_replace(coalesce(contact->>'phone', ''), '\\D', '', 'g'), '^0', '44') = ${q.value}`,
         );
-  // Exhibitor lists hold email addresses (lower case); chats signed in with a row are theirs too.
+  // Exhibitor lists hold email addresses (lower case). A row can list several
+  // people at one company: only chats signed in with this address are theirs
+  // (from before addresses were kept, only a row with no one else on it).
   const listed =
     q.kind === "email"
       ? await query<{ id: string }>(
@@ -77,12 +79,16 @@ async function matchingIds(q: PersonQuery) {
         )
       : [];
   const exhibitorIds = listed.map((r) => r.id);
-  const signedIn = exhibitorIds.length
-    ? await db
-        .select({ id: conversations.id })
-        .from(conversations)
-        .where(inArray(conversations.exhibitorId, exhibitorIds))
-    : [];
+  const signedIn =
+    q.kind === "email"
+      ? await query<{ id: string }>(
+          db,
+          sql`SELECT id FROM conversations
+              WHERE signed_in_email = ${q.value}
+                 OR (signed_in_email IS NULL AND exhibitor_id IN
+                      (SELECT id FROM exhibitors WHERE emails = ARRAY[${q.value}]::text[]))`,
+        )
+      : [];
   const reminded =
     q.kind === "email"
       ? await query<{ id: string }>(
@@ -193,6 +199,8 @@ export async function exportPerson(actor: Actor, raw: string) {
         .from(emailThreads)
         .where(inArray(emailThreads.id, emailIds))
     : [];
+  // Someone else's address on the same row or reminder isn't theirs to have.
+  const mine = (to: string[]) => (q.kind === "email" ? to.filter((t) => t === q.value) : []);
   await writeAudit(db, {
     actorUserId: actor.id,
     entityType: "privacy",
@@ -214,24 +222,40 @@ export async function exportPerson(actor: Actor, raw: string) {
     })),
     emails,
     requests: requests.map((r) => ({ ...r, ref: `R-${r.ref}` })),
-    exhibitorLists: listed,
-    reminders: reminded,
+    exhibitorLists: listed.map((l) => ({ ...l, emails: mine(l.emails) })),
+    reminders: reminded.map((r) => ({ ...r, to: mine(r.to) })),
   };
 }
 
 /**
- * Deletes the person's chats (with their messages), emails, requests and
- * exhibitor list rows. The audit row keeps counts only.
+ * Deletes the person's chats (with their messages), emails and requests.
+ * Their address comes off exhibitor list rows and reminders, and a row or
+ * reminder with nobody else on it goes. The audit row keeps counts only.
  */
 export async function deletePerson(actor: Actor, raw: string) {
   const q = parsePersonQuery(raw);
   const { chatIds, emailIds, requestIds, exhibitorIds, reminderIds } = await matchingIds(q);
   await db.transaction(async (tx) => {
-    if (reminderIds.length) await tx.delete(reminders).where(inArray(reminders.id, reminderIds));
-    if (exhibitorIds.length) {
+    if (reminderIds.length && q.kind === "email") {
+      await tx
+        .update(reminders)
+        .set({ to: sql`array_remove(${reminders.to}, ${q.value})` })
+        .where(inArray(reminders.id, reminderIds));
+      await tx
+        .delete(reminders)
+        .where(and(inArray(reminders.id, reminderIds), sql`cardinality(${reminders.to}) = 0`));
+    }
+    if (exhibitorIds.length && q.kind === "email") {
+      // Others at the same company keep their row (and can still sign in).
+      await tx
+        .update(exhibitors)
+        .set({ emails: sql`array_remove(${exhibitors.emails}, ${q.value})` })
+        .where(inArray(exhibitors.id, exhibitorIds));
       const gone = await tx
         .delete(exhibitors)
-        .where(inArray(exhibitors.id, exhibitorIds))
+        .where(
+          and(inArray(exhibitors.id, exhibitorIds), sql`cardinality(${exhibitors.emails}) = 0`),
+        )
         .returning({ botId: exhibitors.botId });
       // Keep each list's count right.
       for (const botId of new Set(gone.map((g) => g.botId)))

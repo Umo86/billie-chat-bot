@@ -10,7 +10,11 @@ import { Chip, Note, Panel } from "@/components/ui/bits";
 import { Switch } from "@/components/ui/switch";
 import { useRunner } from "@/components/ui/use-runner";
 import { updateBotAction } from "@/app/actions/bots";
-import { removeExhibitorListAction, uploadExhibitorListAction } from "@/app/actions/exhibitors";
+import {
+  removeExhibitorListAction,
+  saveHiddenColumnsAction,
+  uploadExhibitorListAction,
+} from "@/app/actions/exhibitors";
 
 type Listed = {
   id: string;
@@ -26,6 +30,8 @@ type ExhibitorList = {
   rows: number;
   skipped: number;
   columns: string[];
+  /** Columns Billie never reads about an exhibitor. */
+  hiddenColumns: string[];
   /** "3 h ago, by Sam Patel" */
   uploaded: string;
   sample: Listed[];
@@ -119,12 +125,13 @@ export function ExhibitorsStep({
                 : ""}
             </p>
             {list.columns.length ? (
-              <div className="flex flex-wrap items-center gap-1.5 text-sm">
-                <span className="text-muted-foreground">Other columns kept:</span>
-                {list.columns.map((c) => (
-                  <Chip key={c}>{c}</Chip>
-                ))}
-              </div>
+              <ColumnsBillieUses
+                key={`${list.fileName}:${list.uploaded}`}
+                botId={botId}
+                columns={list.columns}
+                hidden={list.hiddenColumns}
+                canEdit={canEdit}
+              />
             ) : (
               <p className="text-sm text-muted-foreground">
                 No other columns: Billie only knows each exhibitor&apos;s company, stand and
@@ -298,5 +305,73 @@ export function ExhibitorsStep({
         </Button>
       </div>
     </div>
+  );
+}
+
+/**
+ * The other columns of the list, each ticked if Billie may read it when a
+ * signed-in exhibitor asks about their stand. Notes for the team (credit
+ * status, internal comments) stay unticked and never reach Billie.
+ */
+function ColumnsBillieUses({
+  botId,
+  columns,
+  hidden,
+  canEdit,
+}: {
+  botId: string;
+  columns: string[];
+  hidden: string[];
+  canEdit: boolean;
+}) {
+  const router = useRouter();
+  const [off, setOff] = useState(() => new Set(hidden));
+  const { pending, run } = useRunner();
+  const changed = off.size !== hidden.length || hidden.some((h) => !off.has(h));
+  return (
+    <fieldset className="flex flex-col gap-2" data-testid="list-columns">
+      <legend className="text-[0.9rem] font-semibold">Columns Billie may use</legend>
+      <p className="max-w-[68ch] text-sm text-muted-foreground">
+        When a signed-in exhibitor asks about their stand, Billie reads their row. Untick columns
+        that are only for the team, such as notes or credit status: Billie never sees those. The
+        deadline chasers can still use them.
+      </p>
+      <div className="flex flex-wrap gap-x-4 gap-y-2">
+        {columns.map((c) => (
+          <label key={c} className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="size-4 accent-[var(--primary)]"
+              checked={!off.has(c)}
+              disabled={!canEdit || pending}
+              onChange={(e) =>
+                setOff((prev) => {
+                  const next = new Set(prev);
+                  if (e.target.checked) next.delete(c);
+                  else next.add(c);
+                  return next;
+                })
+              }
+            />
+            {c}
+          </label>
+        ))}
+      </div>
+      {canEdit ? (
+        <div>
+          <Button
+            size="sm"
+            disabled={pending || !changed}
+            onClick={() =>
+              run(() => saveHiddenColumnsAction({ botId, hidden: [...off] }), {
+                done: () => router.refresh(),
+              })
+            }
+          >
+            Save columns
+          </Button>
+        </div>
+      ) : null}
+    </fieldset>
   );
 }

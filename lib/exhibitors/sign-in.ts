@@ -5,38 +5,46 @@ import { db } from "@/lib/db/client";
 import { conversations, exhibitorCodes, exhibitors, messages } from "@/lib/db/schema";
 import { insertMessage } from "@/lib/conversations/service";
 import { writeAudit } from "@/lib/audit";
-import { sendEmail, type OutgoingEmail } from "@/lib/email/send";
+import { sendEmail } from "@/lib/email/send";
 import { hashToken, tokensMatch } from "@/lib/chat/token";
 import type { BotRow } from "@/lib/bots/load";
 import type { ContactDetails } from "@/lib/types";
+import { allow, LIMITS } from "@/lib/rate-limit";
 import { exhibitorByEmail, signInOpen, type SignedIn } from "./service";
 
 /**
  * Exhibitors signing in from the chat, so Billie can answer about their own
  * stand: they type the email they booked with, get a six-digit code by
- * email (only if that email is on the bot's exhibitor list, though the chat
- * never says which), and type it in. Codes last ten minutes and five tries,
- * and are kept only as a hash. Web chat and the chat page only.
+ * email (only if that email is on the bot's exhibitor list, though nothing
+ * says which: not the reply, not how long it takes, not what typing a code
+ * says), and type it in. Codes last ten minutes and five tries, and are kept
+ * only as a hash. Each address gets a few codes an hour and a day, listed or
+ * not. Web chat and the chat page only.
  */
 
 export const CODE_MINUTES = 10;
 export const CODE_TRIES = 5;
 
 export class SignInError extends Error {}
+/** Too many codes for one address: the route answers 429. */
+export class SignInLimit extends SignInError {}
 
 export { signInOpen };
 
 const SENT =
   "If that email is on the exhibitor list, we've sent it a six-digit code. It can take a minute to arrive.";
+/** Every way a code can fail says the same, so a wrong code can't tell who is listed. */
+export const CODE_DIDNT_WORK =
+  "That code didn't work. Check the latest email, or ask for a new code.";
 
 /**
- * Sends the code once the chat has had its answer, so neither how long it
- * waited nor a failed send says whether the email is on the list. Outside a
- * request (tests, scripts) it sends straight away.
+ * Work that happens once the chat has had its answer, so how long it waited
+ * never says whether the email is on the list. Outside a request (tests,
+ * scripts) it runs straight away.
  */
-async function sendSoon(email: OutgoingEmail): Promise<void> {
+async function soon(work: () => Promise<void>): Promise<void> {
   const go = () =>
-    sendEmail(email).catch((err) =>
+    work().catch((err) =>
       console.warn("sign-in code not sent", err instanceof Error ? err.message : err),
     );
   try {
@@ -51,6 +59,8 @@ function codeHash(conversationId: string, code: string): string {
   return hashToken(`${conversationId}:${code}`);
 }
 
+const emailHash = (address: string) => hashToken(`exhibitor-email:${address}`);
+
 /** Sends a code to the email if it's on the list. Always answers the same, either way. */
 export async function requestCode(
   bot: BotRow,
@@ -58,23 +68,35 @@ export async function requestCode(
   email: string,
 ): Promise<string> {
   if (!(await signInOpen(bot))) throw new SignInError("Signing in isn't available in this chat.");
-  const exhibitor = await exhibitorByEmail(bot.id, email);
-  if (!exhibitor) return SENT;
-  const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
-  await db.insert(exhibitorCodes).values({
-    conversationId,
-    exhibitorId: exhibitor.id,
-    codeHash: codeHash(conversationId, code),
-    expiresAt: new Date(Date.now() + CODE_MINUTES * 60_000),
-  });
-  await sendSoon({
-    to: email.trim().toLowerCase(),
-    subject: `Your code for ${bot.showName || bot.name}: ${code}`,
-    text: [
-      `Your code to sign in to the ${bot.showName || bot.name} chat is ${code}.`,
-      "",
-      `It works for ${CODE_MINUTES} minutes. If you didn't ask for it, ignore this email: nobody can sign in without the code.`,
-    ].join("\n"),
+  const address = email.trim().toLowerCase();
+  if (
+    !(await allow(`chat:sign-in:email:${address}`, LIMITS.chatSignInEmail)) ||
+    !(await allow(`chat:sign-in:email-day:${address}`, LIMITS.chatSignInEmailDaily))
+  )
+    throw new SignInLimit(
+      "That email has had a lot of codes recently. Use the latest one, or try again later.",
+    );
+  await soon(async () => {
+    const exhibitor = await exhibitorByEmail(bot.id, address);
+    const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+    // A code row either way (one nobody is sent, if not listed), so typing a code acts the same.
+    await db.insert(exhibitorCodes).values({
+      conversationId,
+      exhibitorId: exhibitor?.id ?? null,
+      emailHash: emailHash(address),
+      codeHash: codeHash(conversationId, code),
+      expiresAt: new Date(Date.now() + CODE_MINUTES * 60_000),
+    });
+    if (!exhibitor) return;
+    await sendEmail({
+      to: address,
+      subject: `Your code for ${bot.showName || bot.name}: ${code}`,
+      text: [
+        `Your code to sign in to the ${bot.showName || bot.name} chat is ${code}.`,
+        "",
+        `It works for ${CODE_MINUTES} minutes. If you didn't ask for it, ignore this email: nobody can sign in without the code.`,
+      ].join("\n"),
+    });
   });
   return SENT;
 }
@@ -86,6 +108,7 @@ export async function verifyCode(
   bot: BotRow,
   conversationId: string,
   code: string,
+  now = new Date(),
 ): Promise<SignedIn> {
   const clean = code.replace(/\D/g, "");
   // A wrong try must be counted, so the transaction commits and the error comes after.
@@ -97,25 +120,27 @@ export async function verifyCode(
         and(
           eq(exhibitorCodes.conversationId, conversationId),
           eq(exhibitorCodes.used, false),
-          gt(exhibitorCodes.expiresAt, new Date()),
+          gt(exhibitorCodes.expiresAt, now),
         ),
       )
       .orderBy(desc(exhibitorCodes.createdAt))
       .limit(1)
       .for("update");
-    if (!c) return { error: "That code has run out. Ask for a new one." };
-    if (c.attempts >= CODE_TRIES)
-      return { error: "Too many tries with that code. Ask for a new one." };
+    if (!c || c.attempts >= CODE_TRIES) return { error: CODE_DIDNT_WORK };
     if (clean.length !== 6 || !tokensMatch(`${conversationId}:${clean}`, c.codeHash)) {
       await tx
         .update(exhibitorCodes)
         .set({ attempts: c.attempts + 1 })
         .where(eq(exhibitorCodes.id, c.id));
-      return { error: "That code isn't right. Check the email and try again." };
+      return { error: CODE_DIDNT_WORK };
     }
     await tx.update(exhibitorCodes).set({ used: true }).where(eq(exhibitorCodes.id, c.id));
-    const ex = await tx.query.exhibitors.findFirst({ where: eq(exhibitors.id, c.exhibitorId) });
-    if (!ex || ex.botId !== bot.id) return { error: "That code has run out. Ask for a new one." };
+    const ex = c.exhibitorId
+      ? await tx.query.exhibitors.findFirst({ where: eq(exhibitors.id, c.exhibitorId) })
+      : null;
+    // The address the code went to: a row can list several people.
+    const address = ex?.emails.find((e) => c.emailHash && emailHash(e) === c.emailHash);
+    if (!ex || ex.botId !== bot.id || !address) return { error: CODE_DIDNT_WORK };
     const conv = await tx.query.conversations.findFirst({
       where: eq(conversations.id, conversationId),
     });
@@ -123,12 +148,12 @@ export async function verifyCode(
     contact.name ||= ex.name || undefined;
     contact.company ||= ex.company || undefined;
     contact.stand ||= ex.stand || undefined;
-    contact.email ||= ex.emails[0];
+    contact.email ||= address;
     await tx
       .update(conversations)
-      .set({ exhibitorId: ex.id, contact })
+      .set({ exhibitorId: ex.id, signedInEmail: address, signedInAt: now, contact })
       .where(eq(conversations.id, conversationId));
-    const who = [ex.name, ex.company].filter(Boolean).join(", ") || ex.emails[0];
+    const who = [ex.name, ex.company].filter(Boolean).join(", ") || address;
     await insertMessage(tx, conversationId, {
       role: "system",
       text: `Signed in as ${who}${ex.stand ? ` (stand ${ex.stand})` : ""}. Ask about your own stand now.`,
@@ -165,7 +190,7 @@ export async function signOut(conversationId: string): Promise<void> {
   await db.transaction(async (tx) => {
     await tx
       .update(conversations)
-      .set({ exhibitorId: null })
+      .set({ exhibitorId: null, signedInEmail: null, signedInAt: null })
       .where(eq(conversations.id, conversationId));
     await insertMessage(tx, conversationId, {
       role: "system",

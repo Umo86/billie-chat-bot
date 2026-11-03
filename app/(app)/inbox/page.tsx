@@ -244,7 +244,7 @@ export default async function InboxPage({
                 lastAskedId={
                   [...detail.lines].reverse().find((l) => l.role === "visitor")?.id ?? null
                 }
-                signedIn={await signedInAs(detail.conversation.exhibitorId)}
+                signedIn={await signedInAs(detail.conversation)}
                 replyHint={replyHint(
                   detail.conversation.status,
                   detail.conversation.channel,

@@ -167,6 +167,7 @@ export default async function BotPage({
             rows: list.rows,
             skipped: list.skipped,
             columns: list.columns,
+            hiddenColumns: list.hiddenColumns,
             uploaded: `${timeAgo(list.uploadedAt)}${list.uploadedBy ? ` by ${list.uploadedBy}` : ""}`,
             sample: list.sample,
           }

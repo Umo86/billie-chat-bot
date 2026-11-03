@@ -59,8 +59,9 @@ Chatbots, live handover and an email assistant for Media10 shows.
   exhibitor list (a spreadsheet uploaded on its Exhibitors step). Exhibitors
   tap "Your stand" in the chat, get a six-digit code at the email they
   booked with, and Billie then answers from their own row: their stand,
-  orders, stand plan and build-up times. The Inbox shows who is signed in.
-  Needs email sending (Resend).
+  orders, stand plan and build-up times, never columns the team unticks
+  (notes, credit status). A sign-in lasts a show day. The Inbox shows who
+  is signed in. Needs email sending (Resend).
 - **Deadline chasers**: on the Exhibitors step, each deadline (stand
   plan, nameboard, electrics) is tied to a column of the exhibitor list
   that shows who has done it. A week before (or when asked), Billie writes

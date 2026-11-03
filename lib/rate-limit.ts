@@ -26,6 +26,9 @@ export const LIMITS = {
   /** Exhibitor sign-in codes: a few per chat, and per address (a venue shares one). */
   chatSignIn: { window: 900, max: 3 },
   chatSignInIp: { window: 3600, max: 40 },
+  /** Per email address, listed or not: nobody's inbox gets flooded with codes. */
+  chatSignInEmail: { window: 3600, max: 5 },
+  chatSignInEmailDaily: { window: 86_400, max: 10 },
   chatVerify: { window: 900, max: 10 },
   /** WhatsApp, per sender. */
   whatsappSender: { window: 3600, max: 40 },

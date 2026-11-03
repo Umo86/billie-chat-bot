@@ -209,7 +209,13 @@ export async function answerQuestion(input: {
       passages: passages.length,
     },
   };
-  if (reuse) await keepForReuse(reuse, out, cost).catch(() => undefined);
+  if (reuse)
+    await keepForReuse(
+      reuse,
+      out,
+      cost,
+      passages.map((p) => p.text),
+    ).catch(() => undefined);
   return out;
 }
 

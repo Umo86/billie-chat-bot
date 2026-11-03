@@ -12,6 +12,8 @@ export type OutgoingEmail = {
   text: string;
   html?: string;
   replyTo?: string;
+  /** The same key never sends twice within a day (Resend), so a retry is safe. */
+  idempotencyKey?: string;
 };
 
 export class EmailNotConfigured extends Error {
@@ -28,14 +30,17 @@ export async function sendEmail(email: OutgoingEmail): Promise<void> {
   let last = "";
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const { error } = await resend.emails.send({
-        from: process.env.EMAIL_FROM!,
-        to: email.to,
-        subject: email.subject,
-        text: email.text,
-        ...(email.html ? { html: email.html } : {}),
-        ...(email.replyTo ? { replyTo: email.replyTo } : {}),
-      });
+      const { error } = await resend.emails.send(
+        {
+          from: process.env.EMAIL_FROM!,
+          to: email.to,
+          subject: email.subject,
+          text: email.text,
+          ...(email.html ? { html: email.html } : {}),
+          ...(email.replyTo ? { replyTo: email.replyTo } : {}),
+        },
+        email.idempotencyKey ? { idempotencyKey: email.idempotencyKey } : undefined,
+      );
       if (!error) return;
       last = error.message;
     } catch (err) {

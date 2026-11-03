@@ -40,6 +40,8 @@ export const exhibitorLists = pgTable("exhibitor_lists", {
   fileName: text("file_name").notNull(),
   /** The headings of the columns kept as fields, in order. */
   columns: jsonb("columns").$type<string[]>().notNull().default([]),
+  /** Columns the team keeps to itself: never in what Billie reads about an exhibitor. */
+  hiddenColumns: jsonb("hidden_columns").$type<string[]>().notNull().default([]),
   rows: integer("rows").notNull().default(0),
   /** Rows left out (no email address). */
   skipped: integer("skipped").notNull().default(0),
@@ -109,7 +111,7 @@ export const reminderBatches = pgTable(
   ],
 );
 
-export type ReminderStatus = "pending" | "left_out" | "queued" | "sent" | "failed";
+export type ReminderStatus = "pending" | "left_out" | "queued" | "sending" | "sent" | "failed";
 
 /** One exhibitor in a batch, as they were on the list when it was drafted. */
 export const reminders = pgTable(
@@ -128,6 +130,10 @@ export const reminders = pgTable(
     status: text("status").$type<ReminderStatus>().notNull().default("pending"),
     /** Why it was left out, or why sending failed. */
     note: text("note").notNull().default(""),
+    /** When a send job claimed it ("sending"): a job that died is picked up after a while. */
+    sendingAt: timestamp("sending_at", { withTimezone: true }),
+    /** Times the team tried it again after it failed (part of its key at Resend). */
+    retries: integer("retries").notNull().default(0),
     sentAt: timestamp("sent_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

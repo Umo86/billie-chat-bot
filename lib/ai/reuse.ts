@@ -6,7 +6,7 @@ import { aiUsage, answerCache } from "@/lib/db/schema";
 import { getSettings } from "@/lib/settings";
 import { londonDate } from "@/lib/time";
 import type { AnswerResult } from "./answer";
-import { reusableQuestion, tidyQuestion } from "./reuse-rules";
+import { linksGrounded, reusableQuestion, tidyQuestion } from "./reuse-rules";
 
 /**
  * Giving an earlier answer again: at shows, many people ask the same first
@@ -84,8 +84,14 @@ export async function takeReused(k: ReuseKey): Promise<Stored | null> {
 }
 
 /** Keeps an answer to give again, if it's the kind that can be. */
-export async function keepForReuse(k: ReuseKey, a: AnswerResult, costMicros: number) {
+export async function keepForReuse(
+  k: ReuseKey,
+  a: AnswerResult,
+  costMicros: number,
+  passages: string[],
+) {
   if (a.handover !== "none" || !a.confident || !a.answer.trim()) return;
+  if (!linksGrounded(a.answer, passages)) return;
   const stored: Stored = {
     answer: a.answer,
     sources: a.sources,

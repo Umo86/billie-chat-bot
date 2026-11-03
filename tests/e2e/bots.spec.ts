@@ -89,6 +89,16 @@ test("build a bot with its own knowledge, test it and put it live", async ({ pag
   await expect(page.getByText("Saved.").first()).toBeVisible();
   await expect(personal).toContainText("Not yet");
   await expect(personal).toContainText("Signing in needs email sending set up");
+  // Columns only for the team can be kept from Billie.
+  const columns = list.getByTestId("list-columns");
+  await expect(columns.getByRole("checkbox", { name: "Stand plan approved" })).toBeChecked();
+  await columns.getByRole("checkbox", { name: "Electrics ordered" }).uncheck();
+  await expect(page.getByText("Saved.", { exact: true })).toHaveCount(0, { timeout: 10_000 });
+  await columns.getByRole("button", { name: "Save columns" }).click();
+  await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(columns.getByRole("checkbox", { name: "Electrics ordered" })).not.toBeChecked();
+  await expect(columns.getByRole("checkbox", { name: "Stand type" })).toBeChecked();
   await shot(page, "bot-exhibitors");
   // Removing the list asks first, on the page.
   await list.getByRole("button", { name: "Remove list" }).click();

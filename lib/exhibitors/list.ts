@@ -1,3 +1,5 @@
+import { inflateRawSync } from "node:zlib";
+
 /**
  * Reading an exhibitor list (pure, apart from opening the file): the team's
  * own spreadsheet, with a header row. Company, stand, contact name and email
@@ -32,6 +34,13 @@ export type ReadList = {
 export const MAX_EXHIBITORS = 5000;
 const MAX_FIELDS = 40;
 const MAX_VALUE = 500;
+const MAX_HEADING = 100;
+/** Columns read from each row: plenty for any list, and a wide sheet can't fill the memory. */
+const MAX_COLUMNS = 200;
+/** Rows read, blank and address-less ones included. */
+const MAX_ROWS = MAX_EXHIBITORS * 3;
+/** A workbook unpacked: an .xlsx is a zip, and a small one can unpack to gigabytes. */
+export const MAX_UNPACKED = 40 * 1024 * 1024;
 
 const HEADINGS = {
   company: [
@@ -84,7 +93,7 @@ export function readRows(header: string[], rows: string[][]): ReadList {
   };
   const used = new Set(Object.values(at).filter((i): i is number => i !== null));
   const fieldCols = header
-    .map((h, i) => ({ h: h.trim(), i }))
+    .map((h, i) => ({ h: h.trim().slice(0, MAX_HEADING), i }))
     .filter(({ h, i }) => h && !used.has(i))
     .slice(0, MAX_FIELDS);
   const cell = (r: string[], i: number | null) =>
@@ -142,7 +151,68 @@ export function recordText(e: ListedExhibitor): string {
     .join("\n");
 }
 
+/** Headings that sound like the team's own notes: hidden from Billie until someone ticks them. */
+const INTERNAL =
+  /\b(notes?|internal|private|confidential|credit|comments?|invoices?|balance|owed|debts?|arrears|payment status|account manager|sales)\b/i;
+
+export function looksInternal(heading: string): boolean {
+  return INTERNAL.test(heading);
+}
+
 export class ListError extends Error {}
+
+/**
+ * How big the zip unpacks to, checked by unpacking each part with a ceiling
+ * (the sizes a zip declares can lie). Throws if it's over `limit`, or isn't a
+ * plain zip.
+ */
+export function checkUnpackedSize(bytes: Buffer, limit = MAX_UNPACKED): number {
+  const bad = () => new ListError("This file couldn't be opened as an Excel workbook (.xlsx).");
+  // The end of the central directory: the last 22 bytes, or before a comment.
+  let end = -1;
+  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 22 - 65_535); i--)
+    if (bytes.readUInt32LE(i) === 0x06054b50) {
+      end = i;
+      break;
+    }
+  if (end < 0) throw bad();
+  const entries = bytes.readUInt16LE(end + 10);
+  let at = bytes.readUInt32LE(end + 16);
+  if (entries === 0xffff || at === 0xffffffff || entries > 2000) throw bad(); // zip64, or absurd
+  let total = 0;
+  for (let n = 0; n < entries; n++) {
+    if (at + 46 > bytes.length || bytes.readUInt32LE(at) !== 0x02014b50) throw bad();
+    const method = bytes.readUInt16LE(at + 10);
+    const packed = bytes.readUInt32LE(at + 20);
+    const nameLen = bytes.readUInt16LE(at + 28);
+    const extraLen = bytes.readUInt16LE(at + 30);
+    const commentLen = bytes.readUInt16LE(at + 32);
+    const local = bytes.readUInt32LE(at + 42);
+    at += 46 + nameLen + extraLen + commentLen;
+    if (local + 30 > bytes.length || bytes.readUInt32LE(local) !== 0x04034b50) throw bad();
+    const start = local + 30 + bytes.readUInt16LE(local + 26) + bytes.readUInt16LE(local + 28);
+    if (start + packed > bytes.length) throw bad();
+    const room = limit - total;
+    let size: number;
+    if (method === 0) size = packed;
+    else if (method === 8) {
+      try {
+        size = inflateRawSync(bytes.subarray(start, start + packed), {
+          maxOutputLength: room + 1,
+        }).length;
+      } catch (err) {
+        if (err instanceof RangeError) size = room + 1;
+        else throw bad();
+      }
+    } else throw bad();
+    total += size;
+    if (total > limit)
+      throw new ListError(
+        "That workbook is too big once opened. Save just the exhibitor list as a new file, or as CSV.",
+      );
+  }
+  return total;
+}
 
 /** The header row and the rows of a CSV or Excel file. */
 export async function readListFile(
@@ -154,8 +224,11 @@ export async function readListFile(
   if (lower.endsWith(".csv") || lower.endsWith(".txt")) {
     const Papa = (await import("papaparse")).default;
     const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes).replace(/^﻿/, "");
-    table = Papa.parse<string[]>(text, { skipEmptyLines: true }).data.filter(Array.isArray);
+    table = Papa.parse<string[]>(text, { skipEmptyLines: true, preview: MAX_ROWS + 1 })
+      .data.filter(Array.isArray)
+      .map((r) => r.slice(0, MAX_COLUMNS));
   } else if (lower.endsWith(".xlsx")) {
+    checkUnpackedSize(bytes);
     const ExcelJS = (await import("exceljs")).default;
     const wb = new ExcelJS.Workbook();
     try {
@@ -164,13 +237,15 @@ export async function readListFile(
       throw new ListError("This file couldn't be opened as an Excel workbook (.xlsx).");
     }
     const ws = wb.worksheets[0];
-    ws?.eachRow({ includeEmpty: false }, (row) => {
+    // Cell by cell up to the column cap: a stray cell far to the right can't make millions.
+    const last = Math.min(ws?.rowCount ?? 0, MAX_ROWS + 1);
+    for (let i = 1; i <= last; i++) {
+      const row = ws.getRow(i);
+      const width = Math.min(row.cellCount, MAX_COLUMNS);
       const cells: string[] = [];
-      row.eachCell({ includeEmpty: true }, (c, i) => {
-        cells[i - 1] = String(c.text ?? "");
-      });
-      table.push(Array.from(cells, (c) => c ?? ""));
-    });
+      for (let c = 1; c <= width; c++) cells.push(String(row.getCell(c).text ?? ""));
+      if (cells.some((c) => c.trim())) table.push(cells);
+    }
   } else {
     throw new ListError("Upload the list as an Excel (.xlsx) or CSV file.");
   }

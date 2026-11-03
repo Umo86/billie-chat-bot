@@ -1,13 +1,46 @@
 import { describe, expect, it } from "vitest";
 import ExcelJS from "exceljs";
+import { deflateRawSync } from "node:zlib";
 import {
+  checkUnpackedSize,
   emailsIn,
   ListError,
+  looksInternal,
   MAX_EXHIBITORS,
+  MAX_UNPACKED,
   readListFile,
   readRows,
   recordText,
 } from "@/lib/exhibitors/list";
+
+/** A one-file zip, as an .xlsx is: deflated, with sizes that may lie. */
+function zipOf(name: string, data: Buffer, declared = data.length): Buffer {
+  const packed = deflateRawSync(data);
+  const n = Buffer.from(name);
+  const local = Buffer.alloc(30);
+  local.writeUInt32LE(0x04034b50, 0);
+  local.writeUInt16LE(20, 4);
+  local.writeUInt16LE(8, 8);
+  local.writeUInt32LE(packed.length, 18);
+  local.writeUInt32LE(declared, 22);
+  local.writeUInt16LE(n.length, 26);
+  const central = Buffer.alloc(46);
+  central.writeUInt32LE(0x02014b50, 0);
+  central.writeUInt16LE(20, 4);
+  central.writeUInt16LE(20, 6);
+  central.writeUInt16LE(8, 10);
+  central.writeUInt32LE(packed.length, 20);
+  central.writeUInt32LE(declared, 24);
+  central.writeUInt16LE(n.length, 28);
+  central.writeUInt32LE(0, 42);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(1, 8);
+  end.writeUInt16LE(1, 10);
+  end.writeUInt32LE(central.length + n.length, 12);
+  end.writeUInt32LE(local.length + n.length + packed.length, 16);
+  return Buffer.concat([local, n, packed, central, n, end]);
+}
 
 describe("reading an exhibitor list", () => {
   it("finds email addresses in a cell", () => {
@@ -114,5 +147,37 @@ describe("reading an exhibitor list", () => {
     await expect(readListFile(Buffer.from("Company,Email\n"), "list.csv")).rejects.toThrow(
       /No rows found/,
     );
+  });
+
+  it("won't open a small workbook that unpacks to something huge, even if it says it's small", () => {
+    const huge = Buffer.alloc(MAX_UNPACKED + 1024, 0x41);
+    expect(() => checkUnpackedSize(zipOf("xl/sharedStrings.xml", huge, 100))).toThrow(
+      /too big once opened/,
+    );
+    expect(checkUnpackedSize(zipOf("xl/workbook.xml", Buffer.from("<x/>")))).toBe(4);
+    expect(() => checkUnpackedSize(Buffer.from("not a zip at all, just text"))).toThrow(ListError);
+  });
+
+  it("reads only so many columns, and keeps headings short", async () => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("List");
+    ws.addRow(["Company", "Email", `Notes ${"x".repeat(300)}`]);
+    ws.addRow(["Acme Ltd", "sam@acme.test", "Fine"]);
+    ws.getRow(2).getCell(16_000).value = "far away";
+    const bytes = Buffer.from(await wb.xlsx.writeBuffer());
+    const { header, rows } = await readListFile(bytes, "list.xlsx");
+    expect(header).toHaveLength(3);
+    expect(rows[0].length).toBeLessThanOrEqual(200);
+    expect(rows[0].join(" ")).not.toContain("far away");
+    const read = readRows(header, rows);
+    expect(read.columns[0]).toHaveLength(100);
+  });
+
+  it("starts columns that sound like the team's own notes hidden", () => {
+    expect(looksInternal("Internal notes")).toBe(true);
+    expect(looksInternal("Credit status")).toBe(true);
+    expect(looksInternal("Sales comments")).toBe(true);
+    expect(looksInternal("Stand type")).toBe(false);
+    expect(looksInternal("Electrics ordered")).toBe(false);
   });
 });

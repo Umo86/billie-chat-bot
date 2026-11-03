@@ -66,6 +66,10 @@ describe("deadline rules", () => {
     expect(fillIn(text, { name: "", company: "", stand: "" })).toBe(
       "Hi there, your company (your stand) still needs to send the plan.",
     );
+    // "$&" and friends in a name are just characters.
+    expect(
+      fillIn("Hi {first_name} at {company}", { name: "Jo", company: "A$&B $'Ltd", stand: "" }),
+    ).toBe("Hi Jo at A$&B $'Ltd");
   });
 
   it("finds placeholders Billie can't fill in", () => {

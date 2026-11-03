@@ -5,7 +5,7 @@ import { z } from "zod";
 import { runAction } from "@/lib/actions/run";
 import { assertOnBot, assertOnBotOf } from "@/lib/auth/bots";
 import { UserError } from "@/lib/errors";
-import { removeList, uploadList } from "@/lib/exhibitors/service";
+import { removeList, setHiddenColumns, uploadList } from "@/lib/exhibitors/service";
 import { deleteDeadline, saveDeadline, startReminders } from "@/lib/exhibitors/deadlines";
 import {
   discardReminders,
@@ -45,6 +45,21 @@ export async function uploadExhibitorListAction(form: FormData) {
       revalidatePath(`/bots/${d.botId}`);
       return { rows: summary.rows, skipped: summary.skipped };
     },
+  );
+}
+
+/** The columns Billie may use when a signed-in exhibitor asks about their stand. */
+export async function saveHiddenColumnsAction(input: unknown) {
+  return runAction(
+    "bots.edit",
+    z.object({ botId: z.uuid(), hidden: z.array(z.string().max(300)).max(100) }),
+    input,
+    async (actor, d) => {
+      await assertOnBot(actor, "bots.edit", d.botId);
+      await setHiddenColumns(actor, d.botId, d.hidden);
+      revalidatePath(`/bots/${d.botId}`);
+    },
+    "Saved.",
   );
 }
 

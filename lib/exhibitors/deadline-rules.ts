@@ -76,10 +76,13 @@ export function fillIn(
   who: { name: string; company: string; stand: string },
 ): string {
   const first = who.name.trim().split(/\s+/)[0] || "there";
+  const company = who.company.trim() || "your company";
+  const stand = who.stand.trim() ? `stand ${who.stand.trim()}` : "your stand";
+  // Functions, not strings: "$&" in a company name must stay as it is.
   return text
-    .replaceAll("{first_name}", first)
-    .replaceAll("{company}", who.company.trim() || "your company")
-    .replaceAll("{stand}", who.stand.trim() ? `stand ${who.stand.trim()}` : "your stand");
+    .replaceAll("{first_name}", () => first)
+    .replaceAll("{company}", () => company)
+    .replaceAll("{stand}", () => stand);
 }
 
 /** The UK date Billie first drafts reminders on ("YYYY-MM-DD"), or null if only by hand. */

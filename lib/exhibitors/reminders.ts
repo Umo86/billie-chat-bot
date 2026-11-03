@@ -1,6 +1,6 @@
 import "server-only";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
-import { db, type DbOrTx } from "@/lib/db/client";
+import { db, query, type DbOrTx } from "@/lib/db/client";
 import {
   botMailboxes,
   bots,
@@ -423,10 +423,11 @@ export async function retryFailedReminders(actor: Actor, batchId: string): Promi
       .from(reminderBatches)
       .where(eq(reminderBatches.id, batchId))
       .for("update");
-    if (!b || (b.status !== "sent" && b.status !== "sending")) return 0;
+    // Only once the round has finished: a second chain of sending alongside it could send twice.
+    if (!b || b.status !== "sent") return 0;
     const again = await tx
       .update(reminders)
-      .set({ status: "queued", note: "" })
+      .set({ status: "queued", note: "", retries: sql`${reminders.retries} + 1` })
       .where(and(eq(reminders.batchId, b.id), eq(reminders.status, "failed")))
       .returning({ id: reminders.id });
     if (!again.length) return 0;
@@ -450,11 +451,53 @@ export async function retryFailedReminders(actor: Actor, batchId: string): Promi
   return n;
 }
 
+/** A send job's lease: a reminder claimed longer ago than this was left by a job that died. */
+const STUCK_MS = 5 * 60_000;
+
+/** Takes the next reminder to send, so two jobs never send the same one. */
+async function claimNext(batchId: string, now: Date) {
+  const stuck = new Date(now.getTime() - STUCK_MS).toISOString();
+  const [row] = await query<{ id: string }>(
+    db,
+    sql`UPDATE reminders SET status = 'sending', sending_at = ${now.toISOString()}
+        WHERE id = (
+          SELECT id FROM reminders
+          WHERE batch_id = ${batchId}
+            AND (status = 'queued' OR (status = 'sending' AND sending_at < ${stuck}))
+          ORDER BY company, id
+          LIMIT 1
+          FOR UPDATE SKIP LOCKED)
+        RETURNING id`,
+  );
+  if (!row) return null;
+  return (await db.query.reminders.findFirst({ where: eq(reminders.id, row.id) })) ?? null;
+}
+
+/** The addresses still on the bot's exhibitor list: someone taken off since it was drafted isn't sent it. */
+async function stillListed(botId: string, to: string[]): Promise<string[]> {
+  if (!to.length) return [];
+  const rows = await db
+    .select({ emails: exhibitors.emails })
+    .from(exhibitors)
+    .where(
+      and(
+        eq(exhibitors.botId, botId),
+        sql`${exhibitors.emails} && ARRAY[${sql.join(
+          to.map((t) => sql`${t}`),
+          sql`, `,
+        )}]::text[]`,
+      ),
+    );
+  const listed = new Set(rows.flatMap((r) => r.emails));
+  return to.filter((t) => listed.has(t));
+}
+
 /**
  * The "send_reminders" job: sends the queued reminders one at a time, with
  * a pause between them, for up to `budgetMs`; then queues itself again for
- * the rest. Each is marked sent (or failed, with why) as it goes, so a retry
- * never sends one twice.
+ * the rest. Each is claimed before it's sent and marked sent (or failed,
+ * with why) after, and Resend gets a key for each, so neither a second job
+ * nor one that died half way sends one twice.
  */
 export async function sendReminderBatch(
   batchId: string,
@@ -468,55 +511,64 @@ export async function sendReminderBatch(
   });
   if (!batch || batch.status !== "sending") return out;
   const replyTo = await replyAddress(batch.botId);
+  const settle = (id: string, values: Partial<typeof reminders.$inferInsert>) =>
+    db
+      .update(reminders)
+      .set(values)
+      .where(and(eq(reminders.id, id), eq(reminders.status, "sending")));
 
   while (Date.now() < until) {
-    const next = await db
-      .select()
-      .from(reminders)
-      .where(and(eq(reminders.batchId, batchId), eq(reminders.status, "queued")))
-      .orderBy(asc(reminders.company), asc(reminders.id))
-      .limit(10);
-    if (!next.length) break;
-    for (const r of next) {
-      if (Date.now() >= until) break;
-      const who = { name: r.name, company: r.company, stand: r.stand };
-      const text = fillIn(batch.body, who);
-      try {
-        await sendEmail({
-          to: r.to,
-          subject: fillIn(batch.subject, who),
-          text,
-          html: textToHtml(text),
-          ...(replyTo ? { replyTo } : {}),
-        });
-        await db
-          .update(reminders)
-          .set({ status: "sent", sentAt: new Date(), note: "" })
-          .where(and(eq(reminders.id, r.id), eq(reminders.status, "queued")));
-        out.sent++;
-      } catch (err) {
-        const why = err instanceof Error ? err.message : String(err);
-        await db
-          .update(reminders)
-          .set({ status: "failed", note: `Not sent: ${why}`.slice(0, 300) })
-          .where(and(eq(reminders.id, r.id), eq(reminders.status, "queued")));
-        out.failed++;
-      }
-      if (pause) await new Promise((res) => setTimeout(res, pause));
+    const r = await claimNext(batchId, new Date());
+    if (!r) break;
+    const to = await stillListed(batch.botId, r.to);
+    if (!to.length) {
+      await settle(r.id, {
+        status: "left_out",
+        note: "Left out: no longer on the exhibitor list.",
+      });
+      continue;
     }
+    const who = { name: r.name, company: r.company, stand: r.stand };
+    const text = fillIn(batch.body, who);
+    try {
+      await sendEmail({
+        to,
+        subject: fillIn(batch.subject, who),
+        text,
+        html: textToHtml(text),
+        ...(replyTo ? { replyTo } : {}),
+        idempotencyKey: `deadline-reminder/${r.id}/${r.retries}`,
+      });
+      await settle(r.id, { status: "sent", sentAt: new Date(), note: "" });
+      out.sent++;
+    } catch (err) {
+      const why = err instanceof Error ? err.message : String(err);
+      await settle(r.id, { status: "failed", note: `Not sent: ${why}`.slice(0, 300) });
+      out.failed++;
+    }
+    if (pause) await new Promise((res) => setTimeout(res, pause));
   }
 
-  const [{ left }] = await db
-    .select({ left: sql<number>`count(*)::int` })
+  const [{ left, held }] = await db
+    .select({
+      left: sql<number>`count(*) FILTER (WHERE ${reminders.status} = 'queued')::int`,
+      held: sql<number>`count(*) FILTER (WHERE ${reminders.status} = 'sending')::int`,
+    })
     .from(reminders)
-    .where(and(eq(reminders.batchId, batchId), eq(reminders.status, "queued")));
-  out.left = left;
-  if (left) {
+    .where(eq(reminders.batchId, batchId));
+  out.left = left + held;
+  if (left || held) {
+    // Some still to send, or held by another job: look again (after its lease, if held).
     const round = opts.round + 1;
     await enqueue(
       "send_reminders",
       { batchId, round },
-      { dedupeKey: `send-reminders:${batchId}:${round}`, once: true, maxAttempts: 3 },
+      {
+        dedupeKey: `send-reminders:${batchId}:${round}`,
+        once: true,
+        maxAttempts: 3,
+        ...(left ? {} : { runAt: new Date(Date.now() + STUCK_MS) }),
+      },
     );
   } else {
     await db

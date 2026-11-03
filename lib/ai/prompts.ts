@@ -51,7 +51,19 @@ export function formatPassages(passages: PromptPassage[]): string {
 
 /** Strips characters that could fake a section boundary; keeps the text readable. */
 export function quoteUntrusted(text: string, max = 8000): string {
-  return text.replace(/<\/?untrusted[^>]*>/gi, "").slice(0, max);
+  return stripInvisible(text)
+    .replace(/<\/?untrusted[^>]*>/gi, "")
+    .slice(0, max);
+}
+
+/**
+ * Invisible format characters (Unicode tag characters, zero-width spaces,
+ * direction overrides…) can carry words a person never sees but Claude
+ * reads. They go before anything reaches a prompt. Zero-width joiners stay:
+ * emoji and some scripts need them.
+ */
+export function stripInvisible(text: string): string {
+  return text.replace(/\p{Cf}/gu, (c) => (c === "\u200d" || c === "\u200c" ? c : ""));
 }
 
 const UK_DATE = new Intl.DateTimeFormat("en-GB", {

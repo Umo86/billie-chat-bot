@@ -19,7 +19,7 @@ import { citeSources } from "@/lib/ai/answer";
 import { answerBotFor, botById } from "@/lib/bots/load";
 import { retrieve } from "@/lib/knowledge/search";
 import { getSettings } from "@/lib/settings";
-import { exhibitorById, exhibitorRecord } from "@/lib/exhibitors/service";
+import { recordFor } from "@/lib/exhibitors/service";
 import type { ReplySuggestion } from "@/lib/types";
 
 /**
@@ -95,16 +95,15 @@ export async function writeSuggestion(
     const answerBot = await answerBotFor(bot);
     const found = await retrieve(answerBot.knowledgeBaseIds, asked.slice(0, 4000));
     // A signed-in exhibitor's own row of the exhibitor list goes last.
-    const ex =
-      answerBot.personal && conv.exhibitorId ? await exhibitorById(conv.exhibitorId) : null;
-    const passages: PromptPassage[] = ex
+    const record = answerBot.personal ? await recordFor(conv) : null;
+    const passages: PromptPassage[] = record
       ? [
           ...found,
           {
             sourceId: "",
             sourceTitle: "Their exhibitor record",
             label: "",
-            text: exhibitorRecord(ex),
+            text: record,
             kind: "text",
           },
         ]
@@ -121,7 +120,7 @@ export async function writeSuggestion(
         alwaysHuman: bot.rules.alwaysHuman,
       }),
       knowledge: knowledgeBlock(passages),
-      user: suggestReplyUser(history, new Date(), ex ? passages.length : undefined),
+      user: suggestReplyUser(history, new Date(), record ? passages.length : undefined),
       schema: emailDraftJsonSchema,
       maxTokens: 800,
       fake: { purpose: "reply_suggestion" as const, history, passages },

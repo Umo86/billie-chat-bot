@@ -173,6 +173,15 @@ a signed-in exhibitor, or a question with an email address or phone
 number; and an answer marked unhelpful is forgotten. Kept for their day
 only. Settings → AI shows how many were given again and what that saved.
 
+Only plain questions are kept: letters, digits, spaces and a little
+everyday punctuation. The key ignores case and punctuation, so a question
+that carried extra words the key can't see (invisible Unicode tag
+characters, letter emoji, Morse in dots and dashes) could otherwise let one
+person's wording decide the answer everyone else gets that day. Invisible
+characters are taken out of everything that reaches Claude anyway
+(`stripInvisible`). And an answer is only kept if every web address, email
+address and phone number in it is in the passages it came from.
+
 Each question also sends less: the last three exchanges of the chat (not
 four), each cut at 800 characters.
 
@@ -212,13 +221,35 @@ headings and every other column is kept as it is.
 
 To sign in, an exhibitor types the email they booked with. The chat always
 says the same thing ("if that email is on the list, we've sent a code"),
-and the email goes out after the response, so neither the words, the
-timing nor a failed send tells anyone who is on the list. Codes are six
-digits, kept only as a hash tied to that chat, last ten minutes, work once
-and allow five tries (counted outside the transaction that rejects them, so
-a wrong try can't be rolled back). Asking for codes and trying them are rate
-limited per chat and per address. A signed-in chat is linked to the
-exhibitor's row; a new list or a privacy deletion signs it out.
+and the look-up, the code and the email all happen after the response, so
+neither the words, the timing nor a failed send tells anyone who is on the
+list. An address that isn't listed gets a code row too (one nobody is ever
+sent), and every way a code can fail says the same ("That code didn't
+work"), so typing a code can't tell either. Codes are six digits, kept only
+as a hash tied to that chat, last ten minutes, work once and allow five
+tries (counted outside the transaction that rejects them, so a wrong try
+can't be rolled back). Asking for codes is limited per chat, per visitor
+address, and per email address (5 an hour, 10 a day, listed or not), which
+stops anyone flooding an exhibitor's inbox and keeps guessing hopeless.
+
+A signed-in chat is linked to the exhibitor's row and to the address the
+code went to: a row can list several people at one company, and each is
+their own person (their own contact in the Inbox, their own privacy
+request: deleting one takes their address off the row and leaves their
+colleagues signed up). A sign-in lasts 12 hours, a show day: on a shared
+stand laptop or a show-floor iPad, the next person isn't them. A new list
+or a privacy deletion signs it out.
+
+Every column of the list reaches Billie unless the team unticks it on the
+Exhibitors step ("Columns Billie may use"). Columns that sound like the
+team's own notes (notes, credit, invoices, comments) start unticked; the
+choice carries over to the next upload with the same headings. Unticked
+columns still work for deadline chasers.
+
+Uploads are read with limits: an .xlsx is a zip, so each part is unpacked
+with a ceiling (40 MB in all) before Excel parsing; at most 200 columns and
+15,000 rows are read, and headings are cut at 100 characters. A small file
+can't use up the server's memory.
 
 Their row goes to Claude as the last numbered passage, with the message
 rather than in the cached knowledge, and the prompt says to use it only for
@@ -250,9 +281,14 @@ is left out at send time.
 Sending is one job per round that sends one email at a time with a pause,
 and queues itself again when its time is up: the job runner runs five jobs
 at once, which would trip the email service's rate limit. Each reminder is
-marked sent or failed as it goes (failed ones can be tried again), replies
-go to the event mailbox when there is one, and every round is in privacy
-requests and goes with retention.
+claimed before it's sent (so two jobs can't both send it), then marked sent
+or failed; Resend gets a key for each (`deadline-reminder/<id>/<retries>`)
+and won't send the same key twice within a day, so one claimed by a job
+that died is safely picked up again after five minutes. Failed ones can be
+tried again once the round has finished, never while it's still sending.
+Only addresses still on the exhibitor list are sent to. Replies go to the
+event mailbox when there is one, and every round is in privacy requests
+and goes with retention.
 
 ## A thumbs down is a fix to make, not just a number
 
@@ -454,6 +490,12 @@ same all day.
 Visitors are anonymous. A chat's random token lives in the visitor's
 browser; the database stores only its SHA-256. No cookies for visitors.
 Draft bots answer only signed-in staff (the Try page).
+
+Writes to the public chat API come only from the chat's own pages: a POST
+whose Origin is another website is refused, and it must be JSON (a plain
+form or text/plain from another site needs no permission from us; JSON
+does). So no other website can make its visitors' browsers ask for codes
+or send messages from their addresses.
 
 ## The widget only works on the bot's own websites
 

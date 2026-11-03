@@ -25,7 +25,7 @@ type Recipient = {
   stand: string;
   name: string;
   to: string[];
-  status: "pending" | "left_out" | "queued" | "sent" | "failed";
+  status: "pending" | "left_out" | "queued" | "sending" | "sent" | "failed";
   note: string;
   since: "done" | "gone" | null;
 };
@@ -40,6 +40,7 @@ const STATUS: Record<
 > = {
   pending: { tone: "neutral", label: "To send" },
   queued: { tone: "info", label: "Sending" },
+  sending: { tone: "info", label: "Sending" },
   sent: { tone: "good", label: "Sent" },
   failed: { tone: "bad", label: "Not sent" },
   left_out: { tone: "neutral", label: "Left out" },
@@ -91,7 +92,7 @@ export function ReminderReview({
   const unknown = useMemo(() => unknownPlaceholders(`${subject}\n${body}`), [subject, body]);
   const sent = recipients.filter((r) => r.status === "sent").length;
   const failed = recipients.filter((r) => r.status === "failed").length;
-  const queued = recipients.filter((r) => r.status === "queued").length;
+  const queued = recipients.filter((r) => r.status === "queued" || r.status === "sending").length;
   const shown = all ? recipients : recipients.slice(0, SHOW);
 
   function draftAgain() {

@@ -1,3 +1,4 @@
+import { appUrl } from "@/lib/config";
 /**
  * Websites allowed to show a bot (pure). People type addresses in every
  * shape ("https://www.example.com/exhibit", "Example.com"); we store the
@@ -35,4 +36,27 @@ export function frameAncestors(domains: string[], live: boolean): string {
     }
   }
   return list.join(" ");
+}
+
+/**
+ * A write from one of this app's own pages? A browser always says which page
+ * sent a POST (Origin); one from another website is refused. No Origin at all
+ * isn't a browser page, and the rate limits still apply to it.
+ */
+export function sameOrigin(request: Request): boolean {
+  const origin = request.headers.get("origin");
+  if (!origin) return true;
+  let host: string;
+  try {
+    host = new URL(origin).host.toLowerCase();
+  } catch {
+    return false; // "null": a sandboxed frame or a file
+  }
+  const own = [
+    new URL(request.url).host,
+    request.headers.get("host"),
+    request.headers.get("x-forwarded-host"),
+    new URL(appUrl()).host,
+  ];
+  return own.some((h) => h && h.toLowerCase() === host);
 }

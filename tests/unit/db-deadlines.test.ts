@@ -27,7 +27,13 @@ import { runRetention } from "@/lib/privacy/retention";
 import { londonDate } from "@/lib/time";
 import { hasDb, makeBot, makeUser } from "../helpers/db";
 
-type Sent = { to: string[]; subject: string; text: string; replyTo?: string };
+type Sent = {
+  to: string[];
+  subject: string;
+  text: string;
+  replyTo?: string;
+  idempotencyKey?: string;
+};
 const sent = vi.hoisted(() => [] as Sent[]);
 vi.mock("@/lib/email/send", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/email/send")>()),
@@ -294,6 +300,61 @@ describe.skipIf(!hasDb)("deadline reminders", () => {
     detail = (await batchDetail(batchId))!;
     expect(detail.batch.status).toBe("sent");
     expect(sent.map((s) => s.to[0]).sort()).toEqual([`a@acme-${d}.test`, `k@kite-${d}.test`]);
+  });
+
+  it("never sends one twice: two jobs at once, a retry only after the round, a key for each", async () => {
+    const admin = await makeUser("admin");
+    const { bot } = await makeBot();
+    const d = randomUUID().slice(0, 8);
+    const rows = [
+      ["Company", "Email", "Plan"],
+      ["Acme", `a@acme-${d}.test`, "No"],
+      ["Bounce", `bounce@bad-${d}.test`, "No"],
+      ["Kite", `k@kite-${d}.test`, ""],
+      ["Oak", `o@oak-${d}.test`, ""],
+    ];
+    await uploadList(admin, bot.id, { name: "list.csv", bytes: csv(rows) });
+    const id = await saveDeadline(admin, bot.id, { ...PLAN, column: "Plan" });
+    const { batchId } = (await startReminders(admin, id))!;
+    await writeReminders(batchId);
+    const text = { subject: "Stand plan", body: "Hi {first_name}, please send your stand plan." };
+    await saveReminderText(admin, batchId, text);
+    await sendReminders(admin, batchId, { ...text, leaveOut: [] });
+    // Since it was drafted, Oak came off the list: they aren't sent it.
+    await uploadList(admin, bot.id, { name: "list.csv", bytes: csv(rows.slice(0, 4)) });
+
+    sent.length = 0;
+    // Two jobs at once (a retry overlapping a slow one): each reminder goes once.
+    await Promise.all([
+      sendReminderBatch(batchId, { round: 1, pauseMs: 5 }),
+      sendReminderBatch(batchId, { round: 1, pauseMs: 5 }),
+    ]);
+    expect(sent.map((s) => s.to[0]).sort()).toEqual([`a@acme-${d}.test`, `k@kite-${d}.test`]);
+    const detail = (await batchDetail(batchId))!;
+    expect(detail.recipients.find((r) => r.company === "Oak")).toMatchObject({
+      status: "left_out",
+      note: "Left out: no longer on the exhibitor list.",
+    });
+    const acme = detail.recipients.find((r) => r.company === "Acme")!;
+    expect(sent.find((s) => s.to[0].startsWith("a@"))?.idempotencyKey).toBe(
+      `deadline-reminder/${acme.id}/0`,
+    );
+
+    // One that a job claimed and then died on is picked up again, with the same key.
+    const bounce = detail.recipients.find((r) => r.company === "Bounce")!;
+    expect(bounce.status).toBe("failed");
+    expect(await retryFailedReminders(admin, batchId)).toBe(1);
+    // While that round is still sending, trying again is refused.
+    expect(await retryFailedReminders(admin, batchId)).toBe(0);
+    await db
+      .update(reminders)
+      .set({ status: "sending", sendingAt: new Date(Date.now() - 10 * 60_000) })
+      .where(eq(reminders.id, bounce.id));
+    await sendReminderBatch(batchId, { round: 9, pauseMs: 0 });
+    expect((await batchDetail(batchId))!.recipients.find((r) => r.id === bounce.id)).toMatchObject({
+      status: "failed",
+    });
+    expect((await batchDetail(batchId))!.batch.status).toBe("sent");
   });
 
   it("needs email sending, someone ticked, and can be discarded", async () => {

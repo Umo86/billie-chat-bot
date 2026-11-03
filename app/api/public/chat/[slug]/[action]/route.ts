@@ -12,6 +12,7 @@ import {
   publicBot,
   SLUG,
 } from "@/lib/chat/public";
+import { sameOrigin } from "@/lib/chat/domains";
 import { botBySlug } from "@/lib/bots/load";
 import {
   ChatError,
@@ -32,6 +33,7 @@ import {
   dropEmptyConversation,
   requestCode,
   SignInError,
+  SignInLimit,
   signInOpen,
   signOut,
   verifyCode,
@@ -62,6 +64,7 @@ export const maxDuration = 60;
 type Ctx = { params: Promise<{ slug: string; action: string }> };
 
 function failure(err: unknown): Response {
+  if (err instanceof SignInLimit) return problem(429, err.message);
   if (err instanceof SignInError) return problem(400, err.message);
   if (err instanceof ChatError) {
     const status = { not_found: 404, invalid: 400, closed: 409, not_allowed: 403 }[err.code];
@@ -157,6 +160,12 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
     ].includes(action)
   )
     return problem(404, "Not found.");
+  // Only the chat's own pages write here: never a page on another website
+  // making its visitors' browsers send for it (a form or text/plain needs no
+  // permission from us; JSON from another site does).
+  if (!sameOrigin(request)) return problem(403, "This chat only works from its own page.");
+  if (!(request.headers.get("content-type") ?? "").toLowerCase().startsWith("application/json"))
+    return problem(415, "Send this as JSON.");
   let body: unknown = {};
   try {
     const raw = await request.text();
@@ -175,12 +184,18 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
     const ip = clientKey(ipFrom(await headers()));
     let conversation = await callerConversation(request, bot);
     let token: string | undefined;
+    const tooManyCodes = () =>
+      problem(429, "You've asked for a lot of codes. Wait a few minutes, then try again.");
     // Signing in can be the first thing someone does: it starts the chat.
+    // The limits come first, so a refused request never leaves an empty chat.
+    let ipCounted = false;
     if (action === "sign-in" && !conversation && channel !== "whatsapp") {
       if (!(await signInOpen(bot))) return problem(404, "Signing in isn't available in this chat.");
       if (!signInBody.safeParse(body).success) return badEmail();
       if (!(await allow(`chat:start:${ip}`, LIMITS.chatStart)))
         return problem(429, "Too many new chats. Wait a few minutes, then try again.");
+      if (!(await allow(`chat:sign-in:${ip}`, LIMITS.chatSignInIp))) return tooManyCodes();
+      ipCounted = true;
       const started = await startConversation({ bot, channel });
       conversation = started.conversation;
       token = started.token ?? undefined;
@@ -231,12 +246,9 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
         if (!parsed.success) return badEmail();
         if (
           !(await allow(`chat:sign-in:conv:${conversation.id}`, LIMITS.chatSignIn)) ||
-          !(await allow(`chat:sign-in:${ip}`, LIMITS.chatSignInIp))
+          (!ipCounted && !(await allow(`chat:sign-in:${ip}`, LIMITS.chatSignInIp)))
         )
-          return problem(
-            429,
-            "You've asked for a lot of codes. Wait a few minutes, then try again.",
-          );
+          return tooManyCodes();
         let message: string;
         try {
           message = await requestCode(bot, conversation.id, parsed.data.email);

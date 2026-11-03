@@ -6,7 +6,14 @@ import { writeAudit } from "@/lib/audit";
 import { UserError } from "@/lib/errors";
 import { emailConfigured } from "@/lib/config";
 import type { Actor } from "@/lib/authz";
-import { ListError, readListFile, readRows, recordText, type ListedExhibitor } from "./list";
+import {
+  ListError,
+  looksInternal,
+  readListFile,
+  readRows,
+  recordText,
+  type ListedExhibitor,
+} from "./list";
 
 /**
  * A bot's exhibitor list: uploaded on its Exhibitors step, replaced whole by
@@ -19,6 +26,8 @@ export type ListSummary = {
   rows: number;
   skipped: number;
   columns: string[];
+  /** Columns Billie never reads about an exhibitor. */
+  hiddenColumns: string[];
   uploadedAt: string;
   uploadedBy: string | null;
   sample: (ListedExhibitor & { id: string })[];
@@ -50,6 +59,15 @@ export async function uploadList(
     );
   if (!read.exhibitors.length)
     throw new UserError("No rows with an email address found. Check the email column.");
+  // The team's choice of columns to keep to itself carries over; new columns
+  // that look internal (notes, credit status) start hidden.
+  const before = await db.query.exhibitorLists.findFirst({
+    where: eq(exhibitorLists.botId, botId),
+    columns: { columns: true, hiddenColumns: true },
+  });
+  const hiddenColumns = read.columns.filter((c) =>
+    before?.columns.includes(c) ? before.hiddenColumns.includes(c) : looksInternal(c),
+  );
   await db.transaction(async (tx) => {
     // Sign-ins with the old list end with it (each chat can sign in again).
     await tx.delete(exhibitors).where(eq(exhibitors.botId, botId));
@@ -63,6 +81,7 @@ export async function uploadList(
         botId,
         fileName: file.name.slice(0, 200),
         columns: read.columns,
+        hiddenColumns,
         rows: read.exhibitors.length,
         skipped: read.skipped,
         uploadedBy: actor.id,
@@ -73,6 +92,7 @@ export async function uploadList(
         set: {
           fileName: file.name.slice(0, 200),
           columns: read.columns,
+          hiddenColumns,
           rows: read.exhibitors.length,
           skipped: read.skipped,
           uploadedBy: actor.id,
@@ -88,6 +108,39 @@ export async function uploadList(
     });
   });
   return (await listSummary(botId))!;
+}
+
+/** Which columns Billie may read about a signed-in exhibitor (the rest it never sees). */
+export async function setHiddenColumns(
+  actor: Actor,
+  botId: string,
+  hidden: string[],
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [list] = await tx
+      .select({ columns: exhibitorLists.columns })
+      .from(exhibitorLists)
+      .where(eq(exhibitorLists.botId, botId))
+      .for("update");
+    if (!list) throw new UserError("Upload the exhibitor list first.");
+    const keep = list.columns.filter((c) => hidden.includes(c));
+    await tx
+      .update(exhibitorLists)
+      .set({ hiddenColumns: keep })
+      .where(eq(exhibitorLists.botId, botId));
+    await writeAudit(tx, {
+      actorUserId: actor.id,
+      entityType: "bot",
+      entityId: botId,
+      action: "update",
+      summary: keep.length
+        ? `Kept ${keep.length} exhibitor list ${keep.length === 1 ? "column" : "columns"} from Billie: ${keep.join(", ")}`.slice(
+            0,
+            300,
+          )
+        : "Let Billie use every exhibitor list column",
+    });
+  });
 }
 
 export async function removeList(actor: Actor, botId: string): Promise<void> {
@@ -130,6 +183,7 @@ export async function listSummary(botId: string): Promise<ListSummary | null> {
     rows: list.rows,
     skipped: list.skipped,
     columns: list.columns,
+    hiddenColumns: list.hiddenColumns,
     uploadedAt: list.uploadedAt.toISOString(),
     uploadedBy: by?.fullName ?? null,
     sample: sample.map((s) => ({
@@ -163,15 +217,42 @@ export async function exhibitorById(id: string) {
   return (await db.query.exhibitors.findFirst({ where: eq(exhibitors.id, id) })) ?? null;
 }
 
-/** The signed-in exhibitor's record, as Billie answers from it. */
-export function exhibitorRecord(e: {
-  company: string;
-  stand: string;
-  name: string;
-  emails: string[];
-  fields: Record<string, string>;
-}): string {
-  return recordText(e);
+/** The signed-in exhibitor's record, as Billie answers from it: never the columns the team keeps to itself. */
+export function exhibitorRecord(
+  e: {
+    company: string;
+    stand: string;
+    name: string;
+    emails: string[];
+    fields: Record<string, string>;
+  },
+  hidden: string[] = [],
+): string {
+  const fields = Object.fromEntries(Object.entries(e.fields).filter(([k]) => !hidden.includes(k)));
+  return recordText({ ...e, fields });
+}
+
+/** A sign-in lasts a show day: on a shared stand laptop or show-floor iPad, the next person isn't them. */
+export const SIGN_IN_HOURS = 12;
+
+type SignedInChat = { exhibitorId: string | null; signedInAt: Date | null };
+
+/** The exhibitor a chat is signed in as, while the sign-in lasts. */
+export function activeExhibitorId(c: SignedInChat, now = new Date()): string | null {
+  if (!c.exhibitorId || !c.signedInAt) return null;
+  return now.getTime() - c.signedInAt.getTime() < SIGN_IN_HOURS * 3_600_000 ? c.exhibitorId : null;
+}
+
+/** What Billie reads about the exhibitor signed in to a chat (none if nobody is). */
+export async function recordFor(c: SignedInChat, now = new Date()): Promise<string | null> {
+  const id = activeExhibitorId(c, now);
+  const ex = id ? await exhibitorById(id) : null;
+  if (!ex) return null;
+  const list = await db.query.exhibitorLists.findFirst({
+    where: eq(exhibitorLists.botId, ex.botId),
+    columns: { hiddenColumns: true },
+  });
+  return exhibitorRecord(ex, list?.hiddenColumns ?? []);
 }
 
 /**
@@ -203,8 +284,8 @@ export async function hasList(botId: string): Promise<boolean> {
 export type SignedIn = { name: string; company: string; stand: string };
 
 /** Who is signed in to a chat, for the chat and the Inbox. */
-export async function signedInAs(exhibitorId: string | null): Promise<SignedIn | null> {
-  if (!exhibitorId) return null;
-  const ex = await exhibitorById(exhibitorId);
+export async function signedInAs(c: SignedInChat, now = new Date()): Promise<SignedIn | null> {
+  const id = activeExhibitorId(c, now);
+  const ex = id ? await exhibitorById(id) : null;
   return ex ? { name: ex.name, company: ex.company, stand: ex.stand } : null;
 }

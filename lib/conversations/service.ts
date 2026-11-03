@@ -33,7 +33,7 @@ import {
 import { botPaused, nextStatus, type ConversationEvent, type ConversationStatus } from "./status";
 import { agentsAvailable } from "./presence";
 import { queueSuggestion } from "./suggest";
-import { exhibitorById, exhibitorRecord, signedInAs } from "@/lib/exhibitors/service";
+import { recordFor, signedInAs } from "@/lib/exhibitors/service";
 
 /**
  * One conversation engine for every channel. Visitors' turns come from the
@@ -661,7 +661,7 @@ export async function visitorUpdates(
     offer: null,
     form: conversation.status === "collecting" ? formFor(bot) : null,
     request: pending,
-    signedIn: after ? undefined : await signedInAs(conversation.exhibitorId),
+    signedIn: after ? undefined : await signedInAs(conversation),
   };
 }
 
@@ -669,11 +669,10 @@ export async function visitorUpdates(
 async function signedInRecord(conversationId: string): Promise<{ record: string } | null> {
   const c = await db.query.conversations.findFirst({
     where: eq(conversations.id, conversationId),
-    columns: { exhibitorId: true },
+    columns: { exhibitorId: true, signedInAt: true },
   });
-  if (!c?.exhibitorId) return null;
-  const ex = await exhibitorById(c.exhibitorId);
-  return ex ? { record: exhibitorRecord(ex) } : null;
+  const record = c ? await recordFor(c) : null;
+  return record ? { record } : null;
 }
 
 /** Whether Billie offered this request's form in this chat (the only way to send one). */

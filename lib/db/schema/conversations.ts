@@ -43,6 +43,10 @@ export const conversations = pgTable(
     suggestion: jsonb("suggestion").$type<ReplySuggestion | null>(),
     /** The exhibitor who signed in with a code from their email (lib/exhibitors/sign-in.ts). */
     exhibitorId: uuid("exhibitor_id").references(() => exhibitors.id, { onDelete: "set null" }),
+    /** The address the sign-in code went to (a row can list several people). */
+    signedInEmail: text("signed_in_email"),
+    /** When they signed in: a sign-in lasts a show day (lib/exhibitors/service.ts). */
+    signedInAt: timestamp("signed_in_at", { withTimezone: true }),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }).notNull().defaultNow(),
     /** Last message from the person (WhatsApp's 24-hour reply window counts from here). */
     lastVisitorAt: timestamp("last_visitor_at", { withTimezone: true }),
@@ -190,9 +194,10 @@ export const exhibitorCodes = pgTable(
     conversationId: uuid("conversation_id")
       .notNull()
       .references(() => conversations.id, { onDelete: "cascade" }),
-    exhibitorId: uuid("exhibitor_id")
-      .notNull()
-      .references(() => exhibitors.id, { onDelete: "cascade" }),
+    /** None when the email isn't on the list: a row is kept either way, so nothing tells. */
+    exhibitorId: uuid("exhibitor_id").references(() => exhibitors.id, { onDelete: "cascade" }),
+    /** A hash of the address the code was for (lib/chat/token.ts:hashToken). */
+    emailHash: text("email_hash"),
     codeHash: text("code_hash").notNull(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     attempts: integer("attempts").notNull().default(0),
