@@ -60,6 +60,7 @@ const LABELS: Record<string, string> = {
   learning: "Learning from sent emails",
   check: "Knowledge checks",
   reminders: "Deadline reminders",
+  history: "Learning from past emails",
 };
 
 /** What a scope was for, in words. */

@@ -8,6 +8,8 @@ import { BotAvatar } from "@/components/bots/bot-avatar";
 import { GapList } from "@/components/knowledge/gap-list";
 import { UnhelpfulList } from "@/components/knowledge/unhelpful-list";
 import { openUnhelpful } from "@/lib/knowledge/unhelpful";
+import { SuggestionList } from "@/components/knowledge/suggestion-list";
+import { emailSuggestionsFor } from "@/lib/emails/history";
 import { LearningList } from "@/components/knowledge/learning-list";
 import { learningOffers } from "@/lib/emails/learn";
 import { DeleteOldKb } from "@/components/knowledge/kb-dialog";
@@ -34,13 +36,14 @@ export default async function KnowledgePage({
   const tab = params.tab === "gaps" ? "gaps" : "bases";
   await ensureBotKnowledgeBases();
   const ids = await myBotIds(actor);
-  const [kbs, gaps, offers, unhelpful] = await Promise.all([
+  const [kbs, gaps, offers, unhelpful, suggestions] = await Promise.all([
     knowledgeBaseList(ids),
     openGaps(ids),
     learningOffers(ids),
     openUnhelpful(ids),
+    emailSuggestionsFor(ids),
   ]);
-  const toImprove = gaps.length + offers.length + unhelpful.length;
+  const toImprove = gaps.length + offers.length + unhelpful.length + suggestions.length;
   const selected =
     kbs.find((k) => k.id === params.kb) ??
     kbs.find((k) => k.bot && k.bot.id === params.bot) ??
@@ -75,6 +78,7 @@ export default async function KnowledgePage({
       {tab === "gaps" ? (
         <div className="flex flex-col gap-6">
           <UnhelpfulList rows={unhelpful} canEdit={can(actor, "knowledge.edit")} />
+          <SuggestionList rows={suggestions} canEdit={can(actor, "knowledge.edit")} />
           <LearningList offers={offers} canEdit={can(actor, "knowledge.edit")} />
           <GapList gaps={gaps} canEdit={can(actor, "knowledge.edit")} />
         </div>

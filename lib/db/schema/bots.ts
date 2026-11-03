@@ -160,6 +160,10 @@ export const botMailboxes = pgTable(
     lastError: text("last_error"),
     /** Why the last reply couldn't be saved in Drafts, in words (null once one is saved). */
     draftError: text("draft_error"),
+    /** Learning from past emails (lib/emails/history.ts): how the last read went. */
+    historyStatus: text("history_status").$type<"reading" | "done" | "failed">(),
+    historyNote: text("history_note"),
+    historyAt: timestamp("history_at", { withTimezone: true }),
     ...timestamps,
   },
   (t) => [

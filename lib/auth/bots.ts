@@ -17,6 +17,7 @@ import {
   unhelpfulAnswers,
   users,
   websites,
+  emailSuggestions,
 } from "@/lib/db/schema";
 import {
   botScopeOf,
@@ -116,10 +117,20 @@ export async function botOf(
     | "source"
     | "deadline"
     | "reminders"
-    | "website",
+    | "website"
+    | "suggestion",
   id: string,
 ): Promise<string | null> {
   switch (kind) {
+    case "suggestion":
+      return (
+        (
+          await db.query.emailSuggestions.findFirst({
+            where: eq(emailSuggestions.id, id),
+            columns: { botId: true },
+          })
+        )?.botId ?? null
+      );
     case "website": {
       const [row] = await db
         .select({ botId: knowledgeBases.botId })

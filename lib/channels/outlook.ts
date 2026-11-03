@@ -418,3 +418,65 @@ export async function checkMailbox(mailbox: string): Promise<string | null> {
     return draftProblem(err);
   }
 }
+
+type PastGraphMessage = {
+  id: string;
+  conversationId?: string;
+  subject?: string;
+  isDraft?: boolean;
+  receivedDateTime?: string;
+  sentDateTime?: string;
+  from?: { emailAddress?: { address?: string } };
+  uniqueBody?: { content?: string };
+};
+
+/** Pages of one Graph list, up to `max` items (Graph's next links only). */
+async function listAll(first: string, max: number): Promise<PastGraphMessage[]> {
+  const out: PastGraphMessage[] = [];
+  let url: string | undefined = first;
+  while (url && out.length < max) {
+    const page: { value?: PastGraphMessage[]; "@odata.nextLink"?: string } = await graph(url, {
+      prefer: ['outlook.body-content-type="text"', "odata.maxpagesize=50"],
+    });
+    out.push(...(page.value ?? []));
+    url = page["@odata.nextLink"];
+  }
+  return out.slice(0, max);
+}
+
+/**
+ * The mailbox's past mail since `since` (lib/emails/history.ts): the replies
+ * the team sent, and the emails that came in (from every folder), each with
+ * only its own words (uniqueBody), not the quoted thread. Read only: nothing
+ * in the mailbox changes.
+ */
+export async function pastMail(
+  mailbox: string,
+  since: Date,
+  max: { sent: number; inbound: number },
+): Promise<{
+  sent: { conversationId: string; from: string; at: string; subject: string; text: string }[];
+  inbound: { conversationId: string; from: string; at: string; subject: string; text: string }[];
+}> {
+  const iso = since.toISOString();
+  const select = "id,conversationId,subject,receivedDateTime,sentDateTime,from,isDraft,uniqueBody";
+  const sent = await listAll(
+    `${user(mailbox)}/mailFolders/sentitems/messages?$select=${select}&$filter=${encodeURIComponent(`sentDateTime ge ${iso}`)}&$orderby=${encodeURIComponent("sentDateTime desc")}&$top=50`,
+    max.sent,
+  );
+  const inbound = await listAll(
+    `${user(mailbox)}/messages?$select=${select}&$filter=${encodeURIComponent(`receivedDateTime ge ${iso} and isDraft eq false`)}&$orderby=${encodeURIComponent("receivedDateTime desc")}&$top=50`,
+    max.inbound,
+  );
+  const plain = (m: PastGraphMessage, at: string | undefined) => ({
+    conversationId: m.conversationId ?? "",
+    from: m.from?.emailAddress?.address?.toLowerCase() ?? "",
+    at: at ?? "",
+    subject: m.subject ?? "",
+    text: m.uniqueBody?.content ?? "",
+  });
+  return {
+    sent: sent.filter((m) => !m.isDraft).map((m) => plain(m, m.sentDateTime)),
+    inbound: inbound.map((m) => plain(m, m.receivedDateTime)),
+  };
+}

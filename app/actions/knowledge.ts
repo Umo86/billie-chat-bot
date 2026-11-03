@@ -5,6 +5,7 @@ import { z } from "zod";
 import { dismissUnhelpful, fixUnhelpful } from "@/lib/knowledge/unhelpful";
 import { addWebsite, recrawlWebsite, removeWebsite, updateWebsite } from "@/lib/knowledge/websites";
 import { leaveOutList, MAX_PAGES } from "@/lib/knowledge/sitemap";
+import { dismissSuggestions, saveSuggestion, startHistory } from "@/lib/emails/history";
 import { friendly, runAction } from "@/lib/actions/run";
 import { fail, type ActionResult } from "@/lib/actions/result";
 import { getActor } from "@/lib/auth/actor";
@@ -22,7 +23,7 @@ import { latestCheck, requestCheck } from "@/lib/knowledge/check";
 import { fileKind, MAX_FILE_BYTES } from "@/lib/knowledge/files";
 import { putFile, storedBlobSize } from "@/lib/storage";
 import { UserError } from "@/lib/errors";
-import { assertOnBotOf } from "@/lib/auth/bots";
+import { assertOnBot, assertOnBotOf } from "@/lib/auth/bots";
 import { dismissLearning, saveLearning } from "@/lib/emails/learn";
 
 const id = z.object({ id: z.uuid() });
@@ -449,6 +450,54 @@ export async function saveLearningAction(input: unknown) {
       refresh();
     },
     "Saved. Billie will use this answer from now on.",
+  );
+}
+
+/** Reads the mailbox's past emails for the questions people often ask (on the queue). */
+export async function startHistoryAction(input: unknown) {
+  return runAction(
+    "knowledge.edit",
+    z.object({ botId: z.uuid(), months: z.union([z.literal(3), z.literal(6), z.literal(12)]) }),
+    input,
+    async (actor, d) => {
+      await assertOnBot(actor, "knowledge.edit", d.botId);
+      await startHistory(actor, d.botId, d.months);
+      refresh();
+      revalidatePath(`/bots/${d.botId}`);
+    },
+    "Billie is reading the past emails. The questions it finds appear on the Knowledge page.",
+  );
+}
+
+export async function saveSuggestionAction(input: unknown) {
+  const schema = z.object({
+    id: z.uuid(),
+    question: z.string().trim().min(3, "Write the question.").max(300),
+    answer: z.string().trim().min(2, "Write the answer.").max(4000),
+  });
+  return runAction(
+    "knowledge.edit",
+    schema,
+    input,
+    async (actor, d) => {
+      await assertOnBotOf(actor, "knowledge.edit", "suggestion", d.id);
+      await saveSuggestion(actor, d.id, { question: d.question, answer: d.answer });
+      refresh();
+    },
+    "Saved. Billie will use this answer from now on.",
+  );
+}
+
+export async function dismissSuggestionsAction(input: unknown) {
+  return runAction(
+    "knowledge.edit",
+    z.object({ ids: z.array(z.uuid()).min(1).max(200) }),
+    input,
+    async (actor, d) => {
+      for (const id of d.ids) await assertOnBotOf(actor, "knowledge.edit", "suggestion", id);
+      await dismissSuggestions(actor, d.ids);
+      refresh();
+    },
   );
 }
 

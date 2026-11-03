@@ -78,6 +78,13 @@ const handlers: Handlers = {
     // Whole websites: looked at again weekly (new pages added, gone ones taken out).
     await (await import("@/lib/knowledge/websites")).queueWebsiteRecrawls();
   },
+  email_history: async (p, job) => {
+    await (
+      await import("@/lib/emails/history")
+    ).readHistory(String(p.botId), Number(p.months) || 12, {
+      lastTry: job.attempts >= job.maxAttempts,
+    });
+  },
   crawl_website: async (p) => {
     await (await import("@/lib/knowledge/websites")).crawlWebsite(String(p.websiteId));
   },

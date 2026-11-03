@@ -330,6 +330,24 @@ count, and a thumbs down changed to a thumbs up takes it back off. After a
 fix, a thumbs down on an answer given before the fix changes nothing; one
 on a newer answer reopens it, counting afresh. Dismissed stays dismissed.
 
+## Past emails become suggested answers, never knowledge on their own
+
+A show's mailbox already holds the answers to most questions, in the team's
+replies. On request, a job reads the mailbox's Sent Items for the chosen
+months (up to 300 replies) and the mail that came in (any folder), each
+with only its own words (Outlook's uniqueBody, so quoted threads aren't
+read twice), and pairs each reply with the latest email in its thread from
+someone else before it, skipping automatic replies, no-reply senders and
+the mailbox itself. The Fast model reads 15 pairs at a time and lists the
+general questions with the team's answers, leaving out anything about one
+exhibitor and every name, address, number and company. The same question
+from different batches is counted together; those asked at least twice
+(or the top ten, if none were) are offered on the Knowledge page, not
+already a typed answer, and never again once saved or dismissed. A person
+checks each one: an answer from last year's show may be out of date. The
+emails exist only in the job's memory; what's kept is the question, the
+answer and the count. Read only: Billie never changes the mailbox.
+
 ## Billie learns from sent drafts, but a person saves what it learns
 
 Message ids are immutable, so Billie's Outlook draft keeps its id once it's

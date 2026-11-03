@@ -197,6 +197,13 @@
       "when": 1793746707062,
       "tag": "0027_routes",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1793748598278,
+      "tag": "0028_email_history",
+      "breakpoints": true
     }
   ]
 }

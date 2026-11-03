@@ -29,6 +29,7 @@ import { db } from "@/lib/db/client";
 import { bots } from "@/lib/db/schema";
 import { datesToCheck } from "@/lib/bots/copy";
 import { CopyBot } from "@/components/bots/copy-bot";
+import { historyState } from "@/lib/emails/history";
 import { DatesToCheck } from "@/components/bots/dates-to-check";
 import { mayOnBot } from "@/lib/auth/bots";
 import { botPeople } from "@/lib/bots/people";
@@ -236,7 +237,11 @@ export default async function BotPage({
     );
   } else if (step === "email") {
     const canManage = can(actor, "settings.manage");
-    const [setup, people] = await Promise.all([botEmailSetup(bot.id), mailboxManagers(bot.id)]);
+    const [setup, people, history] = await Promise.all([
+      botEmailSetup(bot.id),
+      mailboxManagers(bot.id),
+      historyState(bot.id),
+    ]);
     const m = setup.mailbox;
     const microsoft = microsoftConfigured();
     body = (
@@ -269,6 +274,8 @@ export default async function BotPage({
         microsoft={microsoft}
         companyTeams={teamsConfigured()}
         canManage={canManage}
+        history={history}
+        canLearn={await mayOnBot(actor, "knowledge.edit", bot.id)}
       />
     );
   } else if (step === "test") {

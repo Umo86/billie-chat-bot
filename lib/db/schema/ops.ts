@@ -15,7 +15,7 @@ import {
 } from "drizzle-orm/pg-core";
 import type { EmailTags, MessageSource, SentLearning } from "@/lib/types";
 import { actorType, auditAction, emailSource, emailStatus, jobStatus } from "./enums";
-import { bots } from "./bots";
+import { bots, sources } from "./bots";
 import { users } from "./users";
 
 /** One exhibitor email: from the Outlook mailbox (Microsoft Graph) or pasted in. */
@@ -130,6 +130,38 @@ export const jobs = pgTable(
     uniqueIndex("jobs_dedupe_active_unique")
       .on(t.dedupeKey)
       .where(sql`${t.dedupeKey} IS NOT NULL AND ${t.status} IN ('queued', 'running')`),
+  ],
+);
+
+/**
+ * Questions people often asked an event mailbox, with the answer the team
+ * gave, found in its past emails (lib/emails/history.ts): offered on the
+ * Knowledge page for the team to save as typed answers, or dismiss.
+ */
+export const emailSuggestions = pgTable(
+  "email_suggestions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    botId: uuid("bot_id")
+      .notNull()
+      .references(() => bots.id, { onDelete: "cascade" }),
+    /** Normalised wording, as for gaps (lib/knowledge/gaps.ts:questionKey). */
+    questionKey: text("question_key").notNull(),
+    question: text("question").notNull(),
+    answer: text("answer").notNull(),
+    /** How many of the emails read asked it. */
+    count: integer("count").notNull().default(1),
+    status: text("status").$type<"offered" | "saved" | "dismissed">().notNull().default("offered"),
+    savedSourceId: uuid("saved_source_id").references(() => sources.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    uniqueIndex("email_suggestions_bot_question_unique").on(t.botId, t.questionKey),
+    index("email_suggestions_status_idx").on(t.status, t.botId),
   ],
 );
 

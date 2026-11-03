@@ -27,6 +27,8 @@ export function fakeMicrosoft(
     refuseDrafts?: number;
     /** Drafts the team has since sent (with what they sent) or deleted. */
     sent?: Map<string, { isDraft: boolean; text: string } | "gone">;
+    /** Past mail by mailbox: its Sent Items, and what came in (lib/emails/history.ts). */
+    history?: Record<string, { sent: unknown[]; inbound: unknown[] }>;
   } = {},
 ) {
   const calls: Call[] = [];
@@ -71,6 +73,12 @@ export function fakeMicrosoft(
       });
     }
     if (url.endsWith("/mailFolders/inbox?$select=id")) return json({ id: "inbox" });
+    const sentItems = /\/users\/([^/]+)\/mailFolders\/sentitems\/messages\?/.exec(url);
+    if (method === "GET" && sentItems)
+      return json({ value: opts.history?.[decodeURIComponent(sentItems[1])]?.sent ?? [] });
+    const allMail = /\/users\/([^/]+)\/messages\?\$select=/.exec(url);
+    if (method === "GET" && allMail)
+      return json({ value: opts.history?.[decodeURIComponent(allMail[1])]?.inbound ?? [] });
     const newDraft = (body: unknown) => {
       drafts++;
       const id = `draft-${drafts}`;

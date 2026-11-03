@@ -199,3 +199,47 @@ export const reminderSchema = z.object({
   missing: z.string(),
 });
 export type ReminderJson = z.infer<typeof reminderSchema>;
+
+export const historyJsonSchema = {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          question: {
+            type: "string",
+            description: "A general question any exhibitor might ask, as they would ask it.",
+          },
+          answer: {
+            type: "string",
+            description: "The team's answer, as their replies give it, in one to three sentences.",
+          },
+          emails: {
+            type: "array",
+            items: { type: "integer" },
+            description: "The numbers of the emails that asked it.",
+          },
+        },
+        required: ["question", "answer", "emails"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["items"],
+  additionalProperties: false,
+} as const;
+
+export const historySchema = z.object({
+  items: z
+    .array(
+      z.object({
+        question: z.string(),
+        answer: z.string(),
+        emails: z.array(z.number().int()),
+      }),
+    )
+    .max(40),
+});
+export type HistoryJson = z.infer<typeof historySchema>;

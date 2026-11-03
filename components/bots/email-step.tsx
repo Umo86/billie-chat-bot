@@ -9,6 +9,8 @@ import { Chip, Note, Panel } from "@/components/ui/bits";
 import { Field, Input, Select } from "@/components/ui/form";
 import { Switch } from "@/components/ui/switch";
 import { useRunner } from "@/components/ui/use-runner";
+import { AutoRefresh } from "@/components/ui/auto-refresh";
+import { startHistoryAction } from "@/app/actions/knowledge";
 import {
   checkBotMailboxAction,
   removeBotMailboxAction,
@@ -36,6 +38,8 @@ export function EmailStep({
   microsoft,
   companyTeams,
   canManage,
+  history = null,
+  canLearn = false,
 }: {
   botId: string;
   botName: string;
@@ -48,6 +52,14 @@ export function EmailStep({
   microsoft: boolean;
   companyTeams: boolean;
   canManage: boolean;
+  /** Learning from the mailbox's past emails: how the last read went. */
+  history?: {
+    status: "reading" | "done" | "failed" | null;
+    note: string | null;
+    at: string | null;
+    waiting: number;
+  } | null;
+  canLearn?: boolean;
 }) {
   const router = useRouter();
   const { pending, run } = useRunner();
@@ -252,6 +264,10 @@ export function EmailStep({
         )}
       </Panel>
 
+      {mailbox && microsoft ? (
+        <PastEmails botId={botId} history={history} canLearn={canLearn} />
+      ) : null}
+
       <Panel className="flex flex-col gap-4">
         <div className="flex items-start gap-3">
           <MessagesSquare className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden />
@@ -379,5 +395,87 @@ export function EmailStep({
         </p>
       </div>
     </div>
+  );
+}
+
+/**
+ * Learning from the mailbox's past emails: Billie reads the team's replies
+ * and finds the questions people asked most, for the Knowledge page.
+ */
+function PastEmails({
+  botId,
+  history,
+  canLearn,
+}: {
+  botId: string;
+  history: {
+    status: "reading" | "done" | "failed" | null;
+    note: string | null;
+    at: string | null;
+    waiting: number;
+  } | null;
+  canLearn: boolean;
+}) {
+  const router = useRouter();
+  const [months, setMonths] = useState("12");
+  const { pending, run } = useRunner();
+  const reading = history?.status === "reading";
+  return (
+    <Panel className="flex flex-col gap-3" data-testid="past-emails">
+      <AutoRefresh active={reading} every={5000} />
+      <div>
+        <h2 className="text-[1.05rem]">Learn from past emails</h2>
+        <p className="mt-1 max-w-[68ch] text-sm text-muted-foreground">
+          Billie reads the replies the team sent from this mailbox, with the emails they answered,
+          and finds the questions people asked most. Each comes to the Knowledge page (To improve)
+          with the team&apos;s answer, for you to check and save. Nothing in the mailbox changes,
+          and the emails themselves aren&apos;t kept.
+        </p>
+      </div>
+      {reading ? (
+        <Note>Reading the past emails… This takes a few minutes.</Note>
+      ) : history?.status === "failed" ? (
+        <Note tone="bad">{history.note}</Note>
+      ) : history?.status === "done" ? (
+        <Note tone="good">
+          {history.note}
+          {history.waiting ? (
+            <>
+              {" "}
+              <Link href="/knowledge?tab=gaps" className="font-semibold text-primary">
+                Check them
+              </Link>
+            </>
+          ) : null}
+        </Note>
+      ) : null}
+      {canLearn ? (
+        <div className="flex flex-wrap items-end gap-2">
+          <Field id="history-months" label="How far back">
+            <Select
+              id="history-months"
+              value={months}
+              onChange={(e) => setMonths(e.target.value)}
+              disabled={pending || reading}
+            >
+              <option value="3">The past 3 months</option>
+              <option value="6">The past 6 months</option>
+              <option value="12">The past year</option>
+            </Select>
+          </Field>
+          <Button
+            variant="primary"
+            disabled={pending || reading}
+            onClick={() =>
+              run(() => startHistoryAction({ botId, months: Number(months) }), {
+                done: () => router.refresh(),
+              })
+            }
+          >
+            <Inbox /> Find the common questions
+          </Button>
+        </div>
+      ) : null}
+    </Panel>
   );
 }

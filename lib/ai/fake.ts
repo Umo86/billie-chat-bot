@@ -10,6 +10,7 @@ import type {
   EmailDraftJson,
   EmailTagJson,
   KnowledgeCheckJson,
+  HistoryJson,
   LearnFromSentJson,
   ReminderJson,
 } from "./schemas";
@@ -296,6 +297,29 @@ function fakeSuggestion(
 }
 
 /**
+ * The stand-in for finding questions in past emails: each email's subject
+ * is its question, and the first sentence of the reply its answer; emails
+ * with the same subject are the same question.
+ */
+function fakeHistory(ctx: Extract<FakeContext, { purpose: "email_history" }>): HistoryJson {
+  const groups = new Map<string, { question: string; answer: string; emails: number[] }>();
+  ctx.pairs.forEach((p, i) => {
+    const subject = p.subject.replace(/^(re|fw|fwd):\s*/i, "").trim();
+    const key = subject.toLowerCase();
+    if (!key) return;
+    const answer = p.replied.split(/(?<=[.!?])\s+|\n/)[0]?.trim() ?? "";
+    const g = groups.get(key) ?? {
+      question: subject.endsWith("?") ? subject : `${subject}?`,
+      answer,
+      emails: [],
+    };
+    g.emails.push(i + 1);
+    groups.set(key, g);
+  });
+  return { items: [...groups.values()] };
+}
+
+/**
  * Learning from a sent reply: a fact counts as changed when the numbers in
  * it (times, dates, prices) differ; the sent text's first sentence with a
  * number becomes the answer.
@@ -354,5 +378,7 @@ export function fakeStructured(ctx: FakeContext): unknown {
       return fakeLearn(ctx);
     case "deadline_reminder":
       return fakeReminder(ctx);
+    case "email_history":
+      return fakeHistory(ctx);
   }
 }
