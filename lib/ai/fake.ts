@@ -154,11 +154,11 @@ function fakeDraft(ctx: Extract<FakeContext, { purpose: "email_draft" }>): Email
       used: [],
       confident: false,
       missing: ctx.email.subject,
-      holding: `Hi ${first},\n\nThanks for your email. The team is checking this and will come back to you shortly.\n\n${ctx.signature}`,
+      holding: `Hi ${first},\n\nThanks for your email. The team is checking this and will come back to you shortly.`,
     };
   }
   return {
-    draft: `Hi ${first},\n\nThanks for your email. ${hit.sentences}\n\n${ctx.signature}`,
+    draft: `Hi ${first},\n\nThanks for your email. ${hit.sentences}`,
     used: [hit.index + 1],
     confident: true,
     missing: "",

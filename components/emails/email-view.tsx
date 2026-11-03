@@ -98,6 +98,8 @@ export function EmailView({
           <Note tone="bad">
             {email.error ?? "Billie couldn't write a draft."} Try again, or reply yourself.
           </Note>
+        ) : email.error ? (
+          <Note tone="warn">{email.error}</Note>
         ) : null}
         {email.needsYouReason && !done ? <Note tone="warn">{email.needsYouReason}</Note> : null}
         {!writing ? (
@@ -123,7 +125,7 @@ export function EmailView({
             ) : null}
             <p className="text-sm text-muted-foreground">
               {email.inOutlook
-                ? "Check it in Outlook's Drafts, then send it from there. Writing it again replaces Billie's draft in Outlook. Billie never sends emails itself."
+                ? "Check it in Outlook's Drafts, then send it from there. Writing it again puts a new draft in Outlook and removes Billie's old one, unless someone has changed it. Billie never sends emails itself."
                 : "Check the facts, then copy it into your reply. Billie never sends emails itself."}
             </p>
           </>

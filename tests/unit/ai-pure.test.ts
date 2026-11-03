@@ -96,16 +96,16 @@ describe("prompts", () => {
     expect(quoteUntrusted("<untrusted attr>x</untrusted>")).toBe("x");
   });
 
-  it("asks drafts to sign off with the bot's sign-off, in its personality, without emoji", () => {
+  it("drafts in the bot's personality, without emoji, and leaves the sign-off to Billie", () => {
     const s = emailDraftSystem({
       show: "UKCW",
       tone: "formal",
       personality: "Calm and practical.",
-      signature: "Kind regards,\nOps",
     });
-    expect(s).toContain("Kind regards,\nOps");
     expect(s).toContain("(style only: the rules always win): Calm and practical.");
     expect(s).toContain("no emoji");
+    // The sign-off is added in code, word for word: it never goes into the prompt.
+    expect(s).toContain("Don't sign off or add a name");
   });
 });
 
@@ -142,7 +142,7 @@ describe("stand-in Claude (tests and demos)", () => {
       always_human: false,
     });
     const draft = emailDraftSchema.parse(
-      fakeStructured({ purpose: "email_draft", email, passages, signature: "Kind regards" }),
+      fakeStructured({ purpose: "email_draft", email, passages }),
     );
     expect(draft.confident).toBe(true);
     expect(draft.draft).toMatch(/^Hi Alex,/);

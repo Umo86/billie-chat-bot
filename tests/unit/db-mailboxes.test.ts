@@ -10,17 +10,40 @@ import {
   saveMailbox,
   setTeamsLink,
 } from "@/lib/emails/mailboxes";
-import { syncAllMailboxes } from "@/lib/channels/outlook";
+import { checkMailbox, syncAllMailboxes } from "@/lib/channels/outlook";
 import { processEmail } from "@/lib/emails/process";
 import { deliverEmailDraft } from "@/lib/emails/deliver";
 import { redoDraft } from "@/lib/emails/service";
 import { deleteBot } from "@/lib/bots/service";
 import { notifyHandover } from "@/lib/alerts/notify";
 import { startConversation } from "@/lib/conversations/service";
+import { deletePerson } from "@/lib/privacy/requests";
 import { addAndRead, hasDb, makeBot, makeUser } from "../helpers/db";
 import { fakeMicrosoft, message, TEAMS } from "../helpers/microsoft";
 
 const uid = () => randomUUID().slice(0, 8);
+
+/** As if Billie started reading this mailbox a while ago (its first sync sets this). */
+async function startedReading(address: string, ago = 3_600_000) {
+  await db
+    .update(botMailboxes)
+    .set({ syncFrom: new Date(Date.now() - ago) })
+    .where(eq(botMailboxes.address, address));
+}
+
+async function latestJob(kind: "process_email" | "deliver_email_draft", emailId: string) {
+  const [job] = await db
+    .select()
+    .from(jobs)
+    .where(and(eq(jobs.kind, kind), sql`${jobs.payload}->>'emailId' = ${emailId}`))
+    .orderBy(desc(jobs.createdAt))
+    .limit(1);
+  return job;
+}
+
+async function emailRow(id: string) {
+  return db.query.emailThreads.findFirst({ where: eq(emailThreads.id, id) });
+}
 
 describe.skipIf(!hasDb)("event mailboxes and Teams (Postgres, stand-in Microsoft 365)", () => {
   beforeAll(() => {
@@ -120,6 +143,7 @@ describe.skipIf(!hasDb)("event mailboxes and Teams (Postgres, stand-in Microsoft
     const address = `ukcw-${uid()}@media-ten.test`;
     await saveMailbox(admin, bot.id, { address, assignedUserId: manager.id, enabled: true });
     await setTeamsLink(admin, bot.id, TEAMS);
+    await startedReading(address);
 
     const id = uid();
     const ms = fakeMicrosoft({
@@ -162,7 +186,7 @@ describe.skipIf(!hasDb)("event mailboxes and Teams (Postgres, stand-in Microsoft
     expect(box).toMatchObject({ lastError: null });
     expect(box?.deltaLink).toContain("$deltatoken=next");
     expect(box?.lastSyncedAt).toBeInstanceOf(Date);
-    // The first sync asks for the last two days only, not years of mail.
+    // The first request asks only for mail since Billie started reading.
     const first = ms.calls.find((c) => c.url.includes(encodeURIComponent(address)));
     expect(decodeURIComponent(first!.url)).toMatch(
       /\$filter=receivedDateTime\+ge\+\d{4}-\d\d-\d\dT/,
@@ -227,36 +251,51 @@ describe.skipIf(!hasDb)("event mailboxes and Teams (Postgres, stand-in Microsoft
     await deliverEmailDraft(rows[0].id);
     expect(ms.calls.some((c) => c.url.endsWith("/createReply"))).toBe(false);
 
-    // The team asks for the draft again: Billie replaces its draft, without another post.
-    ms.calls.length = 0;
+    // The team asks for the draft again (here after changing the sign-off): the new
+    // draft goes into Drafts and Billie's untouched old one goes, without another post.
+    await db.update(bots).set({ emailSignOff: "Thanks,\nUKCW" }).where(eq(bots.id, bot.id));
     await redoDraft(admin, rows[0].id);
-    const [redo] = await db
-      .select()
-      .from(jobs)
-      .where(and(eq(jobs.kind, "process_email"), sql`${jobs.payload}->>'emailId' = ${rows[0].id}`))
-      .orderBy(desc(jobs.createdAt))
-      .limit(1);
-    expect(redo.payload).toEqual({ emailId: rows[0].id, redo: true, replaceDraftId: "draft-1" });
-    await processEmail(rows[0].id, { redo: true, replaceDraftId: "draft-1" });
-    const [again] = await db
-      .select()
-      .from(jobs)
-      .where(
-        and(eq(jobs.kind, "deliver_email_draft"), sql`${jobs.payload}->>'emailId' = ${rows[0].id}`),
-      )
-      .orderBy(desc(jobs.createdAt))
-      .limit(1);
-    expect(again.payload).toEqual({ emailId: rows[0].id, replaceDraftId: "draft-1", quiet: true });
-    await deliverEmailDraft(rows[0].id, { replaceDraftId: "draft-1", quiet: true });
-    expect(ms.calls.some((c) => c.method === "DELETE" && c.url.endsWith("/messages/draft-1"))).toBe(
-      true,
+    expect((await latestJob("process_email", rows[0].id)).payload).toEqual({
+      emailId: rows[0].id,
+      redo: true,
+    });
+    await processEmail(rows[0].id, { redo: true });
+    expect((await latestJob("deliver_email_draft", rows[0].id)).payload).toEqual({
+      emailId: rows[0].id,
+      quiet: true,
+    });
+    ms.calls.length = 0;
+    await deliverEmailDraft(rows[0].id, { quiet: true });
+    expect(ms.calls.filter((c) => c.url.endsWith("/createReply"))).toHaveLength(1);
+    const removed = ms.calls.find(
+      (c) => c.method === "DELETE" && c.url.endsWith("/messages/draft-1"),
     );
-    expect(ms.calls.some((c) => c.url.endsWith("/createReply"))).toBe(true);
+    expect(removed?.ifMatch).toBe('W/"draft-1-v2"'); // only the version Billie wrote
+    expect(ms.etags.has("draft-1")).toBe(false);
     expect(ms.calls.some((c) => c.url.startsWith("https://prod-12."))).toBe(false);
-    expect(
-      (await db.query.emailThreads.findFirst({ where: eq(emailThreads.id, rows[0].id) }))
-        ?.outlookDraftId,
-    ).toBe("draft-2");
+    expect(await emailRow(rows[0].id)).toMatchObject({
+      outlookDraftId: "draft-2",
+      outlookDraftEtag: 'W/"draft-2-v2"',
+    });
+    // The same text again changes nothing in Outlook.
+    ms.calls.length = 0;
+    await deliverEmailDraft(rows[0].id, { quiet: true });
+    expect(ms.calls.some((c) => c.url.endsWith("/createReply"))).toBe(false);
+
+    // Someone edits Billie's draft in Outlook, then the team asks again: their draft stays.
+    ms.edit("draft-2");
+    await db.update(bots).set({ emailSignOff: "Cheers,\nUKCW" }).where(eq(bots.id, bot.id));
+    await db.update(jobs).set({ status: "done" }).where(eq(jobs.kind, "process_email"));
+    await redoDraft(admin, rows[0].id);
+    await processEmail(rows[0].id, { redo: true });
+    ms.calls.length = 0;
+    await deliverEmailDraft(rows[0].id, { quiet: true });
+    const refused = ms.calls.find(
+      (c) => c.method === "DELETE" && c.url.endsWith("/messages/draft-2"),
+    );
+    expect(refused?.ifMatch).toBe('W/"draft-2-v2"'); // Outlook says no: it has changed
+    expect(ms.etags.has("draft-2")).toBe(true);
+    expect((await emailRow(rows[0].id))?.outlookDraftId).toBe("draft-3");
   });
 
   it("tells the manager when an email needs a person, with no draft", async () => {
@@ -265,6 +304,7 @@ describe.skipIf(!hasDb)("event mailboxes and Teams (Postgres, stand-in Microsoft
     const address = `refunds-${uid()}@media-ten.test`;
     await saveMailbox(admin, bot.id, { address, assignedUserId: null, enabled: true });
     await setTeamsLink(admin, bot.id, TEAMS);
+    await startedReading(address);
     const id = uid();
     const ms = fakeMicrosoft({
       [address]: {
@@ -303,6 +343,7 @@ describe.skipIf(!hasDb)("event mailboxes and Teams (Postgres, stand-in Microsoft
     const fine = `fine-${uid()}@media-ten.test`;
     await saveMailbox(admin, a.id, { address: blocked, assignedUserId: null, enabled: true });
     await saveMailbox(admin, b.id, { address: fine, assignedUserId: null, enabled: true });
+    await startedReading(fine);
     // The fine mailbox's sync point has expired: Billie starts it again.
     const expired = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(fine)}/mailFolders/inbox/messages/delta?$deltatoken=old`;
     await db.update(botMailboxes).set({ deltaLink: expired }).where(eq(botMailboxes.address, fine));
@@ -333,6 +374,174 @@ describe.skipIf(!hasDb)("event mailboxes and Teams (Postgres, stand-in Microsoft
     ms.calls.length = 0;
     await syncAllMailboxes();
     expect(ms.calls.some((c) => c.url.includes(encodeURIComponent(blocked)))).toBe(false);
+  });
+
+  it("drafts only mail that arrives after Billie starts reading, and never old mail again", async () => {
+    const admin = await makeUser("admin");
+    const { bot } = await makeBot();
+    const address = `start-${uid()}@media-ten.test`;
+    await saveMailbox(admin, bot.id, { address, assignedUserId: null, enabled: true });
+    const minutesAgo = (n: number) => new Date(Date.now() - n * 60_000);
+    const value: unknown[] = [
+      message(`before-${uid()}`, "sam@stands.example", "Already here", "x", "", minutesAgo(5)),
+    ];
+    const ms = fakeMicrosoft({ [address]: { value } });
+    vi.stubGlobal("fetch", ms.fetchMock);
+    const count = async () =>
+      (await db.select().from(emailThreads).where(eq(emailThreads.mailbox, address))).length;
+
+    // The first sync starts now: what's already in the inbox isn't drafted.
+    await syncAllMailboxes();
+    expect(await count()).toBe(0);
+    const box = await db.query.botMailboxes.findFirst({ where: eq(botMailboxes.address, address) });
+    expect(box?.syncFrom).toBeInstanceOf(Date);
+
+    // New mail is.
+    value.push(
+      message(
+        `new-${uid()}`,
+        "sam@stands.example",
+        "New question",
+        "x",
+        "",
+        new Date(Date.now() + 1000),
+      ),
+    );
+    await syncAllMailboxes();
+    expect(await count()).toBe(1);
+
+    // Old mail shows up again when something changes on it (read, flagged): it's left alone,
+    // so emails removed by retention never come back.
+    value.push(
+      message(
+        `old-${uid()}`,
+        "sam@stands.example",
+        "Last year",
+        "x",
+        "",
+        minutesAgo(60 * 24 * 400),
+      ),
+    );
+    await syncAllMailboxes();
+    expect(await count()).toBe(1);
+
+    // Switched off, then on again: Billie starts afresh, without the mail from while it was off.
+    await saveMailbox(admin, bot.id, { address, assignedUserId: null, enabled: false });
+    await saveMailbox(admin, bot.id, { address, assignedUserId: null, enabled: true });
+    expect(
+      await db.query.botMailboxes.findFirst({ where: eq(botMailboxes.address, address) }),
+    ).toMatchObject({ syncFrom: null, deltaLink: null });
+    value.push(message(`off-${uid()}`, "sam@stands.example", "While off", "x", "", minutesAgo(2)));
+    await syncAllMailboxes();
+    expect(await count()).toBe(1);
+  });
+
+  it("never takes in again an email a person asked Billie to forget", async () => {
+    const admin = await makeUser("admin");
+    const { bot } = await makeBot();
+    const address = `gdpr-${uid()}@media-ten.test`;
+    await saveMailbox(admin, bot.id, { address, assignedUserId: null, enabled: true });
+    await startedReading(address);
+    const sender = `erase-${uid()}@example.com`;
+    const ms = fakeMicrosoft({
+      [address]: { value: [message(`gdpr-${uid()}`, sender, "Question", "Please call me.")] },
+    });
+    vi.stubGlobal("fetch", ms.fetchMock);
+    await syncAllMailboxes();
+    expect(
+      await db.select().from(emailThreads).where(eq(emailThreads.mailbox, address)),
+    ).toHaveLength(1);
+
+    await deletePerson(admin, sender);
+    expect(
+      await db.select().from(emailThreads).where(eq(emailThreads.mailbox, address)),
+    ).toHaveLength(0);
+    // The email changes in Outlook, so the sync sees it again: it stays forgotten.
+    await db.update(botMailboxes).set({ deltaLink: null }).where(eq(botMailboxes.address, address));
+    await syncAllMailboxes();
+    expect(
+      await db.select().from(emailThreads).where(eq(emailThreads.mailbox, address)),
+    ).toHaveLength(0);
+  });
+
+  it("keeps the reply in Billie when Outlook won't take it, and still tells the team", async () => {
+    const admin = await makeUser("admin");
+    const { bot, kb } = await makeBot();
+    await addAndRead(admin, kb.id, {
+      kind: "text",
+      title: "Badges",
+      body: "Each exhibitor gets four badges.",
+    });
+    const address = `readonly-${uid()}@media-ten.test`;
+    await saveMailbox(admin, bot.id, { address, assignedUserId: null, enabled: true });
+    await setTeamsLink(admin, bot.id, TEAMS);
+    await startedReading(address);
+    const inbox = {
+      [address]: {
+        value: [
+          message(
+            `ro1-${uid()}`,
+            "sam@stands.example",
+            "Badges",
+            "How many badges do we get?",
+            "Sam",
+          ),
+          message(`ro2-${uid()}`, "kim@stands.example", "Badges", "How many badges?", "Kim"),
+        ],
+      },
+    };
+    // Read-only access: a refusal that won't fix itself.
+    const readOnly = fakeMicrosoft(inbox, { refuseDrafts: 403 });
+    vi.stubGlobal("fetch", readOnly.fetchMock);
+    await syncAllMailboxes();
+    const [a, b] = await db
+      .select()
+      .from(emailThreads)
+      .where(eq(emailThreads.mailbox, address))
+      .orderBy(emailThreads.fromEmail);
+    await processEmail(a.id);
+    await processEmail(b.id);
+    await deliverEmailDraft(b.id);
+    expect((await emailRow(b.id))?.error).toMatch(
+      /^Billie couldn't save this reply in Outlook\. Billie can read this mailbox but isn't allowed to save drafts/,
+    );
+    expect(
+      (await db.query.botMailboxes.findFirst({ where: eq(botMailboxes.address, address) }))
+        ?.draftError,
+    ).toMatch(/isn't allowed to save drafts/);
+    const post = JSON.stringify(readOnly.calls.find((c) => c.url === TEAMS)?.body);
+    expect(post).toContain("a reply is ready in Billie");
+    expect(post).toContain(`couldn't be saved in Drafts in ${address}`);
+
+    // Microsoft busy: tried again later, and on the last try the team is told anyway.
+    const busy = fakeMicrosoft(inbox, { refuseDrafts: 503 });
+    vi.stubGlobal("fetch", busy.fetchMock);
+    await expect(deliverEmailDraft(a.id)).rejects.toThrow(/Graph 503/);
+    expect(busy.calls.some((c) => c.url === TEAMS)).toBe(false);
+    await deliverEmailDraft(a.id, { lastTry: true });
+    expect((await emailRow(a.id))?.error).toMatch(/couldn't save this reply in Outlook/);
+    expect(busy.calls.some((c) => c.url === TEAMS)).toBe(true);
+
+    // Once a draft is saved again, the mailbox's problem clears.
+    vi.stubGlobal("fetch", fakeMicrosoft(inbox).fetchMock);
+    await deliverEmailDraft(a.id);
+    expect(await emailRow(a.id)).toMatchObject({ error: null, outlookDraftId: "draft-1" });
+    expect(
+      (await db.query.botMailboxes.findFirst({ where: eq(botMailboxes.address, address) }))
+        ?.draftError,
+    ).toBeNull();
+  });
+
+  it("checks it can read the inbox and save a draft, leaving nothing behind", async () => {
+    const address = `check-${uid()}@media-ten.test`;
+    const ok = fakeMicrosoft({});
+    vi.stubGlobal("fetch", ok.fetchMock);
+    expect(await checkMailbox(address)).toBeNull();
+    const removed = ok.calls.find((c) => c.url.endsWith("/permanentDelete"));
+    expect(removed?.ifMatch).toBe('W/"draft-1-v1"');
+    expect(ok.etags.size).toBe(0);
+    vi.stubGlobal("fetch", fakeMicrosoft({}, { refuseDrafts: 403 }).fetchMock);
+    expect(await checkMailbox(address)).toMatch(/isn't allowed to save drafts/);
   });
 
   it("posts chats that need a person to the bot's own Teams channel", async () => {

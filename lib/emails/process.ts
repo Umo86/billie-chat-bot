@@ -36,21 +36,14 @@ import { enqueue, PermanentJobError } from "@/lib/jobs/queue";
  * which saves the reply in the mailbox's Drafts and posts in the event's
  * Teams channel. Kept apart so a retry never pays for the drafting twice.
  */
-export async function processEmail(
-  emailId: string,
-  opts: { redo?: boolean; replaceDraftId?: string | null } = {},
-): Promise<void> {
+export async function processEmail(emailId: string, opts: { redo?: boolean } = {}): Promise<void> {
   const email = await db.query.emailThreads.findFirst({ where: eq(emailThreads.id, emailId) });
   if (!email) throw new PermanentJobError("Email not found");
   if (["sent", "dismissed"].includes(email.status)) return;
-  // A person asked for a new draft: Billie replaces its old one in Outlook and doesn't post again.
+  // A person asked for a new draft: it replaces Billie's old one in Outlook, without a new post.
   const deliver = () =>
     email.source === "outlook"
-      ? enqueue("deliver_email_draft", {
-          emailId,
-          ...(opts.replaceDraftId ? { replaceDraftId: opts.replaceDraftId } : {}),
-          ...(opts.redo ? { quiet: true } : {}),
-        })
+      ? enqueue("deliver_email_draft", { emailId, ...(opts.redo ? { quiet: true } : {}) })
       : Promise.resolve(null);
   await db
     .update(emailThreads)
@@ -114,7 +107,7 @@ export async function processEmail(
     const kbIds = bot ? (await answerBotFor(bot)).knowledgeBaseIds : [];
     const passages = await retrieve(kbIds, `${email.subject}\n${email.body}`.slice(0, 4000));
     // The bot's own sign-off, else the company's in Settings.
-    const signature = bot?.emailSignOff.trim() || settings.emailSignature;
+    const signature = (bot?.emailSignOff.trim() || settings.emailSignature).trim();
     const drafted = await structured({
       purpose: "email_draft",
       model: modelFor("thorough"),
@@ -123,13 +116,12 @@ export async function processEmail(
         show,
         tone: bot?.tone ?? "friendly",
         personality: bot?.personality ?? "",
-        signature,
       }),
       knowledge: knowledgeBlock(passages),
       user: emailDraftUser(prompt),
       schema: emailDraftJsonSchema,
       maxTokens: 1500,
-      fake: { purpose: "email_draft", email: prompt, passages, signature },
+      fake: { purpose: "email_draft", email: prompt, passages },
     });
     await recordUsage("email", drafted.usage);
     const d = emailDraftSchema.parse(drafted.json);
@@ -137,7 +129,9 @@ export async function processEmail(
     const ok = d.confident && Boolean(draft);
     if (!ok && bot) await recordGap(bot.id, d.missing.trim() || email.subject);
 
-    const text = ok ? draft : d.holding.trim() || draft;
+    const body = ok ? draft : d.holding.trim() || draft;
+    // The sign-off is added here, word for word, not left to Claude.
+    const text = body ? `${body}\n\n${signature}`.trim() : "";
     await db
       .update(emailThreads)
       .set({

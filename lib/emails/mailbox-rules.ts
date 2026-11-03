@@ -115,6 +115,24 @@ export function syncWasReset(err: unknown): boolean {
   return err instanceof GraphError && (err.status === 410 || /syncstate|resync/i.test(err.code));
 }
 
+/**
+ * A failure saving a draft that trying again won't fix: no write access
+ * (403), the email is gone from the mailbox (404), or Graph refused the
+ * request (400). Timeouts, throttling and Microsoft's own errors are retried.
+ */
+export function draftFailureIsFinal(err: unknown): boolean {
+  return err instanceof GraphError && [400, 403, 404, 410].includes(err.status);
+}
+
+/** Why a reply couldn't be saved in Drafts, in words for the screen. */
+export function draftProblem(err: unknown): string {
+  if (err instanceof GraphError && (err.status === 401 || err.status === 403))
+    return 'Billie can read this mailbox but isn\'t allowed to save drafts in it. Ask IT to give Billie the "Application Mail.ReadWrite" role for it.';
+  if (err instanceof GraphError && (err.status === 404 || err.status === 410))
+    return "The email was moved or deleted in Outlook before Billie could reply to it.";
+  return mailboxProblem(err);
+}
+
 /** What went wrong with a mailbox, in words for the screen. */
 export function mailboxProblem(err: unknown): string {
   if (err instanceof MicrosoftSignInError)

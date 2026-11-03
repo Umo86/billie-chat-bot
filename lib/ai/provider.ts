@@ -28,7 +28,7 @@ export type StructuredCall = {
 export type FakeContext =
   | { purpose: "answer"; question: string; passages: PromptPassage[]; alwaysHuman: string[] }
   | { purpose: "email_tag"; email: PromptEmail; alwaysHuman: string[] }
-  | { purpose: "email_draft"; email: PromptEmail; passages: PromptPassage[]; signature: string };
+  | { purpose: "email_draft"; email: PromptEmail; passages: PromptPassage[] };
 
 export type Usage = { inputTokens: number; outputTokens: number; cachedTokens: number };
 

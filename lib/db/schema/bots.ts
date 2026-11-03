@@ -99,9 +99,17 @@ export const botMailboxes = pgTable(
     enabled: boolean("enabled").notNull().default(true),
     /** Microsoft Graph delta link: where the next sync of this mailbox carries on from. */
     deltaLink: text("delta_link"),
+    /**
+     * Billie only takes mail received from here on: set at its first sync,
+     * and again when the mailbox is switched back on or its address changes
+     * (null until then). Mail from before is never drafted.
+     */
+    syncFrom: timestamp("sync_from", { withTimezone: true }),
     lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
     /** Why the last sync failed, in words for the screen (null when it worked). */
     lastError: text("last_error"),
+    /** Why the last reply couldn't be saved in Drafts, in words (null once one is saved). */
+    draftError: text("draft_error"),
     ...timestamps,
   },
   (t) => [

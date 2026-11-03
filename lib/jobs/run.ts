@@ -38,12 +38,11 @@ const handlers: Handlers = {
   process_email: async (p) =>
     (await import("@/lib/emails/process")).processEmail(String(p.emailId), {
       redo: p.redo === true,
-      replaceDraftId: typeof p.replaceDraftId === "string" ? p.replaceDraftId : null,
     }),
-  deliver_email_draft: async (p) =>
+  deliver_email_draft: async (p, job) =>
     (await import("@/lib/emails/deliver")).deliverEmailDraft(String(p.emailId), {
-      replaceDraftId: typeof p.replaceDraftId === "string" ? p.replaceDraftId : null,
       quiet: p.quiet === true,
+      lastTry: job.attempts >= job.maxAttempts,
     }),
   outlook_sync: async () => {
     await (await import("@/lib/channels/outlook")).syncAllMailboxes();

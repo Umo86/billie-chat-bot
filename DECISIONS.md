@@ -78,28 +78,47 @@ open anyone else's mail. Only admins connect a mailbox or a Teams link,
 because everyone on the team then sees that mailbox's emails in Billie.
 
 - **Sync**: a Graph delta query per mailbox, every minute, a few mailboxes
-  at a time. The first sync asks for the last two days only. The sync point
-  is saved after every page, so a busy inbox is never re-read from the top.
-  One mailbox failing (no access, wrong address) never stops the others;
-  its problem is saved in words for the screen. Auto-replies, bounces and
-  meeting replies are skipped, so a mailshot doesn't fill Drafts and Teams.
+  at a time. Billie drafts only mail that arrives after it starts reading
+  (its first sync, or being switched back on), so connecting a mailbox
+  doesn't draft its backlog. The delta query also returns old mail when
+  something changes on it (read, flagged); anything older than a week, or
+  from before Billie started, is left alone, so emails removed by
+  retention never come back. Emails erased on a privacy request are
+  remembered (`email_tombstones`, 30 days) so the sync never takes them in
+  again. The sync point is saved after every page; one mailbox failing
+  never stops the others, and its problem is saved in words for the
+  screen. Auto-replies, bounces and meeting replies are skipped.
 - **Drafting and delivery are two jobs.** `process_email` calls Claude and
-  saves the reply; `deliver_email_draft` puts it in Outlook and posts to
-  Teams. A Teams or Graph failure retries the delivery without paying for
-  the drafting again, and the Outlook draft is made once (its id is saved).
+  saves the reply; `deliver_email_draft` puts it in Outlook and tells the
+  team. A Teams or Graph failure retries the delivery without paying for
+  the drafting again.
+- **One draft per text, and never someone else's work.** The email keeps
+  the Outlook draft's id, its etag and a hash of the text it holds. A new
+  text (after "Write it again") gets a new draft, recorded only if nothing
+  changed meanwhile (else the spare is thrown away); Billie's old draft is
+  then deleted with `If-Match` on the etag Billie saved, so a draft someone
+  has edited, or sent, is never removed.
+- **When Outlook refuses** (no write access, the email has gone) or on the
+  last try, the reason is saved on the email and the mailbox, and the team
+  is still told: the post says the reply is in Billie. "Check the mailbox"
+  makes and removes a test draft, so it catches read-only access.
 - **The draft is HTML.** Graph's `createReply` comment loses line breaks, so
   Billie makes an empty reply and writes its text (escaped, with `<br>`)
-  above the quoted email. "Write it again" replaces Billie's own draft, and
-  only while it is still an unsent draft.
+  above the quoted email. The sign-off is added in code, word for word,
+  never left to Claude.
 - **Teams posts** go to a Teams Workflows link. Only Microsoft's hosts are
   accepted (no requests elsewhere), redirects are refused, and the link is
   never shown or logged once saved. What visitors and senders wrote goes in
   plain text runs, not Markdown, so nobody can slip a link into a channel.
   The mailbox manager is @mentioned by their Billie email, which must be
   their Microsoft 365 address.
-- **Migrations only add.** They run before a new version goes live, while
-  the old one is still serving, so a column is dropped one release after
-  the code stops using it (`settings.outlook_delta_link` is next).
+- **Deploys overlap.** Migrations run before a new version goes live, while
+  the old one is still serving, so they only add; a column is dropped one
+  release after the code stops using it (`settings.outlook_delta_link` is
+  next). A job kind the running version doesn't know is retried, not
+  failed, so the new version picks it up.
+- **Logs and stored job errors** never carry query values (an email's
+  text, a Teams link): `safeError()` leaves them out.
 
 ## Teams messages to people: one workflow, not a Teams app
 

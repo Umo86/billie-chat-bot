@@ -20,6 +20,7 @@ export type BotEmailSetup = {
     enabled: boolean;
     lastSyncedAt: Date | null;
     lastError: string | null;
+    draftError: string | null;
   } | null;
   /** The saved Teams link's host (e.g. "prod-12.uksouth.logic.azure.com"), never the link. */
   teams: string | null;
@@ -35,6 +36,7 @@ export async function botEmailSetup(botId: string): Promise<BotEmailSetup> {
         enabled: true,
         lastSyncedAt: true,
         lastError: true,
+        draftError: true,
       },
     }),
     db.query.bots.findFirst({ where: eq(bots.id, botId), columns: { teamsWebhookUrl: true } }),
@@ -93,12 +95,18 @@ export async function saveMailbox(
       columns: { address: true, assignedUserId: true, enabled: true },
     });
     const moved = before && before.address !== address;
+    // Switched back on: Billie starts from now, not with the mail that came in while it was off.
+    const restarted = before && !before.enabled && input.enabled;
     const values = {
       address,
       assignedUserId: input.assignedUserId,
       enabled: input.enabled,
       // A different mailbox starts its sync afresh.
-      ...(moved ? { deltaLink: null, lastSyncedAt: null, lastError: null } : {}),
+      ...(moved
+        ? { deltaLink: null, syncFrom: null, lastSyncedAt: null, lastError: null, draftError: null }
+        : restarted
+          ? { deltaLink: null, syncFrom: null }
+          : {}),
     };
     if (before) {
       await tx.update(botMailboxes).set(values).where(eq(botMailboxes.botId, botId));
@@ -183,6 +191,7 @@ export async function mailboxOverview() {
       enabled: botMailboxes.enabled,
       lastSyncedAt: botMailboxes.lastSyncedAt,
       lastError: botMailboxes.lastError,
+      draftError: botMailboxes.draftError,
       manager: users.fullName,
       teams: bots.teamsWebhookUrl,
     })

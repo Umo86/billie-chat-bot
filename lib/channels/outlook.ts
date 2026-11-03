@@ -1,10 +1,12 @@
 import "server-only";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { botMailboxes, bots, emailThreads } from "@/lib/db/schema";
+import { botMailboxes, bots, emailThreads, emailTombstones } from "@/lib/db/schema";
 import { microsoftConfigured } from "@/lib/config";
 import { enqueue } from "@/lib/jobs/queue";
+import { safeError } from "@/lib/errors";
 import {
+  draftProblem,
   GraphError,
   MicrosoftSignInError,
   mailboxProblem,
@@ -101,20 +103,41 @@ type GraphMessage = {
   "@removed"?: unknown;
 };
 
-type SyncBox = { id: string; botId: string; address: string; deltaLink: string | null };
+type SyncBox = {
+  id: string;
+  botId: string;
+  address: string;
+  deltaLink: string | null;
+  syncFrom: Date | null;
+};
 
-/** How far back the first sync of a mailbox looks: new mail only, not years of history. */
-const FIRST_SYNC_DAYS = 2;
+/**
+ * Mail Billie looks at: received since it started reading this mailbox, and
+ * within the last week. The delta query also returns older mail when
+ * something changes on it (read, flagged); that is never drafted, so
+ * emails removed by retention don't come back.
+ */
+export const RECENT_DAYS = 7;
 
 /** One mailbox: new mail since the last sync, recorded once each and queued for a draft. */
 async function syncMailbox(box: SyncBox, now: Date, resetOnce = true): Promise<number> {
-  const since = new Date(now.getTime() - FIRST_SYNC_DAYS * 86_400_000).toISOString();
+  // The first sync (or the first after switching back on) starts now: no backlog.
+  let syncFrom = box.syncFrom;
+  if (!syncFrom) {
+    syncFrom = now;
+    await db
+      .update(botMailboxes)
+      .set({ syncFrom, deltaLink: null })
+      .where(eq(botMailboxes.id, box.id));
+    box = { ...box, syncFrom, deltaLink: null };
+  }
+  const oldest = Math.max(syncFrom.getTime(), now.getTime() - RECENT_DAYS * 86_400_000);
   let url =
     box.deltaLink ??
     `${user(box.address)}/mailFolders/inbox/messages/delta?` +
       new URLSearchParams({
         $select: "id,conversationId,subject,isDraft,receivedDateTime,from,body",
-        $filter: `receivedDateTime ge ${since}`,
+        $filter: `receivedDateTime ge ${new Date(oldest).toISOString()}`,
       }).toString();
   let added = 0;
   for (let page = 0; page < 20; page++) {
@@ -131,11 +154,31 @@ async function syncMailbox(box: SyncBox, now: Date, resetOnce = true): Promise<n
       }
       throw err;
     }
-    for (const m of res.value) {
-      if (m["@removed"] || m.isDraft) continue;
+    const fresh = res.value.filter((m) => {
+      if (m["@removed"] || m.isDraft) return false;
+      const received = m.receivedDateTime ? Date.parse(m.receivedDateTime) : NaN;
+      if (!Number.isFinite(received) || received < oldest) return false;
       const from = (m.from?.emailAddress?.address ?? "").trim().toLowerCase();
-      const subject = m.subject ?? "";
-      if (skipIncoming({ from, subject, mailbox: box.address })) continue;
+      return !skipIncoming({ from, subject: m.subject ?? "", mailbox: box.address });
+    });
+    // Emails someone asked Billie to forget stay forgotten.
+    const forgotten = fresh.length
+      ? new Set(
+          (
+            await db
+              .select({ id: emailTombstones.externalId })
+              .from(emailTombstones)
+              .where(
+                inArray(
+                  emailTombstones.externalId,
+                  fresh.map((m) => m.id),
+                ),
+              )
+          ).map((t) => t.id),
+        )
+      : new Set<string>();
+    for (const m of fresh) {
+      if (forgotten.has(m.id)) continue;
       const [row] = await db
         .insert(emailThreads)
         .values({
@@ -145,10 +188,10 @@ async function syncMailbox(box: SyncBox, now: Date, resetOnce = true): Promise<n
           mailbox: box.address,
           botId: box.botId,
           fromName: (m.from?.emailAddress?.name ?? "").slice(0, 200),
-          fromEmail: from.slice(0, 200),
-          subject: subject.slice(0, 300),
+          fromEmail: (m.from?.emailAddress?.address ?? "").trim().toLowerCase().slice(0, 200),
+          subject: (m.subject ?? "").slice(0, 300),
           body: (m.body?.content ?? "").slice(0, 20_000),
-          receivedAt: m.receivedDateTime ? new Date(m.receivedDateTime) : now,
+          receivedAt: new Date(m.receivedDateTime!),
         })
         .onConflictDoNothing({ target: emailThreads.externalId })
         .returning({ id: emailThreads.id });
@@ -177,6 +220,7 @@ async function mailboxesToSync(): Promise<SyncBox[]> {
       botId: botMailboxes.botId,
       address: botMailboxes.address,
       deltaLink: botMailboxes.deltaLink,
+      syncFrom: botMailboxes.syncFrom,
     })
     .from(botMailboxes)
     .innerJoin(bots, eq(bots.id, botMailboxes.botId))
@@ -210,7 +254,7 @@ export async function syncAllMailboxes(
           .where(eq(botMailboxes.id, box.id));
       } catch (err) {
         failed++;
-        console.warn("mailbox sync failed", err instanceof Error ? err.message : err);
+        console.warn("mailbox sync failed:", safeError(err));
         await db
           .update(botMailboxes)
           .set({ lastError: mailboxProblem(err) })
@@ -222,6 +266,9 @@ export async function syncAllMailboxes(
   return { mailboxes: boxes.length, added, failed };
 }
 
+/** A draft in Outlook: its id, and its version there (Graph's etag) when Billie last wrote it. */
+export type OutlookDraft = { id: string; etag: string | null };
+
 /**
  * A reply draft in the same Outlook thread, in the mailbox's Drafts:
  * Billie's text above the quoted email, with its line breaks kept.
@@ -230,13 +277,13 @@ export async function createReplyDraft(
   mailbox: string,
   messageId: string,
   text: string,
-): Promise<string> {
-  const draft = await graph<{ id: string; body?: { content?: string } }>(
+): Promise<OutlookDraft> {
+  const draft = await graph<{ id: string; "@odata.etag"?: string; body?: { content?: string } }>(
     `${message(mailbox, messageId)}/createReply`,
     { method: "POST", body: JSON.stringify({}), prefer: ['outlook.body-content-type="html"'] },
   );
   try {
-    await graph(message(mailbox, draft.id), {
+    const filled = await graph<{ "@odata.etag"?: string }>(message(mailbox, draft.id), {
       method: "PATCH",
       body: JSON.stringify({
         body: {
@@ -245,24 +292,55 @@ export async function createReplyDraft(
         },
       }),
     });
+    return { id: draft.id, etag: filled?.["@odata.etag"] ?? null };
   } catch (err) {
     // Don't leave an empty draft behind; the job tries again.
-    await graph(message(mailbox, draft.id), { method: "DELETE" }).catch(() => undefined);
+    await discardNewDraft(mailbox, { id: draft.id, etag: draft["@odata.etag"] ?? null }).catch(
+      () => undefined,
+    );
     throw err;
   }
-  return draft.id;
 }
 
 /**
- * Removes one of Billie's own earlier drafts (when the team asks for a new
- * one). Only while it is still an unsent draft; it goes to Deleted Items.
+ * Removes a draft Billie has just made and nobody has seen (it lost a race,
+ * or filling it failed): for good where Outlook allows it, so Deleted Items
+ * doesn't fill up; otherwise it goes to Deleted Items.
  */
-export async function removeOwnDraft(mailbox: string, draftId: string): Promise<void> {
+export async function discardNewDraft(mailbox: string, draft: OutlookDraft): Promise<void> {
+  const ifMatch = draft.etag ? { "if-match": draft.etag } : undefined;
   try {
-    const m = await graph<{ isDraft?: boolean }>(`${message(mailbox, draftId)}?$select=isDraft`);
-    if (m.isDraft) await graph(message(mailbox, draftId), { method: "DELETE" });
+    await graph(`${message(mailbox, draft.id)}/permanentDelete`, {
+      method: "POST",
+      headers: ifMatch,
+    });
   } catch (err) {
-    if (err instanceof GraphError && err.status === 404) return; // already gone
+    if (err instanceof GraphError && err.status === 404) return;
+    if (!draft.etag) throw err;
+    await graph(message(mailbox, draft.id), { method: "DELETE", headers: ifMatch });
+  }
+}
+
+/**
+ * Removes Billie's earlier draft for an email once a new one is in Drafts,
+ * but only if nobody has touched it since Billie wrote it: the delete
+ * carries the version Billie saved (If-Match), so a draft someone has
+ * edited, or sent, is left alone. It goes to Deleted Items.
+ */
+export async function removeUntouchedDraft(
+  mailbox: string,
+  draft: OutlookDraft,
+): Promise<"removed" | "kept"> {
+  if (!draft.etag) return "kept"; // no version saved: can't be sure nobody edited it
+  try {
+    await graph(message(mailbox, draft.id), {
+      method: "DELETE",
+      headers: { "if-match": draft.etag },
+    });
+    return "removed";
+  } catch (err) {
+    // 412: changed since (edited, sent or moved); 404: already gone.
+    if (err instanceof GraphError && (err.status === 412 || err.status === 404)) return "kept";
     throw err;
   }
 }
@@ -282,14 +360,30 @@ export async function tagMessage(
   });
 }
 
-/** Checks Billie can open the mailbox's inbox: null when it can, else the problem in words. */
+/**
+ * Checks Billie can do its job in the mailbox: read the inbox, and save a
+ * draft (a test draft is made and removed at once). Null when it can, else
+ * the problem in words.
+ */
 export async function checkMailbox(mailbox: string): Promise<string | null> {
   if (!microsoftConfigured())
     return "Microsoft 365 isn't connected yet. An admin adds MS_TENANT_ID, MS_CLIENT_ID and MS_CLIENT_SECRET in Vercel.";
   try {
     await graph(`${user(mailbox)}/mailFolders/inbox?$select=id`);
-    return null;
   } catch (err) {
     return mailboxProblem(err);
+  }
+  try {
+    const test = await graph<{ id: string; "@odata.etag"?: string }>(`${user(mailbox)}/messages`, {
+      method: "POST",
+      body: JSON.stringify({
+        subject: "Billie connection check (safe to delete)",
+        body: { contentType: "Text", content: "Billie checked it can save drafts here." },
+      }),
+    });
+    await discardNewDraft(mailbox, { id: test.id, etag: test["@odata.etag"] ?? null });
+    return null;
+  } catch (err) {
+    return draftProblem(err);
   }
 }

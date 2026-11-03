@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  draftFailureIsFinal,
+  draftProblem,
   GraphError,
   MicrosoftSignInError,
   mailboxProblem,
@@ -15,6 +17,7 @@ import {
 import { emailPostLines, emailTeamsCard, type EmailPost } from "@/lib/emails/teams-card";
 import { mentionName } from "@/lib/alerts/card";
 import { microsoftConfigured } from "@/lib/config";
+import { safeError } from "@/lib/errors";
 
 const WORKFLOW =
   "https://prod-12.uksouth.logic.azure.com:443/workflows/abc/triggers/manual/paths/invoke?api-version=2016-06-01&sig=secret";
@@ -109,6 +112,35 @@ describe("event mailbox rules", () => {
     expect(syncWasReset(new GraphError(403, "ErrorAccessDenied", "x"))).toBe(false);
   });
 
+  it("tells a draft failure that won't fix itself from one worth trying again", () => {
+    expect(draftFailureIsFinal(new GraphError(403, "ErrorAccessDenied", "x"))).toBe(true);
+    expect(draftFailureIsFinal(new GraphError(404, "ErrorItemNotFound", "x"))).toBe(true);
+    expect(draftFailureIsFinal(new GraphError(503, "ServerBusy", "x"))).toBe(false);
+    expect(draftFailureIsFinal(new GraphError(429, "", "x"))).toBe(false);
+    expect(draftFailureIsFinal(new Error("socket hang up"))).toBe(false);
+    expect(draftProblem(new GraphError(403, "ErrorAccessDenied", "x"))).toMatch(
+      /isn't allowed to save drafts in it\. Ask IT .*Application Mail\.ReadWrite/,
+    );
+    expect(draftProblem(new GraphError(404, "ErrorItemNotFound", "x"))).toMatch(
+      /moved or deleted in Outlook/,
+    );
+  });
+
+  it("logs errors without the values a database query carried", () => {
+    const err = new Error(
+      'Failed query: insert into "bots" ("teams_webhook_url") values ($1)\nparams: https://prod-1.logic.azure.com/x?sig=secret',
+    );
+    err.cause = Object.assign(new Error('invalid input syntax for type uuid: "abc-secret"'), {
+      name: "DatabaseError",
+    });
+    const line = safeError(err);
+    expect(line).toContain('Failed query: insert into "bots"');
+    expect(line).toContain("(values left out)");
+    expect(line).toContain("DatabaseError: invalid input syntax for type uuid:");
+    expect(line).not.toContain("secret");
+    expect(safeError("plain")).toBe("plain");
+  });
+
   it("needs the tenant, app and secret to connect Microsoft 365, and no single mailbox", () => {
     expect(
       microsoftConfigured({ MS_TENANT_ID: "t", MS_CLIENT_ID: "c", MS_CLIENT_SECRET: "s" }),
@@ -126,6 +158,7 @@ describe("the Teams post for a new email", () => {
     subject: "Build-up question",
     summary: "When build-up starts",
     outcome: "draft",
+    inOutlook: true,
     reason: null,
     urgent: false,
     assignee: { name: "Umit Bozdag", email: "umit@media-ten.com" },
@@ -155,6 +188,16 @@ describe("the Teams post for a new email", () => {
     expect(holding.lines.at(-1)).toMatch(/A holding reply is in Drafts/);
     const none = emailPostLines({ ...post, outcome: "needs_you", reason: null });
     expect(none.lines.at(-1)).toBe("There's no draft. Reply from ukcw-exhibitors@media-ten.com.");
+  });
+
+  it("says so when Outlook wouldn't take the draft, and where the reply is instead", () => {
+    const refused = emailPostLines({ ...post, inOutlook: false });
+    expect(refused.title).toBe("UKCW Exhibitor Help: a reply is ready in Billie");
+    expect(refused.lines.at(-1)).toBe(
+      "Billie's reply couldn't be saved in Drafts in ukcw-exhibitors@media-ten.com. Open it in Billie, check it and copy it into your reply.",
+    );
+    const holding = emailPostLines({ ...post, outcome: "holding", inOutlook: false, reason: null });
+    expect(holding.lines.at(-1)).toMatch(/A holding reply is in Billie \(it couldn't be saved/);
   });
 
   it("@mentions the mailbox manager and links to the email in Billie", () => {

@@ -175,8 +175,10 @@ export function EmailStep({
               <span>Billie reads this mailbox</span>
             </label>
             <p className="text-sm text-muted-foreground">
-              Everyone on the Billie team can see the emails Billie reads, on the Emails page.
-              Auto-replies, bounces and meeting replies are skipped.
+              Billie drafts replies to emails that arrive once it starts reading (and again from
+              when it&apos;s switched back on), not older mail. Auto-replies, bounces and meeting
+              replies are skipped. Everyone on the Billie team can see the emails Billie reads, on
+              the Emails page.
             </p>
             <div className="flex flex-wrap gap-2">
               <Button type="submit" variant="primary" disabled={pending}>

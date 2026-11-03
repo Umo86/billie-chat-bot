@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { and, eq, like } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { auditLog, emailThreads, jobs, settings } from "@/lib/db/schema";
+import { auditLog, botMailboxes, emailThreads, jobs, settings } from "@/lib/db/schema";
 import { directLinkLabel, queueDirect, sendDirect, setDirectLink } from "@/lib/alerts/direct";
 import { enqueue } from "@/lib/jobs/queue";
 import { notifyHandover } from "@/lib/alerts/notify";
@@ -105,6 +105,11 @@ describe.skipIf(!hasDb)("Teams messages to people (Postgres, stand-in Teams)", (
     const { bot } = await makeBot();
     const address = `dm-${uid()}@media-ten.test`;
     await saveMailbox(admin, bot.id, { address, assignedUserId: manager.id, enabled: true });
+    // As if Billie started reading this mailbox an hour ago.
+    await db
+      .update(botMailboxes)
+      .set({ syncFrom: new Date(Date.now() - 3_600_000) })
+      .where(eq(botMailboxes.address, address));
     // No channel for this bot: email posts never go to the company-wide channel.
     process.env.TEAMS_WEBHOOK_URL = TEAMS;
     const ms = fakeMicrosoft({

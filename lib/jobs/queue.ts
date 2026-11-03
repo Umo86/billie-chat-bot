@@ -2,6 +2,7 @@ import "server-only";
 import { and, eq, sql } from "drizzle-orm";
 import { db, query, type DbOrTx } from "@/lib/db/client";
 import { jobs } from "@/lib/db/schema";
+import { safeError } from "@/lib/errors";
 
 /**
  * Background jobs in Postgres: no extra service to run or pay for. A job is
@@ -106,7 +107,7 @@ export class PermanentJobError extends Error {
 }
 
 export async function fail(job: Job, err: unknown, now = new Date()): Promise<"retry" | "failed"> {
-  const message = (err instanceof Error ? err.message : String(err)).slice(0, 1000);
+  const message = err instanceof PermanentJobError ? err.message : safeError(err, 1000);
   const permanent = err instanceof PermanentJobError;
   if (permanent || job.attempts >= job.maxAttempts) {
     await db
@@ -145,15 +146,14 @@ export async function runDueJobs(
       batch.map(async (job) => {
         const handler = handlers[job.kind as JobKind];
         try {
-          if (!handler) throw new PermanentJobError(`No handler for ${job.kind}`);
+          // Not a permanent failure: during a deploy (or after a rollback) an older
+          // version can claim a job a newer one queued. It's retried with backoff.
+          if (!handler) throw new Error(`This version has no handler for ${job.kind}`);
           await handler(job.payload, job);
           await complete(job.id);
           result.done++;
         } catch (err) {
-          console.error(
-            `job ${job.kind} ${job.id} failed`,
-            err instanceof Error ? err.message : err,
-          );
+          console.error(`job ${job.kind} ${job.id} failed:`, safeError(err));
           const outcome = await fail(job, err);
           if (outcome === "retry") result.retried++;
           else result.failed++;

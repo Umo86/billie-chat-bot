@@ -212,15 +212,15 @@ export default async function SettingsPage({
                       · Managed by {m.manager ?? "nobody yet"} ·{" "}
                       {m.teams ? "Posts to its Teams channel" : "No Teams channel"}
                     </p>
-                    {m.enabled && m.lastError ? (
-                      <p className="text-sm text-bad">{m.lastError}</p>
+                    {m.enabled && (m.lastError || m.draftError) ? (
+                      <p className="text-sm text-bad">{m.lastError ?? m.draftError}</p>
                     ) : null}
                   </div>
                   <Chip
                     tone={
                       !m.enabled
                         ? "neutral"
-                        : m.lastError
+                        : m.lastError || m.draftError
                           ? "bad"
                           : m.lastSyncedAt
                             ? "good"
@@ -229,7 +229,7 @@ export default async function SettingsPage({
                   >
                     {!m.enabled
                       ? "Off"
-                      : m.lastError
+                      : m.lastError || m.draftError
                         ? "Problem"
                         : m.lastSyncedAt
                           ? `Checked ${timeAgo(m.lastSyncedAt)}`

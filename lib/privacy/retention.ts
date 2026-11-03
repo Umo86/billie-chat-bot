@@ -1,7 +1,14 @@
 import "server-only";
 import { and, isNotNull, lt, sql } from "drizzle-orm";
 import { db, query } from "@/lib/db/client";
-import { bots, conversations, emailThreads, knowledgeBases, sources } from "@/lib/db/schema";
+import {
+  bots,
+  conversations,
+  emailThreads,
+  emailTombstones,
+  knowledgeBases,
+  sources,
+} from "@/lib/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { getSettings } from "@/lib/settings";
 import { deleteStoredFile } from "@/lib/storage";
@@ -13,6 +20,8 @@ import { deleteStoredFile } from "@/lib/storage";
  * one audit row with the counts, never the content.
  */
 export const BIN_DAYS = 30;
+/** How long erased Outlook emails are remembered (longer than the sync's one-week window). */
+export const TOMBSTONE_DAYS = 30;
 
 export function retentionCutoff(months: number, now = new Date()): Date {
   const d = new Date(now);
@@ -33,6 +42,10 @@ export async function runRetention(now = new Date()): Promise<Record<string, num
     .delete(emailThreads)
     .where(lt(emailThreads.receivedAt, cutoff))
     .returning({ id: emailThreads.id });
+  // Erased Outlook emails only need remembering while the sync could still take them (a week).
+  await db
+    .delete(emailTombstones)
+    .where(lt(emailTombstones.createdAt, new Date(now.getTime() - TOMBSTONE_DAYS * 86_400_000)));
 
   const oldSources = await db
     .delete(sources)

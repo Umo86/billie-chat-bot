@@ -92,7 +92,7 @@ test("build knowledge, then a bot that answers from it", async ({ page }) => {
   await page.getByRole("button", { name: "Save mailbox" }).click();
   await expect(page.getByText("Mailbox saved.")).toBeVisible();
   await expect(page.getByTestId("mailbox-status")).toContainText(
-    "Billie starts once Microsoft 365 is connected.",
+    "Billie starts once Microsoft 365 is connected",
   );
   await expect(page.getByLabel("Mailbox address")).toHaveValue("ukcw-exhibitors@media-ten.test");
   // Only a Teams Workflows link is taken, and it's never shown again once saved.

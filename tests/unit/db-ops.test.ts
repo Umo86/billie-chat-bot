@@ -50,6 +50,17 @@ describe.skipIf(!hasDb)("job queue (Postgres)", () => {
   });
 });
 
+describe.skipIf(!hasDb)("jobs a version doesn't know yet (Postgres)", () => {
+  it("are tried again later, not failed: a newer version may be about to take over", async () => {
+    const id = (await enqueue("deliver_email_draft", { emailId: "x" }))!;
+    await runDueJobs({}, { budgetMs: 5000 });
+    const row = await db.query.jobs.findFirst({ where: eq(jobs.id, id) });
+    expect(row?.status).toBe("queued");
+    expect(row?.lastError).toContain("This version has no handler for deliver_email_draft");
+    await db.delete(jobs).where(eq(jobs.id, id));
+  });
+});
+
 describe.skipIf(!hasDb)("rate limits and the daily cap (Postgres)", () => {
   it("counts within a window and starts afresh after it", async () => {
     const key = `ip:${Math.random()}`;

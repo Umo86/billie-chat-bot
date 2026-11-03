@@ -57,6 +57,13 @@
       "when": 1793711859760,
       "tag": "0007_teams_direct_messages",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793712977453,
+      "tag": "0008_review_fixes_mailboxes",
+      "breakpoints": true
     }
   ]
 }

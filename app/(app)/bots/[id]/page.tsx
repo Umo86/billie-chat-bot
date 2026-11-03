@@ -105,15 +105,15 @@ export default async function BotPage({
             ? null
             : !m.enabled
               ? { tone: "neutral", text: "Switched off: Billie isn't reading it." }
-              : m.lastError
-                ? { tone: "bad", text: m.lastError }
+              : m.lastError || m.draftError
+                ? { tone: "bad", text: (m.lastError ?? m.draftError)! }
                 : m.lastSyncedAt
                   ? { tone: "good", text: `Last checked ${timeAgo(m.lastSyncedAt)}.` }
                   : {
                       tone: "neutral",
                       text: microsoft
-                        ? "Saved. Billie checks it within a minute."
-                        : "Saved. Billie starts once Microsoft 365 is connected.",
+                        ? "Saved. Billie checks it within a minute, and drafts replies to emails that arrive from then on."
+                        : "Saved. Billie starts once Microsoft 365 is connected, with the emails that arrive from then on.",
                     }
         }
         teams={setup.teams}

@@ -18,6 +18,8 @@ export type EmailPost = {
    * reply is in Drafts. needs_you: no draft (a topic that always goes to a person).
    */
   outcome: "draft" | "holding" | "needs_you";
+  /** The reply is in the mailbox's Drafts (false: Outlook refused it; it's in Billie). */
+  inOutlook: boolean;
   reason: string | null;
   urgent: boolean;
   assignee: { name: string; email: string } | null;
@@ -26,9 +28,11 @@ export type EmailPost = {
 
 export function emailPostLines(p: EmailPost): { title: string; lines: string[] } {
   const title =
-    p.outcome === "draft"
-      ? `${p.botName}: a reply is waiting in Drafts`
-      : `${p.botName}: an email needs a person`;
+    p.outcome !== "draft"
+      ? `${p.botName}: an email needs a person`
+      : p.inOutlook
+        ? `${p.botName}: a reply is waiting in Drafts`
+        : `${p.botName}: a reply is ready in Billie`;
   const from = p.fromName ? `${p.fromName} (${p.fromEmail})` : p.fromEmail;
   const lines = [
     `From: ${from}`,
@@ -36,11 +40,17 @@ export function emailPostLines(p: EmailPost): { title: string; lines: string[] }
     ...(p.summary ? [`They want: ${p.summary}`] : []),
     ...(p.urgent ? ["Billie thinks this is urgent."] : []),
     ...(p.outcome === "draft"
-      ? [`Billie's reply is in Drafts in ${p.mailbox}. Check it, then send it from Outlook.`]
+      ? [
+          p.inOutlook
+            ? `Billie's reply is in Drafts in ${p.mailbox}. Check it, then send it from Outlook.`
+            : `Billie's reply couldn't be saved in Drafts in ${p.mailbox}. Open it in Billie, check it and copy it into your reply.`,
+        ]
       : p.outcome === "holding"
         ? [
             p.reason ?? "Billie wasn't sure of the answer.",
-            `A holding reply is in Drafts in ${p.mailbox}. Check it, or write your own.`,
+            p.inOutlook
+              ? `A holding reply is in Drafts in ${p.mailbox}. Check it, or write your own.`
+              : `A holding reply is in Billie (it couldn't be saved in ${p.mailbox}). Check it, or write your own.`,
           ]
         : [p.reason ?? "This needs a person.", `There's no draft. Reply from ${p.mailbox}.`]),
   ];

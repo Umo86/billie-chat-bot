@@ -7,7 +7,7 @@ import { ChatError } from "@/lib/conversations/service";
 import { KnowledgeError } from "@/lib/knowledge/sources";
 import { AccountError } from "@/lib/team/accounts";
 import { UnsafeUrlError } from "@/lib/knowledge/web";
-import { UserError } from "@/lib/errors";
+import { safeError, UserError } from "@/lib/errors";
 import { fail, success, type ActionResult } from "./result";
 
 export { UserError };
@@ -56,7 +56,7 @@ export async function runAction<S extends z.ZodType, T>(
   } catch (err) {
     const text = friendly(err);
     if (text) return fail(text);
-    console.error(`action ${action} failed`, err);
+    console.error(`action ${action} failed:`, safeError(err));
     return fail("Something went wrong. Try again, and tell an admin if it keeps happening.");
   }
 }

@@ -1,7 +1,13 @@
 import "server-only";
-import { asc, inArray, sql } from "drizzle-orm";
+import { and, asc, inArray, isNotNull, sql } from "drizzle-orm";
 import { db, query } from "@/lib/db/client";
-import { conversations, emailThreads, messages, whatsappContacts } from "@/lib/db/schema";
+import {
+  conversations,
+  emailThreads,
+  emailTombstones,
+  messages,
+  whatsappContacts,
+} from "@/lib/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { UserError } from "@/lib/errors";
 import type { Actor } from "@/lib/authz";
@@ -113,7 +119,19 @@ export async function deletePerson(actor: Actor, raw: string) {
   const { chatIds, emailIds } = await matchingIds(q);
   await db.transaction(async (tx) => {
     if (chatIds.length) await tx.delete(conversations).where(inArray(conversations.id, chatIds));
-    if (emailIds.length) await tx.delete(emailThreads).where(inArray(emailThreads.id, emailIds));
+    if (emailIds.length) {
+      // Outlook keeps its copy: remember not to take those emails in again.
+      const outlook = await tx
+        .select({ externalId: emailThreads.externalId })
+        .from(emailThreads)
+        .where(and(inArray(emailThreads.id, emailIds), isNotNull(emailThreads.externalId)));
+      if (outlook.length)
+        await tx
+          .insert(emailTombstones)
+          .values(outlook.map((e) => ({ externalId: e.externalId! })))
+          .onConflictDoNothing();
+      await tx.delete(emailThreads).where(inArray(emailThreads.id, emailIds));
+    }
     if (q.kind === "phone")
       await tx.delete(whatsappContacts).where(sql`${whatsappContacts.waId} = ${q.value}`);
     await writeAudit(tx, {

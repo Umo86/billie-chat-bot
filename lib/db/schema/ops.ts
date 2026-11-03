@@ -45,6 +45,14 @@ export const emailThreads = pgTable(
     draftSources: jsonb("draft_sources").$type<MessageSource[]>().notNull().default([]),
     /** The reply draft Billie put in Outlook, when the mailbox is connected. */
     outlookDraftId: text("outlook_draft_id"),
+    /**
+     * That draft's version in Outlook when Billie wrote it (Graph's etag).
+     * Billie only ever removes its draft if it still has this version, so a
+     * draft someone has edited or sent is never touched.
+     */
+    outlookDraftEtag: text("outlook_draft_etag"),
+    /** Which text the Outlook draft holds (a hash of `draft`): a new text gets a new draft. */
+    outlookDraftVersion: text("outlook_draft_version"),
     error: text("error"),
     handledBy: uuid("handled_by").references(() => users.id, { onDelete: "set null" }),
     handledAt: timestamp("handled_at", { withTimezone: true }),
@@ -60,6 +68,20 @@ export const emailThreads = pgTable(
     index("email_threads_bot_idx").on(t.botId),
     index("email_threads_handled_by_idx").on(t.handledBy),
   ],
+);
+
+/**
+ * Outlook emails a person asked Billie to forget (privacy requests). Outlook
+ * still has them, and a change there (read, flagged) would show them to the
+ * sync again; it skips these. Kept 30 days: older mail is never taken anyway.
+ */
+export const emailTombstones = pgTable(
+  "email_tombstones",
+  {
+    externalId: text("external_id").primaryKey(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("email_tombstones_created_idx").on(t.createdAt)],
 );
 
 /**
