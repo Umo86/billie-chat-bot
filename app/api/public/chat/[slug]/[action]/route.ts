@@ -20,10 +20,12 @@ import {
   handover,
   rateMessage,
   submitDetails,
+  submitRequest,
   visitorMessage,
   visitorUpdates,
 } from "@/lib/conversations/service";
 import type { HandoverReason } from "@/lib/conversations/handover";
+import { cleanAnswers, REQUEST_CONTACT } from "@/lib/requests/rules";
 
 /**
  * The public chat API, used by the chat frame (/embed/…) and the chat page
@@ -36,6 +38,7 @@ import type { HandoverReason } from "@/lib/conversations/handover";
  *   POST details           { contact } when nobody is online
  *   POST cancel            close the details form
  *   POST rating            { messageId, rating: 1 | -1 }
+ *   POST request           { typeId, answers, contact } from a request form
  *
  * A chat belongs to whoever holds its token (Authorization: Bearer …). No
  * cookies, no visitor accounts. Every write is rate limited.
@@ -108,6 +111,11 @@ const messageBody = z.object({
   channel: z.enum(["web", "hosted", "try"]).optional(),
 });
 const detailsBody = z.object({ contact: z.record(z.string(), z.unknown()) });
+const requestBody = z.object({
+  typeId: z.string().min(1).max(20),
+  answers: z.record(z.string(), z.unknown()),
+  contact: z.record(z.string(), z.unknown()),
+});
 const ratingBody = z.object({
   messageId: z.uuid(),
   rating: z.union([z.literal(1), z.literal(-1)]),
@@ -115,7 +123,7 @@ const ratingBody = z.object({
 
 export async function POST(request: Request, ctx: Ctx): Promise<Response> {
   const { slug, action } = await ctx.params;
-  if (!["messages", "handover", "details", "cancel", "rating"].includes(action))
+  if (!["messages", "handover", "details", "cancel", "rating", "request"].includes(action))
     return problem(404, "Not found.");
   let body: unknown = {};
   try {
@@ -166,6 +174,21 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
       return json(await handover(bot, conversation.id, reason));
     }
     if (action === "cancel") return json(await cancelDetails(conversation.id));
+    if (action === "request") {
+      const parsed = requestBody.safeParse(body);
+      if (!parsed.success) return problem(400, "Check the form.");
+      if (!(await allow(`chat:request:${ip}`, LIMITS.chatRequest)))
+        return problem(429, "You've sent a lot of requests. Wait a while, or email the team.");
+      // WhatsApp can't show forms; and only this bot's own requests.
+      const type =
+        channel === "whatsapp" ? null : bot.requestTypes.find((t) => t.id === parsed.data.typeId);
+      if (!type) return problem(404, "That request isn't available any more. Ask again.");
+      const { answers, errors } = cleanAnswers(type, parsed.data.answers);
+      const { contact, errors: contactErrors } = cleanContact(REQUEST_CONTACT, parsed.data.contact);
+      if (Object.keys(errors).length || Object.keys(contactErrors).length)
+        return problem(400, "Check the form.", { fieldErrors: { ...errors, ...contactErrors } });
+      return json(await submitRequest(bot, conversation.id, type, answers, contact));
+    }
     if (action === "details") {
       const parsed = detailsBody.safeParse(body);
       if (!parsed.success) return problem(400, "Check your details.");

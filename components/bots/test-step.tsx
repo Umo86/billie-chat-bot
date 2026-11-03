@@ -17,6 +17,8 @@ type Line =
       text: string;
       sources: { title: string; label: string }[];
       handover: HandoverKind;
+      /** The request form the chat would show under this answer. */
+      request: string | null;
     };
 
 const HANDOVER_NOTE: Record<HandoverKind, string | null> = {
@@ -61,7 +63,13 @@ export function TestStep({
         d &&
         setLines((ls) => [
           ...ls,
-          { role: "bot", text: d.answer, sources: d.sources, handover: d.handover },
+          {
+            role: "bot",
+            text: d.answer,
+            sources: d.sources,
+            handover: d.handover,
+            request: d.request,
+          },
         ]),
     });
   }
@@ -131,6 +139,11 @@ export function TestStep({
                     From:{" "}
                     {l.sources.map((s) => `${s.title}${s.label ? ` (${s.label})` : ""}`).join("; ")}
                   </p>
+                ) : null}
+                {l.request ? (
+                  <Note className="text-sm">
+                    The chat would show the &ldquo;{l.request}&rdquo; request form here.
+                  </Note>
                 ) : null}
                 {HANDOVER_NOTE[l.handover] ? (
                   <Note tone="warn" className="text-sm">

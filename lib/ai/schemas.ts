@@ -20,8 +20,12 @@ export const answerJsonSchema = {
     confident: { type: "boolean" },
     handover: { type: "string", enum: [...HANDOVER_VALUES] },
     topic: { type: "string", description: "Two to four word topic." },
+    request: {
+      type: "string",
+      description: "The id of the request form to offer, or an empty string.",
+    },
   },
-  required: ["answer", "used", "confident", "handover", "topic"],
+  required: ["answer", "used", "confident", "handover", "topic", "request"],
   additionalProperties: false,
 } as const;
 
@@ -31,6 +35,7 @@ export const answerSchema = z.object({
   confident: z.boolean(),
   handover: z.enum(HANDOVER_VALUES),
   topic: z.string(),
+  request: z.string().optional().default(""),
 });
 export type AnswerJson = z.infer<typeof answerSchema>;
 

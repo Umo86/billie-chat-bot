@@ -169,6 +169,24 @@ runs on the job queue (it can take a minute), only when someone presses
 the button, and counts towards the daily cap. Results are kept per
 knowledge base, so the team sees the latest one and when it was made.
 
+## Requests from chat are forms, not free text
+
+A bot can take the requests the team handles by email today (extra
+build-up hours, a vehicle on a stand, rigging…). The team picks which on
+the bot's Rules step, from ready-made ones or their own, with the
+questions to ask. Claude only decides whether someone wants one (a request
+id in its structured reply, checked against the bot's list); the details
+come from a form the person fills in, so nothing is guessed or copied
+wrong. Each request gets a reference (R-1001…), an owner (its own handler,
+else whoever manages the event mailbox), a Teams message to that person, a
+status and a message to the person. The person follows it on a page of its
+own at /r/<token> (it shows what they sent and the team's message, never
+their email or phone), and is emailed when it changes once email is set
+up. Forms show on websites and the chat page, not WhatsApp. Files aren't
+taken yet: uploads from a public chat need their own safe path (size and
+type checks, private storage, clean-up), so people add a link for now.
+Requests follow the chat retention period and the privacy tools.
+
 ## Search: hybrid full-text + vectors
 
 Postgres full-text (a generated `tsvector`) and Voyage embeddings (HNSW

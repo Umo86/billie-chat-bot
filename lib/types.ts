@@ -80,3 +80,35 @@ export type CheckIssue = {
   /** The sources involved; id and kind when Billie could match the title. */
   sources: { title: string; id?: string; kind?: "file" | "text" | "qa" | "web" }[];
 };
+
+/** A field on a request form: a line, a paragraph or a date. */
+export type RequestField = {
+  id: string;
+  label: string;
+  kind: "short" | "long" | "date";
+  required: boolean;
+};
+
+/** Something the team takes through the chat, e.g. extra build-up hours (lib/requests/rules.ts). */
+export type RequestType = {
+  id: string;
+  name: string;
+  /** When the bot offers it, in the team's words. */
+  when: string;
+  fields: RequestField[];
+  /** Who handles it; null means whoever manages the bot's event mailbox. */
+  handlerId: string | null;
+};
+
+/** What the person filled in, with the labels as they were then. */
+export type RequestAnswer = { label: string; value: string };
+
+/** The form the chat shows when the person wants to make a request. */
+export type RequestOffer = {
+  typeId: string;
+  name: string;
+  fields: RequestField[];
+  contact: ContactField[];
+};
+
+export type RequestStatus = "new" | "in_progress" | "done" | "declined";

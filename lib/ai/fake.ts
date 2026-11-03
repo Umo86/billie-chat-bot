@@ -58,10 +58,24 @@ function bestPassage(
   return { index: best, sentences: (sentences.length ? sentences : [text]).slice(0, 3).join(" ") };
 }
 
+const WANTS =
+  /\b(want|wants|need|needs|like to|request|book|apply|arrange|can we have|could we have)\b/i;
+
+const COMMON = new Set(["stand", "stands", "shell", "space", "only", "show", "change"]);
+
+/** A request whose name shares a meaningful word with a question that asks for something. */
+function requestHit(question: string, requests: { id: string; name: string }[]): string {
+  if (!WANTS.test(question)) return "";
+  const words = new Set(searchTerms(question));
+  const telling = (w: string) => w.length > 3 && !COMMON.has(w) && words.has(w);
+  return requests.find((r) => searchTerms(r.name).some(telling))?.id ?? "";
+}
+
 function fakeAnswer(
   question: string,
   passages: PromptPassage[],
   alwaysHuman: string[],
+  requests: { id: string; name: string }[] = [],
 ): AnswerJson {
   if (PERSON.test(question)) {
     return {
@@ -70,6 +84,7 @@ function fakeAnswer(
       confident: true,
       handover: "asked_for_person",
       topic: "Speak to a person",
+      request: "",
     };
   }
   if (alwaysHumanHit(question, alwaysHuman)) {
@@ -79,6 +94,7 @@ function fakeAnswer(
       confident: true,
       handover: "always_human",
       topic: "Always a person",
+      request: "",
     };
   }
   if (OFF_TOPIC.test(question)) {
@@ -88,6 +104,19 @@ function fakeAnswer(
       confident: true,
       handover: "none",
       topic: "Off topic",
+      request: "",
+    };
+  }
+  const request = requestHit(question, requests);
+  if (request) {
+    const hit = bestPassage(question, passages);
+    return {
+      answer: `${hit ? `${hit.sentences} ` : ""}You can send this request with the form below.`,
+      used: hit ? [hit.index + 1] : [],
+      confident: true,
+      handover: "none",
+      topic: "Request",
+      request,
     };
   }
   const hit = bestPassage(question, passages);
@@ -98,6 +127,7 @@ function fakeAnswer(
       confident: false,
       handover: "unknown",
       topic: "Unknown",
+      request: "",
     };
   }
   return {
@@ -106,6 +136,7 @@ function fakeAnswer(
     confident: true,
     handover: "none",
     topic: passages[hit.index].sourceTitle.slice(0, 40),
+    request: "",
   };
 }
 
@@ -233,7 +264,7 @@ function fakeCheck(ctx: Extract<FakeContext, { purpose: "knowledge_check" }>): K
 export function fakeStructured(ctx: FakeContext): unknown {
   switch (ctx.purpose) {
     case "answer":
-      return fakeAnswer(ctx.question, ctx.passages, ctx.alwaysHuman);
+      return fakeAnswer(ctx.question, ctx.passages, ctx.alwaysHuman, ctx.requests);
     case "email_tag":
       return fakeTag(ctx);
     case "email_draft":

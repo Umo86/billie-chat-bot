@@ -41,5 +41,6 @@ export async function answerBotFor(bot: BotRow): Promise<AnswerBot> {
     quality: bot.quality,
     rules: bot.rules,
     knowledgeBaseIds: await knowledgeBaseIdsFor(bot.id),
+    requestTypes: bot.requestTypes,
   };
 }

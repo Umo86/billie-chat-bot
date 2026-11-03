@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { db, type Tx } from "@/lib/db/client";
-import { conversations, messages, users } from "@/lib/db/schema";
+import { botMailboxes, chatRequests, conversations, messages, users } from "@/lib/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { enqueue } from "@/lib/jobs/queue";
 import { kickJobs } from "@/lib/jobs/kick";
@@ -10,7 +10,16 @@ import { answerBotFor, type BotRow } from "@/lib/bots/load";
 import { recordGap } from "@/lib/knowledge/gap-store";
 import { hashToken, newToken } from "@/lib/chat/token";
 import type { Actor } from "@/lib/authz";
-import type { ContactDetails, ContactField, MessageSource } from "@/lib/types";
+import type {
+  ContactDetails,
+  ContactField,
+  MessageSource,
+  RequestAnswer,
+  RequestOffer,
+  RequestType,
+} from "@/lib/types";
+import { appUrl, emailConfigured } from "@/lib/config";
+import { offerFor, requestRef } from "@/lib/requests/rules";
 import {
   afterAnswer,
   afterRating,
@@ -52,6 +61,8 @@ export type Turn = {
   offer: { reason: HandoverReason } | null;
   /** Show the details form (nobody online). */
   form: { fields: ContactField[]; promise: string } | null;
+  /** Show a request form under Billie's answer (web and the chat page only). */
+  request: RequestOffer | null;
 };
 
 export class ChatError extends Error {
@@ -240,14 +251,17 @@ export async function visitorMessage(input: {
     messages: await view([visitorRow]),
     offer: null,
     form: status === "collecting" ? formFor(input.bot) : null,
+    request: null,
   };
   if (botPaused(status)) return out; // A person has this chat; the Inbox shows the new message.
 
   // 2. Billie answers.
   let answer;
   try {
+    const answerBot = await answerBotFor(input.bot);
     answer = await answerQuestion({
-      bot: await answerBotFor(input.bot),
+      // WhatsApp can't show a form, so requests are only offered on the web.
+      bot: input.channel === "whatsapp" ? { ...answerBot, requestTypes: [] } : answerBot,
       history,
       question: text,
       from: input.channel === "try" ? "staff" : "visitor",
@@ -275,9 +289,12 @@ export async function visitorMessage(input: {
     }),
   );
   out.messages.push(...(await view([botRow])));
+  out.request = offerFor(input.bot.requestTypes, answer.request);
 
   const decision = afterAnswer(answer.handover);
-  if (decision.kind === "offer") {
+  if (out.request) {
+    // They're making a request: the form is the next step, not the team.
+  } else if (decision.kind === "offer") {
     await recordGap(input.bot.id, text);
     out.offer = { reason: decision.reason };
   } else if (decision.kind === "now") {
@@ -345,6 +362,7 @@ export async function handover(
     messages: await view(result.rows),
     offer: null,
     form: result.status === "collecting" ? formFor(bot) : null,
+    request: null,
   };
 }
 
@@ -399,7 +417,14 @@ export async function submitDetails(
     return [line];
   });
   await kickJobs();
-  return { conversationId, status: "ticket", messages: await view(rows), offer: null, form: null };
+  return {
+    conversationId,
+    status: "ticket",
+    messages: await view(rows),
+    offer: null,
+    form: null,
+    request: null,
+  };
 }
 
 export async function cancelDetails(conversationId: string): Promise<Turn> {
@@ -413,7 +438,124 @@ export async function cancelDetails(conversationId: string): Promise<Turn> {
     });
     return { status, rows: [line] };
   });
-  return { conversationId, status, messages: await view(rows), offer: null, form: null };
+  return {
+    conversationId,
+    status,
+    messages: await view(rows),
+    offer: null,
+    form: null,
+    request: null,
+  };
+}
+
+/** Who handles a new request: its own handler, else whoever manages the bot's event mailbox. */
+async function requestHandler(tx: Tx, botId: string, type: RequestType): Promise<string | null> {
+  const ids = [type.handlerId].filter((x): x is string => Boolean(x));
+  const [box] = await tx
+    .select({ userId: botMailboxes.assignedUserId })
+    .from(botMailboxes)
+    .where(eq(botMailboxes.botId, botId))
+    .limit(1);
+  if (box?.userId) ids.push(box.userId);
+  for (const id of ids) {
+    const u = await tx.query.users.findFirst({
+      where: and(eq(users.id, id), eq(users.status, "active")),
+      columns: { id: true },
+    });
+    if (u) return u.id;
+  }
+  return null;
+}
+
+/**
+ * A request from the chat's form: saved with who handles it, the person's
+ * details added to the chat, a line in the chat with their reference and
+ * the link to follow it, and the team told (the "notify_request" job).
+ * Pressing Send twice gives one request.
+ */
+export async function submitRequest(
+  bot: BotRow,
+  conversationId: string,
+  type: RequestType,
+  answers: RequestAnswer[],
+  contact: ContactDetails,
+): Promise<Turn> {
+  const rows = await db.transaction(async (tx) => {
+    const c = await lock(tx, conversationId);
+    if (c.status === "closed")
+      throw new ChatError("closed", "This chat has ended. Start a new one.");
+    const [recent] = await tx
+      .select({ ref: chatRequests.ref })
+      .from(chatRequests)
+      .where(
+        and(
+          eq(chatRequests.conversationId, c.id),
+          eq(chatRequests.typeId, type.id),
+          sql`${chatRequests.answers} = ${JSON.stringify(answers)}::jsonb`,
+          sql`${chatRequests.createdAt} > now() - interval '10 minutes'`,
+        ),
+      )
+      .limit(1);
+    if (recent) {
+      const line = await insertMessage(tx, c.id, {
+        role: "system",
+        text: `Your request ${requestRef(recent.ref)} is already with the team.`,
+      });
+      return [line];
+    }
+    const trackToken = newToken();
+    const [req] = await tx
+      .insert(chatRequests)
+      .values({
+        botId: bot.id,
+        conversationId: c.id,
+        typeId: type.id,
+        typeName: type.name,
+        answers,
+        contact,
+        assignedTo: await requestHandler(tx, bot.id, type),
+        trackToken,
+      })
+      .returning({ id: chatRequests.id, ref: chatRequests.ref });
+    await tx
+      .update(conversations)
+      .set({ contact: { ...(c.contact as ContactDetails), ...contact } })
+      .where(eq(conversations.id, c.id));
+    const name = firstName(contact.name);
+    const line = await insertMessage(tx, c.id, {
+      role: "system",
+      text: [
+        `Thanks${name ? `, ${name}` : ""}. Your request ${requestRef(req.ref)} (${type.name}) is with the team.`,
+        emailConfigured() ? "You'll get an email when it changes." : "",
+        `Follow it here: ${appUrl()}/r/${trackToken}`,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    });
+    await writeAudit(tx, {
+      actorType: "visitor",
+      entityType: "request",
+      entityId: req.id,
+      action: "create",
+      summary: `New request ${requestRef(req.ref)} (${type.name}) in a chat with ${bot.name}`,
+    });
+    await enqueue(
+      "notify_request",
+      { requestId: req.id },
+      { tx, dedupeKey: `notify-request:${req.id}` },
+    );
+    return [line];
+  });
+  await kickJobs();
+  const c = await db.query.conversations.findFirst({ where: eq(conversations.id, conversationId) });
+  return {
+    conversationId,
+    status: c?.status ?? "bot",
+    messages: await view(rows),
+    offer: null,
+    form: null,
+    request: null,
+  };
 }
 
 /** Thumbs up or down on one of Billie's answers; two downs in a row offers the team. */
@@ -469,6 +611,7 @@ export async function visitorUpdates(
     messages: await view(rows),
     offer: null,
     form: conversation.status === "collecting" ? formFor(bot) : null,
+    request: null,
   };
 }
 

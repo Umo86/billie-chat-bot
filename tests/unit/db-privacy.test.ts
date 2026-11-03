@@ -46,7 +46,7 @@ describe.skipIf(!hasDb)("privacy requests", () => {
     expect(await findPerson(email)).toMatchObject({ chats: 1, emails: 1 });
     expect(await findPerson(`0${phone.slice(2)}`)).toMatchObject({ chats: 1, emails: 0 });
 
-    expect(await deletePerson(admin, email)).toEqual({ chats: 1, emails: 1 });
+    expect(await deletePerson(admin, email)).toEqual({ chats: 1, emails: 1, requests: 0 });
     expect(
       await db.query.conversations.findFirst({ where: eq(conversations.id, mine.id) }),
     ).toBeUndefined();

@@ -25,6 +25,12 @@ type Msg = {
   rating: number | null;
   createdAt: string;
 };
+type RequestOffer = {
+  typeId: string;
+  name: string;
+  fields: { id: string; label: string; kind: "short" | "long" | "date"; required: boolean }[];
+  contact: ContactField[];
+};
 type Turn = {
   conversationId: string;
   status: Status;
@@ -32,6 +38,7 @@ type Turn = {
   messages: Msg[];
   offer: { reason: string } | null;
   form: { fields: ContactField[]; promise: string } | null;
+  request?: RequestOffer | null;
 };
 
 const POLL_MS = 3000;
@@ -105,10 +112,11 @@ export function ChatApp({
   const [status, setStatus] = useState<Status>("bot");
   const [offer, setOffer] = useState<Turn["offer"]>(null);
   const [form, setForm] = useState<Turn["form"]>(null);
+  const [request, setRequest] = useState<RequestOffer | null>(null);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<Partial<Record<ContactField, string>>>({});
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [restored, setRestored] = useState(false);
   const list = useRef<HTMLOListElement>(null);
   const tokenRef = useRef<string | null>(null);
@@ -149,7 +157,10 @@ export function ChatApp({
       });
       setStatus(turn.status);
       setForm(turn.form);
-      if (replaceOffer) setOffer(turn.offer);
+      if (replaceOffer) {
+        setOffer(turn.offer);
+        setRequest(turn.request ?? null);
+      }
     },
     [key],
   );
@@ -163,6 +174,7 @@ export function ChatApp({
     setStatus("bot");
     setOffer(null);
     setForm(null);
+    setRequest(null);
   }, [key]);
 
   // Carry on a chat this browser already has.
@@ -219,7 +231,7 @@ export function ChatApp({
   // Keep the newest message in view.
   useEffect(() => {
     list.current?.lastElementChild?.scrollIntoView({ block: "end" });
-  }, [messages, offer, form, busy]);
+  }, [messages, offer, form, request, busy]);
 
   async function send(raw: string) {
     const q = raw.trim();
@@ -288,6 +300,20 @@ export function ChatApp({
   async function askForPerson() {
     setOffer(null);
     const turn = await post("handover");
+    if (turn) absorb(turn as Turn);
+  }
+
+  async function sendRequest(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!request) return;
+    setFieldErrors({});
+    const answers: Record<string, string> = {};
+    const contact: Record<string, string> = {};
+    for (const [k, v] of new FormData(e.currentTarget).entries()) {
+      if (k.startsWith("a:")) answers[k.slice(2)] = String(v);
+      if (k.startsWith("c:")) contact[k.slice(2)] = String(v);
+    }
+    const turn = await post("request", { typeId: request.typeId, answers, contact });
     if (turn) absorb(turn as Turn);
   }
 
@@ -475,6 +501,98 @@ export function ChatApp({
                 No thanks
               </button>
             </div>
+          </li>
+        ) : null}
+        {request && status !== "closed" && !form ? (
+          <li>
+            <form
+              onSubmit={sendRequest}
+              className="flex flex-col gap-2.5 rounded-[14px] border border-border p-3"
+              aria-label={`Request: ${request.name}`}
+            >
+              <p className="text-[0.92rem] font-semibold">{request.name}</p>
+              <p className="-mt-1.5 text-[0.82rem] text-muted-foreground">
+                Fill this in and the team will take it from there. You&apos;ll get a reference to
+                follow it.
+              </p>
+              {request.fields.map((f) => (
+                <label key={f.id} className="flex flex-col gap-1 text-[0.85rem] font-semibold">
+                  {f.label}
+                  {f.required ? "" : " (optional)"}
+                  {f.kind === "long" ? (
+                    <textarea
+                      name={`a:${f.id}`}
+                      required={f.required}
+                      maxLength={2000}
+                      rows={3}
+                      aria-invalid={!!fieldErrors[f.id]}
+                      className="resize-y rounded-[9px] border border-input bg-card px-3 py-2 text-[0.94rem] font-normal"
+                    />
+                  ) : (
+                    <input
+                      name={`a:${f.id}`}
+                      type={f.kind === "date" ? "date" : "text"}
+                      required={f.required}
+                      maxLength={200}
+                      aria-invalid={!!fieldErrors[f.id]}
+                      className="rounded-[9px] border border-input bg-card px-3 py-2 text-[0.94rem] font-normal"
+                    />
+                  )}
+                  {fieldErrors[f.id] ? (
+                    <span className="text-[0.8rem] font-normal text-bad">{fieldErrors[f.id]}</span>
+                  ) : null}
+                </label>
+              ))}
+              <p className="mt-1 text-[0.85rem] font-semibold">Your details</p>
+              {request.contact.map((f) => (
+                <label key={f} className="flex flex-col gap-1 text-[0.85rem] font-semibold">
+                  {FIELD_LABEL[f]}
+                  {f === "name" || f === "email" ? "" : " (optional)"}
+                  <input
+                    name={`c:${f}`}
+                    type={f === "email" ? "email" : f === "phone" ? "tel" : "text"}
+                    autoComplete={
+                      f === "name"
+                        ? "name"
+                        : f === "email"
+                          ? "email"
+                          : f === "phone"
+                            ? "tel"
+                            : f === "company"
+                              ? "organization"
+                              : "off"
+                    }
+                    required={f === "name" || f === "email"}
+                    maxLength={200}
+                    aria-invalid={!!fieldErrors[f]}
+                    className="rounded-[9px] border border-input bg-card px-3 py-2 text-[0.94rem] font-normal"
+                  />
+                  {fieldErrors[f] ? (
+                    <span className="text-[0.8rem] font-normal text-bad">{fieldErrors[f]}</span>
+                  ) : null}
+                </label>
+              ))}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="submit"
+                  disabled={busy}
+                  className="cursor-pointer rounded-full px-3.5 py-1.5 text-[0.88rem] font-bold disabled:opacity-60"
+                  style={{ background: bot.color, color: on }}
+                >
+                  Send the request
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRequest(null);
+                    setFieldErrors({});
+                  }}
+                  className="cursor-pointer rounded-full border border-border px-3.5 py-1.5 text-[0.88rem] font-semibold"
+                >
+                  Not now
+                </button>
+              </div>
+            </form>
           </li>
         ) : null}
         {form && status === "collecting" ? (

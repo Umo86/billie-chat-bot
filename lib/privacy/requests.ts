@@ -2,6 +2,7 @@ import "server-only";
 import { and, asc, inArray, isNotNull, sql } from "drizzle-orm";
 import { db, query } from "@/lib/db/client";
 import {
+  chatRequests,
   conversations,
   emailThreads,
   emailTombstones,
@@ -14,7 +15,8 @@ import type { Actor } from "@/lib/authz";
 
 /**
  * UK GDPR requests about one person: find what Billie holds (chats they left
- * details in, WhatsApp chats from their number, emails from their address),
+ * details in, WhatsApp chats from their number, emails from their address,
+ * requests they sent from a chat's form),
  * give them a copy, or delete it. Searches by email address or phone number.
  */
 export type PersonQuery = { kind: "email"; value: string } | { kind: "phone"; value: string };
@@ -48,19 +50,48 @@ async function matchingIds(q: PersonQuery) {
           sql`SELECT id FROM email_threads WHERE lower(from_email) = ${q.value}`,
         )
       : [];
-  return { chatIds: chats.map((r) => r.id), emailIds: emails.map((r) => r.id) };
+  const requests =
+    q.kind === "email"
+      ? await query<{ id: string }>(
+          db,
+          sql`SELECT id FROM chat_requests WHERE lower(contact->>'email') = ${q.value}`,
+        )
+      : await query<{ id: string }>(
+          db,
+          sql`SELECT id FROM chat_requests
+              WHERE regexp_replace(regexp_replace(coalesce(contact->>'phone', ''), '\\D', '', 'g'), '^0', '44') = ${q.value}`,
+        );
+  return {
+    chatIds: chats.map((r) => r.id),
+    emailIds: emails.map((r) => r.id),
+    requestIds: requests.map((r) => r.id),
+  };
 }
 
 export async function findPerson(raw: string) {
   const q = parsePersonQuery(raw);
-  const { chatIds, emailIds } = await matchingIds(q);
-  return { query: q, chats: chatIds.length, emails: emailIds.length };
+  const { chatIds, emailIds, requestIds } = await matchingIds(q);
+  return { query: q, chats: chatIds.length, emails: emailIds.length, requests: requestIds.length };
 }
 
 /** Everything Billie holds about the person, for a subject access request. */
 export async function exportPerson(actor: Actor, raw: string) {
   const q = parsePersonQuery(raw);
-  const { chatIds, emailIds } = await matchingIds(q);
+  const { chatIds, emailIds, requestIds } = await matchingIds(q);
+  const requests = requestIds.length
+    ? await db
+        .select({
+          ref: chatRequests.ref,
+          request: chatRequests.typeName,
+          status: chatRequests.status,
+          answers: chatRequests.answers,
+          contact: chatRequests.contact,
+          note: chatRequests.note,
+          sentAt: chatRequests.createdAt,
+        })
+        .from(chatRequests)
+        .where(inArray(chatRequests.id, requestIds))
+    : [];
   const chats = chatIds.length
     ? await db.select().from(conversations).where(inArray(conversations.id, chatIds))
     : [];
@@ -95,7 +126,7 @@ export async function exportPerson(actor: Actor, raw: string) {
     entityType: "privacy",
     entityId: null,
     action: "export",
-    summary: `Exported a person's data (${chats.length} chats, ${emails.length} emails)`,
+    summary: `Exported a person's data (${chats.length} chats, ${emails.length} emails, ${requests.length} requests)`,
   });
   return {
     generatedAt: new Date().toISOString(),
@@ -110,14 +141,17 @@ export async function exportPerson(actor: Actor, raw: string) {
         .map((l) => ({ at: l.createdAt, from: l.role, text: l.text })),
     })),
     emails,
+    requests: requests.map((r) => ({ ...r, ref: `R-${r.ref}` })),
   };
 }
 
-/** Deletes the person's chats (with their messages) and emails. The audit row keeps counts only. */
+/** Deletes the person's chats (with their messages), emails and requests. The audit row keeps counts only. */
 export async function deletePerson(actor: Actor, raw: string) {
   const q = parsePersonQuery(raw);
-  const { chatIds, emailIds } = await matchingIds(q);
+  const { chatIds, emailIds, requestIds } = await matchingIds(q);
   await db.transaction(async (tx) => {
+    if (requestIds.length)
+      await tx.delete(chatRequests).where(inArray(chatRequests.id, requestIds));
     if (chatIds.length) await tx.delete(conversations).where(inArray(conversations.id, chatIds));
     if (emailIds.length) {
       // Outlook keeps its copy: remember not to take those emails in again.
@@ -139,8 +173,8 @@ export async function deletePerson(actor: Actor, raw: string) {
       entityType: "privacy",
       entityId: null,
       action: "delete",
-      summary: `Deleted a person's data on request (${chatIds.length} chats, ${emailIds.length} emails)`,
+      summary: `Deleted a person's data on request (${chatIds.length} chats, ${emailIds.length} emails, ${requestIds.length} requests)`,
     });
   });
-  return { chats: chatIds.length, emails: emailIds.length };
+  return { chats: chatIds.length, emails: emailIds.length, requests: requestIds.length };
 }

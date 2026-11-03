@@ -10,10 +10,27 @@ import { Field, Input } from "@/components/ui/form";
 import { useRunner } from "@/components/ui/use-runner";
 import { deletePersonAction, findPersonAction } from "@/app/actions/settings";
 
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** "2 chats, 1 email and 1 request" */
+function holding(f: { chats: number; emails: number; requests: number }): string {
+  const parts = [
+    count(f.chats, "chat", "chats"),
+    count(f.emails, "email", "emails"),
+    count(f.requests, "request", "requests"),
+  ];
+  return `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
+}
+
 /** Requests from a person about their data: a copy, or deleting it (UK GDPR). */
 export function Privacy({ retentionMonths }: { retentionMonths: number }) {
   const [q, setQ] = useState("");
-  const [found, setFound] = useState<{ q: string; chats: number; emails: number } | null>(null);
+  const [found, setFound] = useState<{
+    q: string;
+    chats: number;
+    emails: number;
+    requests: number;
+  } | null>(null);
   const [confirm, setConfirm] = useState(false);
   const find = useRunner();
   const del = useRunner();
@@ -25,8 +42,9 @@ export function Privacy({ retentionMonths }: { retentionMonths: number }) {
           <h2 className="text-[1.05rem]">Someone asks for their data, or for it to be deleted</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Search by the email address or phone number they gave. You&apos;ll find chats where they
-            left details, WhatsApp chats from their number and emails from their address. Everything
-            else is deleted automatically after {retentionMonths} months.
+            left details, WhatsApp chats from their number, emails from their address and requests
+            they sent from a chat. Everything else is deleted automatically after {retentionMonths}{" "}
+            months.
           </p>
         </div>
         <form
@@ -34,7 +52,8 @@ export function Privacy({ retentionMonths }: { retentionMonths: number }) {
           onSubmit={(e) => {
             e.preventDefault();
             find.run(() => findPersonAction({ q }), {
-              done: (d) => d && setFound({ q, chats: d.chats, emails: d.emails }),
+              done: (d) =>
+                d && setFound({ q, chats: d.chats, emails: d.emails, requests: d.requests }),
             });
           }}
         >
@@ -46,13 +65,12 @@ export function Privacy({ retentionMonths }: { retentionMonths: number }) {
           </Button>
         </form>
         {found ? (
-          found.chats + found.emails === 0 ? (
+          found.chats + found.emails + found.requests === 0 ? (
             <Note>Nothing found for {found.q}.</Note>
           ) : (
             <Note tone="warn">
               <p>
-                Found {found.chats} {found.chats === 1 ? "chat" : "chats"} and {found.emails}{" "}
-                {found.emails === 1 ? "email" : "emails"} for {found.q}.
+                Found {holding(found)} for {found.q}.
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 <Button asChild size="sm">
@@ -72,9 +90,8 @@ export function Privacy({ retentionMonths }: { retentionMonths: number }) {
         {found ? (
           <DialogContent title={`Delete everything for ${found.q}?`}>
             <p>
-              {found.chats} {found.chats === 1 ? "chat" : "chats"} and {found.emails}{" "}
-              {found.emails === 1 ? "email" : "emails"} will be deleted for good. This can&apos;t be
-              undone. The audit log records that you did it, not what was deleted.
+              {holding(found)} will be deleted for good. This can&apos;t be undone. The audit log
+              records that you did it, not what was deleted.
             </p>
             <div className="flex justify-end gap-2">
               <DialogClose asChild>
@@ -89,7 +106,7 @@ export function Privacy({ retentionMonths }: { retentionMonths: number }) {
                       setConfirm(false);
                       setFound(null);
                       setQ("");
-                      if (d) toast.success(`Deleted ${d.chats} chats and ${d.emails} emails.`);
+                      if (d) toast.success(`Deleted ${holding(d)}.`);
                     },
                   })
                 }

@@ -19,6 +19,8 @@ export type JobKind =
   | "process_email"
   | "deliver_email_draft"
   | "notify_handover"
+  | "notify_request"
+  | "send_request_update"
   | "teams_direct"
   | "send_staff_reply"
   | "whatsapp_inbound"

@@ -1,5 +1,5 @@
 import "server-only";
-import type { AnswerMeta, BotRules, HandoverKind, MessageSource } from "@/lib/types";
+import type { AnswerMeta, BotRules, HandoverKind, MessageSource, RequestType } from "@/lib/types";
 import { retrieve } from "@/lib/knowledge/search";
 import { answerSchema } from "./schemas";
 import { answerJsonSchema } from "./schemas";
@@ -26,6 +26,8 @@ export type AnswerBot = {
   quality: "fast" | "thorough";
   rules: BotRules;
   knowledgeBaseIds: string[];
+  /** Requests it can take as a form; empty where a form can't be shown (WhatsApp). */
+  requestTypes: RequestType[];
 };
 
 export type AnswerResult = {
@@ -34,6 +36,8 @@ export type AnswerResult = {
   handover: HandoverKind;
   confident: boolean;
   topic: string;
+  /** The request form to show under the answer, if the person wants to make one. */
+  request: string | null;
   meta: AnswerMeta;
 };
 
@@ -88,12 +92,19 @@ export async function answerQuestion(input: {
       personality: bot.personality,
       emoji: bot.emoji,
       alwaysHuman: bot.rules.alwaysHuman,
+      requests: bot.requestTypes.map((r) => ({ id: r.id, name: r.name, when: r.when })),
     }),
     knowledge: knowledgeBlock(passages),
     user: answerUser(history, question),
     schema: answerJsonSchema,
     maxTokens: bot.quality === "thorough" ? 1200 : 700,
-    fake: { purpose: "answer", question, passages, alwaysHuman: bot.rules.alwaysHuman },
+    fake: {
+      purpose: "answer",
+      question,
+      passages,
+      alwaysHuman: bot.rules.alwaysHuman,
+      requests: bot.requestTypes.map((r) => ({ id: r.id, name: r.name })),
+    },
   });
 
   const parsed = answerSchema.safeParse(result.json);
@@ -105,6 +116,9 @@ export async function answerQuestion(input: {
   let handover: HandoverKind = r.handover;
   const answer = r.answer.trim().slice(0, 4000);
   if (!answer) handover = "unknown";
+  // Only a request this bot really has; making one is not a reason to hand over.
+  const request = bot.requestTypes.some((t) => t.id === r.request) ? r.request : null;
+  if (request && handover !== "always_human" && handover !== "asked_for_person") handover = "none";
 
   if (input.countUsage !== false) {
     await recordUsage(`bot:${bot.id}`, result.usage).catch((err) =>
@@ -118,6 +132,7 @@ export async function answerQuestion(input: {
     handover,
     confident: r.confident,
     topic: r.topic.slice(0, 60),
+    request: handover === "none" ? request : null,
     meta: {
       handover,
       confident: r.confident,

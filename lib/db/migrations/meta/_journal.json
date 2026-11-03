@@ -71,6 +71,13 @@
       "when": 1793718780960,
       "tag": "0009_knowledge_checks",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793719352596,
+      "tag": "0010_chat_requests",
+      "breakpoints": true
     }
   ]
 }

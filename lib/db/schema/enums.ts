@@ -76,3 +76,6 @@ export const auditAction = pgEnum("audit_action", [
   "reply",
   "handover",
 ]);
+
+/** A request from a chat: new → in_progress → done | declined (lib/requests/service.ts). */
+export const requestStatus = pgEnum("request_status", ["new", "in_progress", "done", "declined"]);

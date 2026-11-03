@@ -20,6 +20,8 @@ export const LIMITS = {
   chatPerConversation: { window: 3600, max: 120 },
   /** Per visitor address per day, across every bot. */
   chatDaily: { window: 86_400, max: 300 },
+  /** Requests sent from a chat's form, per visitor address. */
+  chatRequest: { window: 3600, max: 10 },
   /** WhatsApp, per sender. */
   whatsappSender: { window: 3600, max: 40 },
   whatsappSenderDaily: { window: 86_400, max: 200 },

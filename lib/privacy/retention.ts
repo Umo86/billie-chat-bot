@@ -3,6 +3,7 @@ import { and, isNotNull, lt, sql } from "drizzle-orm";
 import { db, query } from "@/lib/db/client";
 import {
   bots,
+  chatRequests,
   conversations,
   emailThreads,
   emailTombstones,
@@ -42,6 +43,10 @@ export async function runRetention(now = new Date()): Promise<Record<string, num
     .delete(emailThreads)
     .where(lt(emailThreads.receivedAt, cutoff))
     .returning({ id: emailThreads.id });
+  const requests = await db
+    .delete(chatRequests)
+    .where(lt(chatRequests.updatedAt, cutoff))
+    .returning({ id: chatRequests.id });
   // Erased Outlook emails only need remembering while the sync could still take them (a week).
   await db
     .delete(emailTombstones)
@@ -71,6 +76,7 @@ export async function runRetention(now = new Date()): Promise<Record<string, num
   const counts = {
     chats: chats.length,
     emails: emails.length,
+    requests: requests.length,
     sources: oldSources.length,
     bots: oldBots.length,
     knowledgeBases: oldKbs.length,
@@ -80,7 +86,7 @@ export async function runRetention(now = new Date()): Promise<Record<string, num
       actorType: "system",
       entityType: "retention",
       action: "purge",
-      summary: `Retention: deleted ${counts.chats} chats and ${counts.emails} emails older than ${s.retentionMonths} months; emptied ${counts.sources + counts.bots + counts.knowledgeBases} items from the bin`,
+      summary: `Retention: deleted ${counts.chats} chats, ${counts.emails} emails and ${counts.requests} requests older than ${s.retentionMonths} months; emptied ${counts.sources + counts.bots + counts.knowledgeBases} items from the bin`,
       after: counts,
     });
   }

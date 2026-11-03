@@ -8,6 +8,7 @@ import { LookForm } from "@/components/bots/look-form";
 import { PersonalityStep } from "@/components/bots/personality-step";
 import { KnowledgeStep } from "@/components/bots/knowledge-step";
 import { RulesStep } from "@/components/bots/rules-step";
+import { RequestsPanel } from "@/components/bots/requests-panel";
 import { EmailStep } from "@/components/bots/email-step";
 import { TestStep } from "@/components/bots/test-step";
 import { LiveStep } from "@/components/bots/live-step";
@@ -86,7 +87,22 @@ export default async function BotPage({
       />
     );
   } else if (step === "rules") {
-    body = <RulesStep botId={bot.id} initial={bot.rules} canEdit={canEdit} />;
+    const people = await mailboxManagers();
+    body = (
+      <div className="flex flex-col gap-4">
+        <RulesStep botId={bot.id} initial={bot.rules} canEdit={canEdit} />
+        <RequestsPanel
+          botId={bot.id}
+          initial={bot.requestTypes}
+          people={people.map((p) => ({
+            id: p.id,
+            name: p.name ? `${p.name} (${p.email})` : p.email,
+          }))}
+          canEdit={canEdit}
+          exhibitors={bot.audience === "exhibitors"}
+        />
+      </div>
+    );
   } else if (step === "email") {
     const canManage = can(actor, "settings.manage");
     const [setup, people] = await Promise.all([botEmailSetup(bot.id), mailboxManagers()]);

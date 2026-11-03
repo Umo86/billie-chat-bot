@@ -13,7 +13,7 @@ import {
   vector,
   boolean,
 } from "drizzle-orm/pg-core";
-import type { BotRules, CheckIssue, TestQuestion, TestRun } from "@/lib/types";
+import type { BotRules, CheckIssue, RequestType, TestQuestion, TestRun } from "@/lib/types";
 import { audience, botStatus, checkStatus, quality, sourceKind, sourceStatus, tone } from "./enums";
 import { users } from "./users";
 
@@ -66,6 +66,8 @@ export const bots = pgTable(
     domains: jsonb("domains").$type<string[]>().notNull().default([]),
     rules: jsonb("rules").$type<BotRules>().notNull(),
     tests: jsonb("tests").$type<TestQuestion[]>().notNull().default([]),
+    /** Requests the bot takes through the chat, as forms (lib/requests/rules.ts). */
+    requestTypes: jsonb("request_types").$type<RequestType[]>().notNull().default([]),
     lastTestRun: jsonb("last_test_run").$type<TestRun | null>(),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     ...timestamps,

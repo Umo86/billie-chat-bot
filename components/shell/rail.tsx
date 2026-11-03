@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   BarChart3,
   BookOpen,
+  ClipboardList,
   Home,
   Inbox,
   LogOut,
@@ -47,6 +48,7 @@ export function Rail({
       show: access.knowledge,
     },
     { href: "/inbox", label: "Inbox", icon: Inbox, count: "inbox", show: true },
+    { href: "/requests", label: "Requests", icon: ClipboardList, count: "requests", show: true },
     { href: "/emails", label: "Emails", icon: Mail, count: "emails", show: true },
     { href: "/try", label: "Try a bot", icon: MessagesSquare, show: access.bots },
     { href: "/reports", label: "Reports", icon: BarChart3, show: access.reports },

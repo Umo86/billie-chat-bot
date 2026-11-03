@@ -6,7 +6,7 @@ import { writeAudit } from "@/lib/audit";
 import { answerQuestion } from "@/lib/ai/answer";
 import { normaliseDomain } from "@/lib/chat/domains";
 import type { Actor } from "@/lib/authz";
-import type { BotRules, TestQuestion, TestResult, TestRun } from "@/lib/types";
+import type { BotRules, RequestType, TestQuestion, TestResult, TestRun } from "@/lib/types";
 import { UserError } from "@/lib/errors";
 import { answerBotFor, botById } from "./load";
 import { defaultQuality, defaultRules } from "./defaults";
@@ -37,6 +37,7 @@ export type BotPatch = Partial<
     rules: BotRules;
     domains: string[];
     tests: TestQuestion[];
+    requestTypes: RequestType[];
   }
 >;
 

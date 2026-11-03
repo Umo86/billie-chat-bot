@@ -17,6 +17,7 @@ import {
 import { CONTACT_FIELDS, PERSONALITY_MAX, SIGN_OFF_MAX } from "@/lib/bots/defaults";
 import { validTime } from "@/lib/conversations/hours";
 import { UserError } from "@/lib/errors";
+import { MAX_REQUEST_FIELDS, MAX_REQUEST_TYPES } from "@/lib/requests/rules";
 
 const AVATAR = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
 
@@ -82,6 +83,27 @@ const patch = z.object({
     )
     .max(50)
     .optional(),
+  requestTypes: z
+    .array(
+      z.object({
+        id: z.string().regex(/^[a-z0-9]{4,20}$/),
+        name: z.string().trim().min(2, "Give the request a name.").max(60),
+        when: z.string().trim().min(5, "Say when the bot should offer it.").max(200),
+        handlerId: z.uuid().nullable(),
+        fields: z
+          .array(
+            z.object({
+              id: z.string().regex(/^[a-z0-9]{4,20}$/),
+              label: z.string().trim().min(2, "Write the question.").max(80),
+              kind: z.enum(["short", "long", "date"]),
+              required: z.boolean(),
+            }),
+          )
+          .max(MAX_REQUEST_FIELDS),
+      }),
+    )
+    .max(MAX_REQUEST_TYPES, `A bot can take up to ${MAX_REQUEST_TYPES} requests.`)
+    .optional(),
 });
 
 function refresh(id?: string) {
@@ -113,6 +135,7 @@ export async function updateBotAction(input: unknown) {
         ...(data.rules ? { rules: data.rules } : {}),
         ...(data.domains ? { domains: data.domains } : {}),
         ...(data.tests ? { tests: data.tests } : {}),
+        ...(data.requestTypes ? { requestTypes: data.requestTypes } : {}),
       });
       refresh(data.id);
     },
@@ -187,6 +210,7 @@ export async function testAskAction(input: unknown) {
       answer: a.answer,
       sources: a.sources.map((s) => ({ title: s.title, label: s.label })),
       handover: a.handover,
+      request: bot.requestTypes.find((t) => t.id === a.request)?.name ?? null,
     };
   });
 }

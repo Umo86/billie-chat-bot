@@ -20,6 +20,11 @@ Chatbots, live handover and an email assistant for Media10 shows.
   in Drafts, and whoever is available when a visitor wants a person, get a
   Teams chat with an "Open in Billie" button (one company-wide workflow, set
   up in Settings → Connections).
+- **Requests from chat**: a bot can take requests such as extra build-up
+  hours as a short form in the chat. Each gets a reference (R-1001) and an
+  owner, shows on the Requests page with a Teams message to whoever handles
+  it, and the person follows it on a page of its own (and by email once
+  email is set up).
 - **Knowledge gaps**: questions the bots couldn't answer, fixed in one click.
 - **Knowledge you can change in place**: edit pasted text and typed answers,
   and find and replace across a knowledge base (a new email address, say),

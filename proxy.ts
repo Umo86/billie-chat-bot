@@ -14,7 +14,7 @@ import { frameMark } from "@/lib/chat/frame-mark";
  * - The chat frame (/embed/<bot>): its Content-Security-Policy says which
  *   websites may show it (frame-ancestors), from the bot's allowed websites.
  */
-const STAFF_PAGE = /^\/(?:$|bots|knowledge|inbox|emails|try|reports|settings)(?:\/|$)/;
+const STAFF_PAGE = /^\/(?:$|bots|knowledge|inbox|requests|emails|try|reports|settings)(?:\/|$)/;
 const EMBED = /^\/embed\/([a-z0-9][a-z0-9-]{0,62})\/?$/;
 const NOT_FOUND = () =>
   new NextResponse("Not found", {
@@ -96,6 +96,7 @@ export const config = {
     "/bots/:path*",
     "/knowledge/:path*",
     "/inbox/:path*",
+    "/requests/:path*",
     "/emails/:path*",
     "/try/:path*",
     "/reports/:path*",
