@@ -96,3 +96,54 @@ export const emailDraftSchema = z.object({
   holding: z.string(),
 });
 export type EmailDraftJson = z.infer<typeof emailDraftSchema>;
+
+export const CHECK_KINDS = ["contradiction", "date_passed", "contact", "unclear"] as const;
+
+export const knowledgeCheckJsonSchema = {
+  type: "object",
+  properties: {
+    issues: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          kind: { type: "string", enum: [...CHECK_KINDS] },
+          title: { type: "string", description: "The problem in a few words." },
+          detail: {
+            type: "string",
+            description: "What's wrong and what to change, in one or two plain sentences.",
+          },
+          quotes: {
+            type: "array",
+            items: { type: "string" },
+            description: "The exact words from the knowledge, one per place.",
+          },
+          sources: {
+            type: "array",
+            items: { type: "string" },
+            description: "The titles of the sources involved, exactly as given.",
+          },
+        },
+        required: ["kind", "title", "detail", "quotes", "sources"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["issues"],
+  additionalProperties: false,
+} as const;
+
+export const knowledgeCheckSchema = z.object({
+  issues: z
+    .array(
+      z.object({
+        kind: z.enum(CHECK_KINDS),
+        title: z.string(),
+        detail: z.string(),
+        quotes: z.array(z.string()),
+        sources: z.array(z.string()),
+      }),
+    )
+    .max(50),
+});
+export type KnowledgeCheckJson = z.infer<typeof knowledgeCheckSchema>;

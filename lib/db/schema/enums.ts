@@ -13,6 +13,8 @@ export const quality = pgEnum("quality", ["fast", "thorough"]);
 export const sourceKind = pgEnum("source_kind", ["file", "text", "qa", "web"]);
 /** queued → reading → ready | failed (lib/knowledge/status.ts). */
 export const sourceStatus = pgEnum("source_status", ["queued", "reading", "ready", "failed"]);
+/** A knowledge check: queued → running → done | failed (lib/knowledge/check.ts). */
+export const checkStatus = pgEnum("check_status", ["queued", "running", "done", "failed"]);
 
 /** Where a conversation came from. "try" = staff on the Try page (counted apart in reports). */
 export const channel = pgEnum("channel", ["web", "hosted", "whatsapp", "try"]);

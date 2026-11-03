@@ -15,6 +15,7 @@ import { safeError } from "@/lib/errors";
  */
 export type JobKind =
   | "ingest_source"
+  | "knowledge_check"
   | "process_email"
   | "deliver_email_draft"
   | "notify_handover"

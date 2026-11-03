@@ -68,3 +68,15 @@ export type EmailTags = {
   stand: string | null;
   urgency: "low" | "normal" | "high";
 };
+
+/** One thing the knowledge check found (lib/knowledge/check.ts). */
+export type CheckIssue = {
+  kind: "contradiction" | "date_passed" | "contact" | "unclear";
+  title: string;
+  /** What's wrong and what to change, in plain words. */
+  detail: string;
+  /** The exact words from the knowledge. */
+  quotes: string[];
+  /** The sources involved; id and kind when Billie could match the title. */
+  sources: { title: string; id?: string; kind?: "file" | "text" | "qa" | "web" }[];
+};

@@ -12,6 +12,10 @@ import { enqueue, pruneJobs, runDueJobs, type Handlers } from "./queue";
 const handlers: Handlers = {
   ingest_source: async (p) =>
     (await import("@/lib/knowledge/ingest")).ingestSource(String(p.sourceId)),
+  knowledge_check: async (p, job) =>
+    (await import("@/lib/knowledge/check")).runKnowledgeCheck(String(p.checkId), {
+      lastTry: job.attempts >= job.maxAttempts,
+    }),
   notify_handover: async (p) =>
     (await import("@/lib/alerts/notify")).notifyHandover(
       String(p.conversationId),

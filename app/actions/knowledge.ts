@@ -21,6 +21,7 @@ import {
   setKnowledgeBaseDeleted,
 } from "@/lib/knowledge/bases";
 import { passagesOf, sourceStatuses } from "@/lib/knowledge/queries";
+import { latestCheck, requestCheck } from "@/lib/knowledge/check";
 import { fileKind, MAX_FILE_BYTES } from "@/lib/knowledge/files";
 import { putFile, storedBlobSize } from "@/lib/storage";
 import { UserError } from "@/lib/errors";
@@ -311,4 +312,20 @@ export async function dismissGapAction(input: unknown) {
     await dismissGap(actor, d.gapId);
     refresh();
   });
+}
+
+/** Asks Billie to check a knowledge base for contradictions, passed dates and contacts. */
+export async function checkKnowledgeAction(input: unknown) {
+  return runAction("knowledge.edit", z.object({ kbId: z.uuid() }), input, async (actor, d) => {
+    await requestCheck(actor, d.kbId);
+    refresh();
+    return latestCheck(d.kbId);
+  });
+}
+
+/** The latest check, while the screen waits for it to finish. */
+export async function checkStatusAction(input: unknown) {
+  return runAction("knowledge.view", z.object({ kbId: z.uuid() }), input, async (_actor, d) =>
+    latestCheck(d.kbId),
+  );
 }

@@ -1,7 +1,7 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { aiProvider } from "@/lib/config";
-import type { PromptEmail, PromptPassage } from "./prompts";
+import type { CheckSource, PromptEmail, PromptPassage } from "./prompts";
 import { fakeStructured } from "./fake";
 
 /**
@@ -11,7 +11,7 @@ import { fakeStructured } from "./fake";
  * and token usage returned for the daily cap and Reports.
  */
 export type StructuredCall = {
-  purpose: "answer" | "email_tag" | "email_draft";
+  purpose: "answer" | "email_tag" | "email_draft" | "knowledge_check";
   model: string;
   fallbackModel?: string;
   /** Instructions: who Billie is and the rules. */
@@ -21,6 +21,8 @@ export type StructuredCall = {
   user: string;
   schema: Record<string, unknown>;
   maxTokens: number;
+  /** Longer than the usual 45 seconds, for long reads like the knowledge check. */
+  timeoutMs?: number;
   /** For the stand-in provider only: the inputs it answers from. Ignored by Claude. */
   fake: FakeContext;
 };
@@ -28,7 +30,8 @@ export type StructuredCall = {
 export type FakeContext =
   | { purpose: "answer"; question: string; passages: PromptPassage[]; alwaysHuman: string[] }
   | { purpose: "email_tag"; email: PromptEmail; alwaysHuman: string[] }
-  | { purpose: "email_draft"; email: PromptEmail; passages: PromptPassage[] };
+  | { purpose: "email_draft"; email: PromptEmail; passages: PromptPassage[] }
+  | { purpose: "knowledge_check"; sources: CheckSource[]; now: Date };
 
 export type Usage = { inputTokens: number; outputTokens: number; cachedTokens: number };
 
@@ -73,13 +76,17 @@ async function callAnthropic(call: StructuredCall, model: string): Promise<Struc
   if (call.knowledge) {
     system.push({ type: "text", text: call.knowledge, cache_control: { type: "ephemeral" } });
   }
-  const res = await anthropic().messages.create({
-    model,
-    max_tokens: call.maxTokens,
-    system,
-    messages: [{ role: "user", content: call.user }],
-    output_config: { format: { type: "json_schema", schema: call.schema } },
-  });
+  const res = await anthropic().messages.create(
+    {
+      model,
+      max_tokens: call.maxTokens,
+      system,
+      messages: [{ role: "user", content: call.user }],
+      output_config: { format: { type: "json_schema", schema: call.schema } },
+    },
+    // A long read gets more time but one retry, so it finishes inside the job's lease.
+    call.timeoutMs ? { timeout: call.timeoutMs, maxRetries: 1 } : undefined,
+  );
   if (res.stop_reason === "refusal") throw new AiError("refused", "Claude declined to answer");
   if (res.stop_reason === "max_tokens")
     throw new AiError("invalid_output", "The reply was cut off");

@@ -157,6 +157,18 @@ text still running; and a read only writes its passages if the text it
 read is still the text in the database. Bots keep answering from the old
 passages until the new ones are written, in one transaction.
 
+## The knowledge check is one call, on demand
+
+A bot repeats whatever its knowledge says, so two sections that disagree
+become two answers to one question. The check sends a whole knowledge
+base (up to about 180,000 characters; larger ones are checked in part, and
+the screen says how much) to the thorough model with today's date, and
+gets back contradictions, passed dates, mismatched contact details and
+unclear wording, each with the exact words and the sources' titles. It
+runs on the job queue (it can take a minute), only when someone presses
+the button, and counts towards the daily cap. Results are kept per
+knowledge base, so the team sees the latest one and when it was made.
+
 ## Search: hybrid full-text + vectors
 
 Postgres full-text (a generated `tsvector`) and Voyage embeddings (HNSW

@@ -24,6 +24,9 @@ Chatbots, live handover and an email assistant for Media10 shows.
 - **Knowledge you can change in place**: edit pasted text and typed answers,
   and find and replace across a knowledge base (a new email address, say),
   with every change shown before it's made.
+- **Knowledge check**: one button and Claude reads a whole knowledge base,
+  listing contradictions, dates that have passed and contact details that
+  don't match, with Edit next to each pasted text or typed answer involved.
 - **Roles** (admin, editor, agent), an audit log, UK GDPR retention.
 
 ## How it's built

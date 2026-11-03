@@ -7,9 +7,11 @@ import { AddSource } from "@/components/knowledge/add-source";
 import { SourceList } from "@/components/knowledge/source-list";
 import { GapList } from "@/components/knowledge/gap-list";
 import { KbActions, NewKbButton } from "@/components/knowledge/kb-dialog";
+import { CheckPanel } from "@/components/knowledge/check-panel";
 import { requireActor } from "@/lib/auth/actor";
 import { can } from "@/lib/authz";
 import { knowledgeBaseList, openGaps, sourcesFor } from "@/lib/knowledge/queries";
+import { latestCheck } from "@/lib/knowledge/check";
 import { ACCEPTED_EXTENSIONS, MAX_FILE_BYTES } from "@/lib/knowledge/files";
 import { storageBackend } from "@/lib/storage";
 import { cn } from "@/lib/utils";
@@ -27,7 +29,10 @@ export default async function KnowledgePage({
   const tab = params.tab === "gaps" ? "gaps" : "bases";
   const [kbs, gaps] = await Promise.all([knowledgeBaseList(), openGaps()]);
   const selected = kbs.find((k) => k.id === params.kb) ?? kbs[0] ?? null;
-  const sources = tab === "bases" && selected ? await sourcesFor(selected.id) : [];
+  const [sources, check] =
+    tab === "bases" && selected
+      ? await Promise.all([sourcesFor(selected.id), latestCheck(selected.id)])
+      : [[], null];
   const storage = storageBackend();
 
   return (
@@ -108,6 +113,9 @@ export default async function KnowledgePage({
                 />
               ) : null}
             </Panel>
+            {sources.length ? (
+              <CheckPanel kbId={selected.id} check={check} canEdit={canEdit} />
+            ) : null}
             {canEdit ? (
               storage === "none" ? (
                 <AddSource

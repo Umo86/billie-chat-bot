@@ -13,8 +13,8 @@ import {
   vector,
   boolean,
 } from "drizzle-orm/pg-core";
-import type { BotRules, TestQuestion, TestRun } from "@/lib/types";
-import { audience, botStatus, quality, sourceKind, sourceStatus, tone } from "./enums";
+import type { BotRules, CheckIssue, TestQuestion, TestRun } from "@/lib/types";
+import { audience, botStatus, checkStatus, quality, sourceKind, sourceStatus, tone } from "./enums";
 import { users } from "./users";
 
 /** Postgres full-text search vector (generated from a passage's label and text). */
@@ -213,5 +213,33 @@ export const passages = pgTable(
     index("passages_kb_idx").on(t.knowledgeBaseId),
     index("passages_search_idx").using("gin", t.search),
     index("passages_embedding_idx").using("hnsw", t.embedding.op("vector_cosine_ops")),
+  ],
+);
+
+/**
+ * A knowledge check: Claude reads a whole knowledge base and lists
+ * contradictions, dates that have passed and contact details that don't
+ * match. Kept so the team sees the latest result, and when it was made.
+ */
+export const knowledgeChecks = pgTable(
+  "knowledge_checks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    knowledgeBaseId: uuid("knowledge_base_id")
+      .notNull()
+      .references(() => knowledgeBases.id, { onDelete: "cascade" }),
+    status: checkStatus("status").notNull().default("queued"),
+    issues: jsonb("issues").$type<CheckIssue[]>().notNull().default([]),
+    /** How much was checked: everything, unless the knowledge base is very large. */
+    checkedSources: integer("checked_sources").notNull().default(0),
+    totalSources: integer("total_sources").notNull().default(0),
+    error: text("error"),
+    requestedBy: uuid("requested_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("knowledge_checks_kb_idx").on(t.knowledgeBaseId, t.createdAt),
+    index("knowledge_checks_requested_by_idx").on(t.requestedBy),
   ],
 );
