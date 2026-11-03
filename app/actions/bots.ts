@@ -18,6 +18,7 @@ import { validTime } from "@/lib/conversations/hours";
 import { UserError } from "@/lib/errors";
 import { assertOnBot } from "@/lib/auth/bots";
 import { setBotPeople } from "@/lib/bots/people";
+import { copyBot, markDatesChecked } from "@/lib/bots/copy";
 import { MAX_REQUEST_FIELDS, MAX_REQUEST_TYPES } from "@/lib/requests/rules";
 
 const AVATAR = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
@@ -223,4 +224,32 @@ export async function setBotPeopleAction(input: unknown) {
     },
     "Saved.",
   );
+}
+
+/** A copy of a bot for the next show or edition (a draft, with its dates to check). */
+export async function copyBotAction(input: unknown) {
+  const schema = z.object({
+    id: z.uuid(),
+    name: z
+      .string()
+      .trim()
+      .min(1, "Give the copy a name.")
+      .max(60, "Keep the name under 60 characters."),
+    showName: z.string().trim().max(80).default(""),
+  });
+  return runAction("bots.edit", schema, input, async (actor, d) => {
+    await assertOnBot(actor, "bots.edit", d.id);
+    const id = await copyBot(actor, d.id, { name: d.name, showName: d.showName });
+    refresh();
+    return { id };
+  });
+}
+
+/** The dates in a copied bot have been checked. */
+export async function datesCheckedAction(input: unknown) {
+  return runAction("bots.edit", z.object({ id: z.uuid() }), input, async (actor, d) => {
+    await assertOnBot(actor, "bots.edit", d.id);
+    await markDatesChecked(actor, d.id);
+    refresh(d.id);
+  });
 }

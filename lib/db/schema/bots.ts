@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   customType,
   index,
   integer,
@@ -69,12 +70,19 @@ export const bots = pgTable(
     /** Requests the bot takes through the chat, as forms (lib/requests/rules.ts). */
     requestTypes: jsonb("request_types").$type<RequestType[]>().notNull().default([]),
     lastTestRun: jsonb("last_test_run").$type<TestRun | null>(),
+    /** Copied from this bot for the next show or edition (lib/bots/copy.ts). */
+    copiedFromId: uuid("copied_from_id").references((): AnyPgColumn => bots.id, {
+      onDelete: "set null",
+    }),
+    /** When someone said the dates in a copied bot are checked (the list goes away). */
+    datesCheckedAt: timestamp("dates_checked_at", { withTimezone: true }),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     ...timestamps,
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (t) => [
     uniqueIndex("bots_slug_unique").on(t.slug),
+    index("bots_copied_from_idx").on(t.copiedFromId),
     index("bots_created_by_idx").on(t.createdBy),
     index("bots_status_idx").on(t.status),
   ],

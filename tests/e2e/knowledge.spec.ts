@@ -95,6 +95,24 @@ test("a bot's own knowledge: edit it, then find and replace across it", async ({
     page.getByTestId("source-row").filter({ hasText: "When does build-up start?" }),
   ).toBeVisible();
   await expect(page.getByTestId("source-row").filter({ hasText: "Who to contact" })).toHaveCount(0);
+
+  // Copy the second bot for next year's show: everything comes across, with its dates to check.
+  await bots.getByRole("link", { name: /Christmas Show Help/ }).click();
+  await page.getByRole("link", { name: "Open the bot" }).click();
+  await page.getByRole("button", { name: "Copy for another show" }).click();
+  const copy = page.getByRole("dialog");
+  await expect(copy.getByLabel("Show name")).toHaveValue("Ideal Home Show Christmas 2027");
+  await copy.getByLabel("Name of the copy").fill("Christmas Show Help 2027");
+  await copy.getByRole("button", { name: "Make the copy" }).click();
+  await expect(page.getByText(/^Copied\. Its knowledge/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Christmas Show Help 2027" })).toBeVisible();
+  const dates = page.getByTestId("dates-to-check");
+  await expect(dates).toContainText("Copied from Christmas Show Help.");
+  await expect(dates).toContainText("26 October 2026");
+  await expect(page.getByTestId("source-row").filter({ hasText: "Deadlines" })).toBeVisible();
+  await shot(page, "bot-copy-dates");
+  await dates.getByRole("button", { name: "Done: dates checked" }).click();
+  await expect(page.getByTestId("dates-to-check")).toHaveCount(0);
 });
 
 /** Billie reads in the background: open View until the passages show the new text. */

@@ -152,6 +152,18 @@ Each bot's tone, personality (in the team's own words), emoji choice and
 email sign-off go into its prompts as style. The prompt says the rules win,
 answers still come only from the knowledge, and emails never get emoji.
 
+## Copying a bot copies its knowledge, not its show
+
+Media10 runs the same shows every year, some in two cities, so most of a
+bot carries over. A copy gets the look, personality, rules, requests, test
+questions, people and every source with its passages (embeddings too, so
+nothing is read or paid for twice; files share the stored file, which is
+only deleted once no source uses it). The show's own settings stay behind:
+websites, mailbox, Teams channel, test results and going live. Dates are
+what changes, so the copy's Knowledge step lists every date in its
+knowledge and its own words (a pure date finder, no Claude call) until
+someone says they're checked.
+
 ## People work on bots; admins on all of them
 
 Each event has its own staff, so each bot has its own people (`bot_members`),

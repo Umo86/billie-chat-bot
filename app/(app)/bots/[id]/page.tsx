@@ -15,6 +15,12 @@ import { EmailStep } from "@/components/bots/email-step";
 import { TestStep } from "@/components/bots/test-step";
 import { LiveStep } from "@/components/bots/live-step";
 import { requireActor } from "@/lib/auth/actor";
+import { eq } from "drizzle-orm";
+import { db } from "@/lib/db/client";
+import { bots } from "@/lib/db/schema";
+import { datesToCheck } from "@/lib/bots/copy";
+import { CopyBot } from "@/components/bots/copy-bot";
+import { DatesToCheck } from "@/components/bots/dates-to-check";
 import { mayOnBot } from "@/lib/auth/bots";
 import { botPeople } from "@/lib/bots/people";
 import { PeopleStep } from "@/components/bots/people-step";
@@ -108,6 +114,27 @@ export default async function BotPage({
         <KnowledgeStep botId={bot.id} quality={bot.quality} canEdit={canEdit} />
       </div>
     );
+    // A copy for the next show lists every date in it until someone says they're checked.
+    if (bot.copiedFromId && !bot.datesCheckedAt) {
+      const [groups, from] = await Promise.all([
+        datesToCheck(bot.id),
+        db.query.bots.findFirst({
+          where: eq(bots.id, bot.copiedFromId),
+          columns: { name: true },
+        }),
+      ]);
+      body = (
+        <div className="flex flex-col gap-4">
+          <DatesToCheck
+            botId={bot.id}
+            from={from?.name ?? null}
+            groups={groups}
+            canEdit={canTeach}
+          />
+          {body}
+        </div>
+      );
+    }
   } else if (step === "rules") {
     const people = await mailboxManagers(bot.id);
     body = (
@@ -224,8 +251,18 @@ export default async function BotPage({
             {bot.showName ? <span>{bot.showName}</span> : null}
           </span>
         }
+        actions={
+          canEdit ? <CopyBot bot={{ id: bot.id, name: bot.name, showName: bot.showName }} /> : null
+        }
       />
       {sp.created ? <Note tone="good">Bot created. Next, choose how it comes across.</Note> : null}
+      {sp.copied ? (
+        <Note tone="good">
+          Copied. Its knowledge, rules, requests, test questions and people came across. Check the
+          dates below, then run the test questions. Add its websites and mailbox when you&apos;re
+          ready.
+        </Note>
+      ) : null}
       <WizardSteps current={step} botId={bot.id} />
       {body}
     </>
