@@ -17,6 +17,7 @@ const handlers: Handlers = {
       String(p.conversationId),
       p.kind === "ticket" ? "ticket" : "live",
     ),
+  teams_direct: async (p) => (await import("@/lib/alerts/direct")).sendDirect(String(p.to), p.card),
   send_staff_reply: async (p) =>
     (await import("@/lib/conversations/delivery")).deliverStaffReply(
       String(p.messageId),

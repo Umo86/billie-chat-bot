@@ -4,7 +4,16 @@ import { Switch } from "@/components/ui/switch";
 import { useRunner } from "@/components/ui/use-runner";
 import { setAvailabilityAction } from "@/app/actions/inbox";
 
-export function Availability({ available, others }: { available: boolean; others: number }) {
+export function Availability({
+  available,
+  others,
+  teams = false,
+}: {
+  available: boolean;
+  others: number;
+  /** Teams messages to people are set up: say so. */
+  teams?: boolean;
+}) {
   const { pending, run } = useRunner();
   return (
     <label className="flex items-center gap-3 rounded-[12px] border border-border bg-card px-3.5 py-2.5">
@@ -20,7 +29,7 @@ export function Availability({ available, others }: { available: boolean; others
         </span>
         <span className="block text-sm text-muted-foreground">
           {available
-            ? "Chats that need a person come straight to you. Stays on for 8 hours while this page is open."
+            ? `Chats that need a person come straight to you${teams ? ", with a Teams message" : ""}. Stays on for 8 hours while this page is open.`
             : others
               ? `${others} ${others === 1 ? "colleague is" : "colleagues are"} available.`
               : "Nobody is available, so Billie takes contact details instead."}

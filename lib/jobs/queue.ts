@@ -17,6 +17,7 @@ export type JobKind =
   | "process_email"
   | "deliver_email_draft"
   | "notify_handover"
+  | "teams_direct"
   | "send_staff_reply"
   | "whatsapp_inbound"
   | "outlook_sync"
@@ -32,18 +33,34 @@ export function backoffMs(attempts: number): number {
   return Math.min(60 * 60_000, 30_000 * 2 ** Math.max(0, attempts - 1));
 }
 
+/**
+ * Queues a job. With a dedupeKey it is queued once while one with the same
+ * key is waiting or running; with `once` as well, never again while any job
+ * with that key is kept (finished jobs are kept for 14 days): for messages
+ * to people, which a retry of the job that queued them mustn't repeat.
+ */
 export async function enqueue(
   kind: JobKind,
   payload: Record<string, unknown>,
-  opts: { runAt?: Date; dedupeKey?: string; maxAttempts?: number; tx?: DbOrTx } = {},
+  opts: {
+    runAt?: Date;
+    dedupeKey?: string;
+    once?: boolean;
+    maxAttempts?: number;
+    tx?: DbOrTx;
+  } = {},
 ): Promise<string | null> {
   const runner = opts.tx ?? db;
+  const key = opts.dedupeKey ?? null;
   const rows = await query<{ id: string }>(
     runner,
     sql`
     INSERT INTO jobs (kind, payload, run_at, dedupe_key, max_attempts)
-    VALUES (${kind}, ${JSON.stringify(payload)}::jsonb, ${(opts.runAt ?? new Date()).toISOString()},
-            ${opts.dedupeKey ?? null}, ${opts.maxAttempts ?? 5})
+    SELECT ${kind}::text, ${JSON.stringify(payload)}::jsonb,
+           ${(opts.runAt ?? new Date()).toISOString()}::timestamptz,
+           ${key}::text, ${opts.maxAttempts ?? 5}::int
+    WHERE NOT ${Boolean(opts.once && key)}::boolean
+       OR NOT EXISTS (SELECT 1 FROM jobs WHERE dedupe_key = ${key}::text)
     ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL AND status IN ('queued', 'running')
     DO NOTHING
     RETURNING id`,

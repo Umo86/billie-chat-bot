@@ -4,15 +4,17 @@ import { db } from "@/lib/db/client";
 import { botMailboxes, bots, emailThreads, users } from "@/lib/db/schema";
 import { appUrl, microsoftConfigured } from "@/lib/config";
 import { createReplyDraft, removeOwnDraft, tagMessage } from "@/lib/channels/outlook";
-import { postToTeams, teamsLinkFor } from "@/lib/channels/teams";
+import { postToTeams } from "@/lib/channels/teams";
+import { cardOf, queueDirect } from "@/lib/alerts/direct";
 import { emailTeamsCard, type EmailPost } from "./teams-card";
 
 /**
  * After Billie has drafted a reply to an email from an event mailbox (the
  * "deliver_email_draft" job): the reply goes into the mailbox's Drafts, in
- * the same thread; the email gets Billie's Outlook categories; and the
- * event's Teams channel gets a post that @mentions whoever manages the
- * mailbox. Safe to run again: the Outlook draft is only made once.
+ * the same thread; the email gets Billie's Outlook categories; whoever
+ * manages the mailbox gets a Teams message of their own; and the event's
+ * Teams channel gets a post that @mentions them. Safe to run again: the
+ * Outlook draft is made once, and the manager is messaged once.
  */
 export async function deliverEmailDraft(
   emailId: string,
@@ -53,8 +55,6 @@ export async function deliverEmailDraft(
   ]).catch((err) => console.warn("categories not set", err instanceof Error ? err.message : err));
 
   if (opts.quiet) return;
-  const link = teamsLinkFor(box.teamsWebhookUrl);
-  if (!link) return;
   const assignee = box.assignedUserId
     ? await db.query.users.findFirst({
         where: and(eq(users.id, box.assignedUserId), eq(users.status, "active")),
@@ -76,5 +76,14 @@ export async function deliverEmailDraft(
       : null,
     link: `${appUrl()}/emails?e=${email.id}`,
   };
-  await postToTeams(link, emailTeamsCard(post));
+  // The manager, in a Teams chat of their own (once direct messages are set up in Settings).
+  if (assignee)
+    await queueDirect(
+      [assignee],
+      `email:${email.id}`,
+      cardOf(emailTeamsCard({ ...post, assignee: null })),
+    );
+  // The event's own channel; never the company-wide one, which every event would fill.
+  const channel = box.teamsWebhookUrl?.trim();
+  if (channel) await postToTeams(channel, emailTeamsCard(post));
 }

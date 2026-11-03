@@ -124,6 +124,11 @@ export const settings = pgTable("settings", {
   emailBotId: uuid("email_bot_id").references(() => bots.id, { onDelete: "set null" }),
   emailSignature: text("email_signature").notNull().default("Kind regards,\nThe Operations team"),
   /**
+   * The company's Teams workflow that sends one person a 1:1 Teams chat
+   * (lib/alerts/direct.ts). A secret: set by admins, never shown again.
+   */
+  teamsDmWebhookUrl: text("teams_dm_webhook_url"),
+  /**
    * No longer used: each bot's mailbox keeps its own sync point (bot_mailboxes).
    * Kept because migrations run before a new version goes live, and the
    * version still serving reads this column. Drop it in a later release.

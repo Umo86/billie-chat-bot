@@ -7,12 +7,14 @@ import { CopyButton } from "@/components/ui/copy-button";
 import { GeneralForm } from "@/components/settings/general-form";
 import { Team } from "@/components/settings/team";
 import { Privacy } from "@/components/settings/privacy";
+import { TeamsDirect } from "@/components/settings/teams-direct";
 import { requireActor } from "@/lib/auth/actor";
 import { authMode } from "@/lib/auth/config";
 import { getSettings } from "@/lib/settings";
 import { botCards } from "@/lib/bots/queries";
 import { openInvitations, teamMembers } from "@/lib/team/queries";
 import { mailboxOverview } from "@/lib/emails/mailboxes";
+import { directLinkLabel } from "@/lib/alerts/direct";
 import { timeAgo } from "@/lib/time";
 import {
   aiProvider,
@@ -75,7 +77,7 @@ export default async function SettingsPage({
   } else {
     const base = appUrl();
     const dbUrl = appDatabaseUrl();
-    const mailboxes = await mailboxOverview();
+    const [mailboxes, direct] = await Promise.all([mailboxOverview(), directLinkLabel()]);
     const microsoft = microsoftConfigured();
     const rows: { name: string; ok: boolean; detail: string; vars?: string }[] = [
       {
@@ -146,6 +148,13 @@ export default async function SettingsPage({
         vars: "WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_TOKEN, WHATSAPP_APP_SECRET, WHATSAPP_VERIFY_TOKEN",
       },
       {
+        name: "Teams messages to people",
+        ok: Boolean(direct),
+        detail: direct
+          ? "On. Mailbox managers and whoever is available get a Teams chat."
+          : "Off. Set it up below: one Teams workflow, about 10 minutes for IT.",
+      },
+      {
         name: "Teams (company-wide channel)",
         ok: teamsConfigured(),
         detail: teamsConfigured()
@@ -184,6 +193,7 @@ export default async function SettingsPage({
             ))}
           </ul>
         </Panel>
+        <TeamsDirect saved={direct} me={actor.email} />
         <Panel className="flex flex-col gap-3">
           <h2 className="text-[1.05rem]">Event mailboxes</h2>
           {mailboxes.length ? (

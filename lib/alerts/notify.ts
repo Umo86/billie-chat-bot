@@ -9,11 +9,13 @@ import type { ContactDetails } from "@/lib/types";
 import { sendEmail } from "@/lib/email/send";
 import { postToTeams, teamsLinkFor } from "@/lib/channels/teams";
 import { adaptiveMessage, plainLine } from "./card";
+import { availablePeople, cardOf, eventManager, queueDirect } from "./direct";
 
 /**
- * Telling the team a chat needs them: a message in the bot's Teams channel
- * (or the company-wide one), through a Teams Workflows link, and an email to
- * the alert addresses. Each is optional; the Inbox shows the chat either
+ * Telling the team a chat needs them: a Teams message to each person who
+ * should answer (whoever is available, else the event's mailbox manager), a
+ * post in the bot's Teams channel (or the company-wide one), and an email
+ * to the alert addresses. Each is optional; the Inbox shows the chat either
  * way, and its browser alert fires while it's open. A transient failure
  * throws, so the job retries.
  */
@@ -79,6 +81,15 @@ export async function notifyHandover(
     contact: conv.contact as ContactDetails,
     link: `${appUrl()}/inbox?c=${conv.id}`,
   };
+
+  // First, Teams messages to people (queued once, so a retry of this job never repeats them):
+  // whoever is available for live chats, or, when nobody is, whoever manages the event's mailbox.
+  const people = kind === "live" ? await availablePeople() : await eventManager(conv.botId);
+  await queueDirect(
+    people,
+    `chat:${conv.id}:${conv.handoverAt?.getTime() ?? 0}`,
+    cardOf(teamsCard(alert)),
+  );
 
   const failures: string[] = [];
   // The event's own Teams channel when the bot has one, else the company-wide one.

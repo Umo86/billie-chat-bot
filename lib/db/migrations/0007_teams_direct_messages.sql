@@ -1,0 +1,1 @@
+ALTER TABLE "settings" ADD COLUMN "teams_dm_webhook_url" text;

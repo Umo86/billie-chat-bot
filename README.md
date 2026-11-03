@@ -16,6 +16,10 @@ Chatbots, live handover and an email assistant for Media10 shows.
   Drafts in the same thread, and a post in the event's Teams channel that
   @mentions whoever manages the mailbox. A person checks and sends every
   reply. Emails can also be pasted in.
+- **Teams messages to people**: the mailbox manager when a reply is waiting
+  in Drafts, and whoever is available when a visitor wants a person, get a
+  Teams chat with an "Open in Billie" button (one company-wide workflow, set
+  up in Settings → Connections).
 - **Knowledge gaps**: questions the bots couldn't answer, fixed in one click.
 - **Roles** (admin, editor, agent), an audit log, UK GDPR retention.
 

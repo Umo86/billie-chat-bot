@@ -65,7 +65,29 @@ test("general settings save, connections and reports render", async ({ page }) =
     .filter({ hasText: "ukcw-exhibitors@media-ten.test" });
   await expect(mailbox).toContainText("Exhibitor Help");
   await expect(mailbox).toContainText("Managed by Umit Bozdag");
+  // Teams messages to people: only a Teams Workflows link is taken, and it's never shown again.
+  await page.getByLabel("Workflow link").fill("https://hooks.example.com/x");
+  await page.getByRole("button", { name: "Save link" }).click();
+  await expect(page.getByText(/isn't a Teams Workflows link/)).toBeVisible();
+  await page
+    .getByLabel("Workflow link")
+    .fill(
+      "https://prod-34.uksouth.logic.azure.com:443/workflows/e2e/triggers/manual/paths/invoke?sig=e2e-direct",
+    );
+  await page.getByRole("button", { name: "Save link" }).click();
+  await expect(page.getByTestId("teams-direct-status")).toContainText(
+    "prod-34.uksouth.logic.azure.com",
+  );
+  await expect(
+    page.getByRole("listitem").filter({ hasText: "Teams messages to people" }).first(),
+  ).toContainText("On.");
+  await expect(page.locator("body")).not.toContainText("e2e-direct");
   await shot(page, "settings-connections");
+  // Turned off again, so nothing later messages anyone.
+  await page.getByRole("button", { name: "Turn off" }).click();
+  await page.getByRole("button", { name: "Yes, turn off" }).click();
+  await expect(page.getByText("Teams messages to people are off.")).toBeVisible();
+  await expect(page.getByLabel("Workflow link")).toBeVisible();
 
   await page.goto("/reports");
   await expect(page.getByRole("heading", { name: "Reports" })).toBeVisible();

@@ -147,7 +147,7 @@ export function EmailStep({
               <Field
                 id="mailbox-manager"
                 label="Managed by"
-                hint="They're @mentioned in Teams for each new email. Their Billie email must be their Microsoft 365 address."
+                hint="They get a Teams message for each new email (once Teams messages are set up in Settings), and an @mention in the channel post. Their Billie email must be their Microsoft 365 address."
                 error={errors.assignedUserId}
               >
                 <Select

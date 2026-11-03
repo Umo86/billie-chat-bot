@@ -17,6 +17,7 @@ import {
 import { agentsAvailable, extendIfAvailable, isAvailable } from "@/lib/conversations/presence";
 import { markRead } from "@/lib/conversations/service";
 import { knowledgeBaseIdsFor } from "@/lib/bots/load";
+import { directLink } from "@/lib/alerts/direct";
 import { knowledgeBaseList } from "@/lib/knowledge/queries";
 import { withinReplyWindow } from "@/lib/channels/whatsapp";
 import { timeAgo } from "@/lib/time";
@@ -91,7 +92,13 @@ export default async function InboxPage({
       <PageHeader
         title="Inbox"
         lede="Chats that need a person. Reply here and it reaches them in the chat, on WhatsApp, or by email if they've gone."
-        actions={<Availability available={mine} others={Math.max(0, others - (mine ? 1 : 0))} />}
+        actions={
+          <Availability
+            available={mine}
+            others={Math.max(0, others - (mine ? 1 : 0))}
+            teams={Boolean(await directLink())}
+          />
+        }
       />
       <TabsNav
         label="Inbox sections"

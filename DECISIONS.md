@@ -101,6 +101,25 @@ because everyone on the team then sees that mailbox's emails in Billie.
   the old one is still serving, so a column is dropped one release after
   the code stops using it (`settings.outlook_delta_link` is next).
 
+## Teams messages to people: one workflow, not a Teams app
+
+Microsoft Graph doesn't let an app start a 1:1 Teams chat, and a Teams bot
+needs an Azure Bot, a Teams app package and admin approval. One Power
+Automate workflow does the job with the Teams connector that comes with
+Microsoft 365: "When a Teams webhook request is received", then "Post card
+in a chat or channel" to "Chat with Flow bot". Billie sends the person's
+Microsoft 365 address and the card; the link is stored like the Teams
+channel links (admins only, never shown again).
+
+- **Who**: the mailbox manager when a reply is waiting (or an email needs a
+  person); whoever is available when a visitor wants a person, or the
+  event's mailbox manager when nobody is.
+- **Once**: each message is its own `teams_direct` job, queued with `once`
+  (a dedupe key that holds while the job is kept), so a retry of the job
+  that queued it never messages someone twice.
+- **Answering stays in Billie.** Answering visitors from inside Teams would
+  need the Teams app; the message links to the chat in the Inbox instead.
+
 ## Personality is style only
 
 Each bot's tone, personality (in the team's own words), emoji choice and

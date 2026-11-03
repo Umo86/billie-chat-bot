@@ -50,6 +50,13 @@
       "when": 1793709406685,
       "tag": "0006_bot_mailboxes_personality",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793711859760,
+      "tag": "0007_teams_direct_messages",
+      "breakpoints": true
     }
   ]
 }

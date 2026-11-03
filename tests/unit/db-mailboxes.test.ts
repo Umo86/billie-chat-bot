@@ -18,82 +18,13 @@ import { deleteBot } from "@/lib/bots/service";
 import { notifyHandover } from "@/lib/alerts/notify";
 import { startConversation } from "@/lib/conversations/service";
 import { addAndRead, hasDb, makeBot, makeUser } from "../helpers/db";
-
-const TEAMS =
-  "https://prod-12.uksouth.logic.azure.com:443/workflows/test/triggers/manual/paths/invoke?sig=test-signature";
-
-type Call = { method: string; url: string; body: unknown };
-type Box = { status?: number; value?: unknown[]; expiredToken?: string };
-
-/** A stand-in for Microsoft 365 and Teams: answers Billie's requests and records them. */
-function fakeMicrosoft(inbox: Record<string, Box>) {
-  const calls: Call[] = [];
-  let drafts = 0;
-  const json = (body: unknown, status = 200) =>
-    new Response(JSON.stringify(body), {
-      status,
-      headers: { "content-type": "application/json" },
-    });
-  const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-    const url = String(input instanceof Request ? input.url : input);
-    const method = init?.method ?? "GET";
-    const raw = typeof init?.body === "string" ? init.body : null;
-    calls.push({ method, url, body: raw?.startsWith("{") ? JSON.parse(raw) : raw });
-    if (url.startsWith("https://login.microsoftonline.com/"))
-      return json({ access_token: "token", expires_in: 3600 });
-    if (url.startsWith("https://prod-12.uksouth.logic.azure.com"))
-      return new Response(null, { status: 202 });
-    const delta = /\/users\/([^/]+)\/mailFolders\/inbox\/messages\/delta/.exec(url);
-    if (delta) {
-      const box = inbox[decodeURIComponent(delta[1])];
-      if (box?.status)
-        return json(
-          { error: { code: "ErrorAccessDenied", message: "Access is denied." } },
-          box.status,
-        );
-      if (box?.expiredToken && url.includes(box.expiredToken))
-        return json({ error: { code: "SyncStateNotFound", message: "Expired." } }, 410);
-      return json({
-        value: box?.value ?? [],
-        "@odata.deltaLink": `https://graph.microsoft.com/v1.0/users/${delta[1]}/mailFolders/inbox/messages/delta?$deltatoken=next`,
-      });
-    }
-    if (url.endsWith("/createReply")) {
-      drafts++;
-      return json(
-        {
-          id: `draft-${drafts}`,
-          body: { content: '<html><body dir="ltr"><div>Original email</div></body></html>' },
-        },
-        201,
-      );
-    }
-    if (method === "GET" && url.includes("$select=categories"))
-      return json({ categories: ["VIP"] });
-    if (method === "GET" && url.includes("$select=isDraft")) return json({ isDraft: true });
-    if (method === "PATCH") return json({});
-    if (method === "DELETE") return new Response(null, { status: 204 });
-    return json({ error: { code: "NotFound" } }, 404);
-  });
-  return { calls, fetchMock };
-}
-
-function message(id: string, from: string, subject: string, body: string, name = "") {
-  return {
-    id,
-    conversationId: `conv-${id}`,
-    subject,
-    receivedDateTime: new Date().toISOString(),
-    from: { emailAddress: { name, address: from } },
-    body: { content: body },
-  };
-}
+import { fakeMicrosoft, message, TEAMS } from "../helpers/microsoft";
 
 const uid = () => randomUUID().slice(0, 8);
 
 describe.skipIf(!hasDb)("event mailboxes and Teams (Postgres, stand-in Microsoft 365)", () => {
   beforeAll(() => {
-    // Made-up values: the requests go to the stand-in above, never to Microsoft.
+    // Made-up values: requests go to the stand-in (tests/helpers/microsoft.ts), never to Microsoft.
     process.env.MS_TENANT_ID = "tenant-test";
     process.env.MS_CLIENT_ID = "client-test";
     process.env.MS_CLIENT_SECRET = "not-a-real-secret";
