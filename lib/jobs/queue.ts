@@ -30,7 +30,9 @@ export type JobKind =
   | "weekly_summary"
   | "suggest_reply"
   | "nudge_waiting"
-  | "weekly_bot_summary";
+  | "weekly_bot_summary"
+  | "outlook_sent_check"
+  | "learn_from_sent";
 
 export type Job = typeof jobs.$inferSelect;
 

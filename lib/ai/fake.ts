@@ -5,7 +5,13 @@
  * decline off-topic questions — with simple keyword matching. Never used on
  * Vercel production (lib/config.ts).
  */
-import type { AnswerJson, EmailDraftJson, EmailTagJson, KnowledgeCheckJson } from "./schemas";
+import type {
+  AnswerJson,
+  EmailDraftJson,
+  EmailTagJson,
+  KnowledgeCheckJson,
+  LearnFromSentJson,
+} from "./schemas";
 import type { FakeContext } from "./provider";
 import type { PromptPassage } from "./prompts";
 import { searchTerms } from "@/lib/knowledge/rank";
@@ -288,6 +294,32 @@ function fakeSuggestion(
   };
 }
 
+/**
+ * Learning from a sent reply: a fact counts as changed when the numbers in
+ * it (times, dates, prices) differ; the sent text's first sentence with a
+ * number becomes the answer.
+ */
+function fakeLearn(ctx: Extract<FakeContext, { purpose: "learn_from_sent" }>): LearnFromSentJson {
+  const numbers = (t: string) =>
+    [...t.matchAll(/\d[\d:.,]*/g)]
+      .map((m) => m[0])
+      .sort()
+      .join(" ");
+  if (numbers(ctx.draft) === numbers(ctx.sent))
+    return { learned: false, question: "", answer: "", why: "" };
+  const sentence =
+    ctx.sent
+      .split(/(?<=[.!?])\s+|\n/)
+      .map((x) => x.trim())
+      .find((x) => /\d/.test(x)) ?? ctx.sent.trim();
+  return {
+    learned: true,
+    question: ctx.subject.endsWith("?") ? ctx.subject : `${ctx.subject}?`,
+    answer: sentence,
+    why: "The team changed a time, date or price.",
+  };
+}
+
 export function fakeStructured(ctx: FakeContext): unknown {
   switch (ctx.purpose) {
     case "answer":
@@ -300,5 +332,7 @@ export function fakeStructured(ctx: FakeContext): unknown {
       return fakeCheck(ctx);
     case "reply_suggestion":
       return fakeSuggestion(ctx);
+    case "learn_from_sent":
+      return fakeLearn(ctx);
   }
 }

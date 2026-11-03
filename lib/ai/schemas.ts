@@ -152,3 +152,23 @@ export const knowledgeCheckSchema = z.object({
     .max(50),
 });
 export type KnowledgeCheckJson = z.infer<typeof knowledgeCheckSchema>;
+
+export const learnFromSentJsonSchema = {
+  type: "object",
+  properties: {
+    learned: { type: "boolean" },
+    question: { type: "string", description: "As an exhibitor would ask it, or empty." },
+    answer: { type: "string", description: "The team's fact, a sentence or two, or empty." },
+    why: { type: "string", description: "What changed, in a few words, or empty." },
+  },
+  required: ["learned", "question", "answer", "why"],
+  additionalProperties: false,
+} as const;
+
+export const learnFromSentSchema = z.object({
+  learned: z.boolean(),
+  question: z.string(),
+  answer: z.string(),
+  why: z.string(),
+});
+export type LearnFromSentJson = z.infer<typeof learnFromSentSchema>;

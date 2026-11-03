@@ -152,6 +152,21 @@ Each bot's tone, personality (in the team's own words), emoji choice and
 email sign-off go into its prompts as style. The prompt says the rules win,
 answers still come only from the knowledge, and emails never get emoji.
 
+## Billie learns from sent drafts, but a person saves what it learns
+
+Message ids are immutable, so Billie's Outlook draft keeps its id once it's
+sent. Every ten minutes (only while there are drafts from the last 14 days
+to look for) Billie checks each draft: still a draft, sent, or deleted.
+Sent drafts are compared with Billie's text, above the quoted email and
+ignoring spacing and quote marks: "sent unchanged" is the number that says
+how far to trust the drafts (Reports). A draft sent with changes goes to
+Claude once (a job) to ask whether the team corrected or added a fact that
+would answer the same question next time; wording, tone and anything about
+just that person don't count. A fact is offered on the Knowledge page with
+both texts, for a person to edit and save as a typed answer, or dismiss:
+nothing goes into the knowledge by itself. The email is marked sent, and
+what was sent is kept with it (in privacy exports, deleted with it).
+
 ## The weekly post goes to each event's own channel
 
 The knowledge only improves if someone sees the questions Billie couldn't

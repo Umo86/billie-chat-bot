@@ -144,6 +144,13 @@ export default async function EmailsPage({
                         Urgent
                       </Chip>
                     ) : null}
+                    {r.sentOutcome === "unchanged" ? (
+                      <Chip className="h-5 text-[0.7rem]" tone="good">
+                        Billie&apos;s draft sent unchanged
+                      </Chip>
+                    ) : r.sentOutcome === "edited" ? (
+                      <Chip className="h-5 text-[0.7rem]">Sent with changes</Chip>
+                    ) : null}
                   </span>
                 </Link>
               </li>

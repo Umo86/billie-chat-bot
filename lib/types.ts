@@ -134,3 +134,17 @@ export type ReplySuggestion = {
   at: string;
   error?: string;
 };
+
+/**
+ * What Billie learned from a reply the team changed before sending
+ * (lib/emails/learn.ts): a question and answer to save as a typed answer,
+ * offered on the Knowledge page until someone saves or dismisses it.
+ */
+export type SentLearning = {
+  status: "offered" | "saved" | "dismissed";
+  question: string;
+  answer: string;
+  /** What changed, in a few words. */
+  why: string;
+  at: string;
+};

@@ -4,6 +4,7 @@ import { PageHeader, Panel } from "@/components/ui/bits";
 import { TabsNav } from "@/components/ui/tabs-nav";
 import { requireActor } from "@/lib/auth/actor";
 import { myBotIds } from "@/lib/auth/bots";
+import { sentCounts } from "@/lib/emails/learn";
 import { busiestHours, kpis, perBot, topQuestions, usageSince } from "@/lib/reports/queries";
 import { daysAgo } from "@/lib/time";
 
@@ -23,13 +24,15 @@ export default async function ReportsPage({
   const since = daysAgo(days);
   // The bots this person works on; Claude's cost is company-wide, for those who see every bot.
   const ids = await myBotIds(actor);
-  const [k, top, hours, bots, usage] = await Promise.all([
+  const [k, top, hours, bots, usage, sent] = await Promise.all([
     kpis(since, ids),
     topQuestions(since, 10, ids),
     busiestHours(since, ids),
     perBot(since, ids),
     ids === null ? usageSince(since) : Promise.resolve(null),
+    sentCounts(since, ids),
   ]);
+  const sentTotal = sent.unchanged + sent.edited;
   const peak = Math.max(1, ...hours);
   const tiles = [
     { n: fmt.format(k.chats), label: "chats" },
@@ -39,6 +42,13 @@ export default async function ReportsPage({
     },
     { n: fmt.format(k.handedOver), label: "passed to the team" },
     { n: fmt.format(k.emailsDrafted), label: "email replies drafted" },
+    {
+      // How far to trust the drafts: sent from Outlook without a change.
+      n: sentTotal ? `${Math.round((sent.unchanged / sentTotal) * 100)}%` : "–",
+      label: sentTotal
+        ? `of sent drafts went out unchanged (${fmt.format(sent.unchanged)} of ${fmt.format(sentTotal)})`
+        : "of sent drafts went out unchanged",
+    },
     { n: k.helpfulPct === null ? "–" : `${k.helpfulPct}%`, label: "of rated answers were helpful" },
     {
       n: fmt.format(k.openGaps),

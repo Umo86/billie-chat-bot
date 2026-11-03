@@ -21,7 +21,14 @@ type Box = { status?: number; value?: unknown[]; expiredToken?: string };
  * person changing one in Outlook. `refuseDrafts` makes saving drafts fail
  * with that status (403: read-only access).
  */
-export function fakeMicrosoft(inbox: Record<string, Box>, opts: { refuseDrafts?: number } = {}) {
+export function fakeMicrosoft(
+  inbox: Record<string, Box>,
+  opts: {
+    refuseDrafts?: number;
+    /** Drafts the team has since sent (with what they sent) or deleted. */
+    sent?: Map<string, { isDraft: boolean; text: string } | "gone">;
+  } = {},
+) {
   const calls: Call[] = [];
   const etags = new Map<string, string>(); // draft id → its current version
   let drafts = 0;
@@ -84,6 +91,19 @@ export function fakeMicrosoft(inbox: Record<string, Box>, opts: { refuseDrafts?:
     const id = item ? decodeURIComponent(item) : "";
     if (method === "GET" && url.includes("$select=categories"))
       return json({ categories: ["VIP"] });
+    if (method === "GET" && url.includes("$select=isDraft")) {
+      const st = opts.sent?.get(id);
+      if (st === "gone") return json({ error: { code: "ErrorItemNotFound" } }, 404);
+      if (st)
+        return json({
+          id,
+          isDraft: st.isDraft,
+          sentDateTime: st.isDraft ? null : "2026-11-03T12:00:00Z",
+          uniqueBody: { contentType: "text", content: st.text },
+        });
+      if (etags.has(id)) return json({ id, isDraft: true });
+      return json({ error: { code: "ErrorItemNotFound" } }, 404);
+    }
     if (method === "PATCH") {
       if (etags.has(id)) {
         const next = `W/"${id}-v${Number(/v(\d+)"$/.exec(etags.get(id)!)?.[1] ?? 1) + 1}"`;

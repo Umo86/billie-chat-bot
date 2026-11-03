@@ -6,6 +6,8 @@ import { Chip, EmptyState, PageHeader, Panel } from "@/components/ui/bits";
 import { TabsNav } from "@/components/ui/tabs-nav";
 import { BotAvatar } from "@/components/bots/bot-avatar";
 import { GapList } from "@/components/knowledge/gap-list";
+import { LearningList } from "@/components/knowledge/learning-list";
+import { learningOffers } from "@/lib/emails/learn";
 import { DeleteOldKb } from "@/components/knowledge/kb-dialog";
 import { ReplaceDialog } from "@/components/knowledge/replace-dialog";
 import { KnowledgeWorkspace } from "@/components/knowledge/workspace";
@@ -30,7 +32,11 @@ export default async function KnowledgePage({
   const tab = params.tab === "gaps" ? "gaps" : "bases";
   await ensureBotKnowledgeBases();
   const ids = await myBotIds(actor);
-  const [kbs, gaps] = await Promise.all([knowledgeBaseList(ids), openGaps(ids)]);
+  const [kbs, gaps, offers] = await Promise.all([
+    knowledgeBaseList(ids),
+    openGaps(ids),
+    learningOffers(ids),
+  ]);
   const selected =
     kbs.find((k) => k.id === params.kb) ??
     kbs.find((k) => k.bot && k.bot.id === params.bot) ??
@@ -57,13 +63,16 @@ export default async function KnowledgePage({
           {
             key: "gaps",
             href: "/knowledge?tab=gaps",
-            label: `Unanswered questions${gaps.length ? ` (${gaps.length})` : ""}`,
+            label: `Unanswered questions${gaps.length + offers.length ? ` (${gaps.length + offers.length})` : ""}`,
           },
         ]}
       />
 
       {tab === "gaps" ? (
-        <GapList gaps={gaps} canEdit={can(actor, "knowledge.edit")} />
+        <div className="flex flex-col gap-6">
+          <LearningList offers={offers} canEdit={can(actor, "knowledge.edit")} />
+          <GapList gaps={gaps} canEdit={can(actor, "knowledge.edit")} />
+        </div>
       ) : !selected ? (
         <EmptyState
           title={ids === null ? "No bots yet" : "You're not on any bots yet"}

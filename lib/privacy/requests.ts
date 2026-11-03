@@ -116,6 +116,7 @@ export async function exportPerson(actor: Actor, raw: string) {
           subject: emailThreads.subject,
           body: emailThreads.body,
           draft: emailThreads.draft,
+          sentText: emailThreads.sentText,
           status: emailThreads.status,
         })
         .from(emailThreads)

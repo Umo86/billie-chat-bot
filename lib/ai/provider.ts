@@ -11,7 +11,13 @@ import { fakeStructured } from "./fake";
  * and token usage returned for the daily cap and Reports.
  */
 export type StructuredCall = {
-  purpose: "answer" | "email_tag" | "email_draft" | "knowledge_check" | "reply_suggestion";
+  purpose:
+    | "answer"
+    | "email_tag"
+    | "email_draft"
+    | "knowledge_check"
+    | "reply_suggestion"
+    | "learn_from_sent";
   model: string;
   fallbackModel?: string;
   /** Instructions: who Billie is and the rules. */
@@ -38,7 +44,8 @@ export type FakeContext =
   | { purpose: "email_tag"; email: PromptEmail; alwaysHuman: string[] }
   | { purpose: "email_draft"; email: PromptEmail; passages: PromptPassage[] }
   | { purpose: "knowledge_check"; sources: CheckSource[]; now: Date }
-  | { purpose: "reply_suggestion"; history: Turn[]; passages: PromptPassage[] };
+  | { purpose: "reply_suggestion"; history: Turn[]; passages: PromptPassage[] }
+  | { purpose: "learn_from_sent"; subject: string; draft: string; sent: string };
 
 export type Usage = { inputTokens: number; outputTokens: number; cachedTokens: number };
 

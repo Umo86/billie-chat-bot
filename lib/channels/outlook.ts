@@ -345,6 +345,37 @@ export async function removeUntouchedDraft(
   }
 }
 
+export type SentState =
+  { state: "draft" } | { state: "sent"; text: string; sentAt: Date } | { state: "gone" };
+
+/**
+ * Where Billie's reply draft is now: still a draft, sent (with what was sent,
+ * as text: the part above the quoted email when Outlook can tell), or gone
+ * (deleted unsent). Message ids are immutable, so a sent draft keeps its id
+ * in Sent Items.
+ */
+export async function sentState(mailbox: string, draftId: string): Promise<SentState> {
+  try {
+    const m = await graph<{
+      isDraft?: boolean;
+      sentDateTime?: string | null;
+      uniqueBody?: { content?: string };
+      body?: { content?: string };
+    }>(`${message(mailbox, draftId)}?$select=isDraft,sentDateTime,uniqueBody,body`, {
+      prefer: ['outlook.body-content-type="text"'],
+    });
+    if (m.isDraft !== false) return { state: "draft" };
+    return {
+      state: "sent",
+      text: m.uniqueBody?.content?.trim() || m.body?.content || "",
+      sentAt: m.sentDateTime ? new Date(m.sentDateTime) : new Date(),
+    };
+  } catch (err) {
+    if (err instanceof GraphError && err.status === 404) return { state: "gone" };
+    throw err;
+  }
+}
+
 /** Billie's Outlook categories on the email; the team's own categories stay. */
 export async function tagMessage(
   mailbox: string,

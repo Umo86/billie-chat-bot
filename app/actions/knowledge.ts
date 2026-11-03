@@ -20,6 +20,7 @@ import { fileKind, MAX_FILE_BYTES } from "@/lib/knowledge/files";
 import { putFile, storedBlobSize } from "@/lib/storage";
 import { UserError } from "@/lib/errors";
 import { assertOnBotOf } from "@/lib/auth/bots";
+import { dismissLearning, saveLearning } from "@/lib/emails/learn";
 
 const id = z.object({ id: z.uuid() });
 
@@ -322,5 +323,33 @@ export async function checkStatusAction(input: unknown) {
   return runAction("knowledge.view", z.object({ kbId: z.uuid() }), input, async (actor, d) => {
     await assertOnBotOf(actor, "knowledge.view", "kb", d.kbId);
     return latestCheck(d.kbId);
+  });
+}
+
+/** A correction from a sent email, saved (as the person edited it) as a typed answer. */
+export async function saveLearningAction(input: unknown) {
+  const schema = z.object({
+    emailId: z.uuid(),
+    question: z.string().trim().min(3, "Write the question.").max(300),
+    answer: z.string().trim().min(2, "Write the answer.").max(4000),
+  });
+  return runAction(
+    "knowledge.edit",
+    schema,
+    input,
+    async (actor, d) => {
+      await assertOnBotOf(actor, "knowledge.edit", "email", d.emailId);
+      await saveLearning(actor, d.emailId, { question: d.question, answer: d.answer });
+      refresh();
+    },
+    "Saved. Billie will use this answer from now on.",
+  );
+}
+
+export async function dismissLearningAction(input: unknown) {
+  return runAction("knowledge.edit", z.object({ emailId: z.uuid() }), input, async (actor, d) => {
+    await assertOnBotOf(actor, "knowledge.edit", "email", d.emailId);
+    await dismissLearning(actor, d.emailId);
+    refresh();
   });
 }

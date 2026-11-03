@@ -64,6 +64,11 @@ const handlers: Handlers = {
       quiet: p.quiet === true,
       lastTry: job.attempts >= job.maxAttempts,
     }),
+  outlook_sent_check: async () => {
+    await (await import("@/lib/emails/learn")).checkSentDrafts();
+  },
+  learn_from_sent: async (p) =>
+    (await import("@/lib/emails/learn")).learnFromSent(String(p.emailId)),
   outlook_sync: async () => {
     await (await import("@/lib/channels/outlook")).syncAllMailboxes();
   },
@@ -119,8 +124,17 @@ export async function minuteTick(now = new Date()) {
   const minute = Math.floor(now.getTime() / 60_000);
   if (microsoftConfigured()) {
     const { hasMailboxToSync } = await import("@/lib/channels/outlook");
-    if (await hasMailboxToSync())
+    if (await hasMailboxToSync()) {
       await enqueue("outlook_sync", {}, { dedupeKey: `outlook:${minute}`, maxAttempts: 1 });
+      // Every ten minutes: Billie's drafts the team has sent (or deleted) since.
+      const { hasDraftsToCheck } = await import("@/lib/emails/learn");
+      if (await hasDraftsToCheck(now))
+        await enqueue(
+          "outlook_sent_check",
+          {},
+          { dedupeKey: `sent-check:${Math.floor(minute / 10)}`, once: true, maxAttempts: 1 },
+        );
+    }
   }
   // Every 15 minutes: Teams nudges about chats and emails still waiting for a reply.
   await enqueue(

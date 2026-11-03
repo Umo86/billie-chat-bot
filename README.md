@@ -34,6 +34,10 @@ Chatbots, live handover and an email assistant for Media10 shows.
 - **Knowledge check**: one button and Claude reads all of a bot's knowledge,
   listing contradictions, dates that have passed and contact details that
   don't match, with Edit next to each pasted text or typed answer involved.
+- **Learning from what the team sends**: when a draft in Outlook is sent,
+  Billie counts it as sent unchanged or changed (Reports shows the share
+  sent unchanged), and a fact the team corrected is offered on the
+  Knowledge page as a typed answer to save.
 - **A Monday post in each event's Teams channel**: last week's chats, the
   share Billie answered alone, emails drafted, the most asked questions,
   new questions it couldn't answer (each a link to answer it) and an

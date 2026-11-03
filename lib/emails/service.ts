@@ -37,6 +37,7 @@ export async function emailList(tab: EmailTab, view: BotView) {
       status: emailThreads.status,
       tags: emailThreads.tags,
       receivedAt: emailThreads.receivedAt,
+      sentOutcome: emailThreads.sentOutcome,
     })
     .from(emailThreads)
     .where(and(inArray(emailThreads.status, TAB[tab]), inView(view, emailThreads.botId)))

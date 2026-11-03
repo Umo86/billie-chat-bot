@@ -12,7 +12,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import type { EmailTags, MessageSource } from "@/lib/types";
+import type { EmailTags, MessageSource, SentLearning } from "@/lib/types";
 import { actorType, auditAction, emailSource, emailStatus, jobStatus } from "./enums";
 import { bots } from "./bots";
 import { users } from "./users";
@@ -56,6 +56,18 @@ export const emailThreads = pgTable(
     error: text("error"),
     handledBy: uuid("handled_by").references(() => users.id, { onDelete: "set null" }),
     handledAt: timestamp("handled_at", { withTimezone: true }),
+    /**
+     * Billie's Outlook draft, once someone sent it (lib/emails/learn.ts):
+     * "unchanged" or "edited" (sent), "discarded" (deleted unsent), and what
+     * the team actually sent.
+     */
+    sentOutcome: text("sent_outcome").$type<"unchanged" | "edited" | "discarded">(),
+    sentText: text("sent_text"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    /** When Billie last looked for the draft in Outlook. */
+    sentCheckedAt: timestamp("sent_checked_at", { withTimezone: true }),
+    /** A correction to save as a typed answer, from what the team changed. */
+    learning: jsonb("learning").$type<SentLearning | null>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
