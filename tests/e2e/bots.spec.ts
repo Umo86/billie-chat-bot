@@ -34,9 +34,19 @@ test("build knowledge, then a bot that answers from it", async ({ page }) => {
   await page
     .locator("#file-input")
     .setInputFiles(path.join(__dirname, "..", "fixtures", "parking.csv"));
+  // The upload panel follows the file: "Billie is learning", then a tick and "Billie is ready".
+  const learning = page.getByTestId("learning-panel");
+  await expect(learning.getByRole("heading", { name: "Billie is ready" })).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(learning).toContainText(/Learned \d+ passages? from parking\.csv\./);
+  await shot(page, "knowledge-ready");
   const file = page.getByTestId("source-row").filter({ hasText: "parking" });
   await expect(file.getByText(/Ready · \d+ passage/)).toBeVisible({ timeout: 30_000 });
   await shot(page, "knowledge");
+  // "Add another file" brings the drop zone back.
+  await learning.getByRole("button", { name: "Add another file" }).click();
+  await expect(page.getByText("Drop files here, or click to choose")).toBeVisible();
   await file.getByRole("button", { name: "View" }).click();
   await expect(page.getByRole("dialog")).toContainText(/passage|Row|Sheet|park/i);
   await page.keyboard.press("Escape");

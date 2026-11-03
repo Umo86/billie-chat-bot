@@ -9,6 +9,8 @@ import { Segmented } from "@/components/ui/segmented";
 import { Switch } from "@/components/ui/switch";
 import { Note, Panel } from "@/components/ui/bits";
 import { useRunner } from "@/components/ui/use-runner";
+import { LearningPanel } from "@/components/knowledge/learning-panel";
+import type { LearningItem } from "@/lib/knowledge/learning";
 import {
   addQaAction,
   addTextAction,
@@ -114,21 +116,24 @@ function FileDrop({
   const input = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
   const [busy, setBusy] = useState<{ name: string; pct: number } | null>(null);
+  // Files uploaded here, followed until Billie has read them ("Billie is learning").
+  const [learning, setLearning] = useState<LearningItem[]>([]);
   const limit = blobUploads ? maxBytes : DIRECT_LIMIT;
 
-  async function uploadOne(file: File): Promise<boolean> {
+  /** Uploads one file; the new source's id, or null (with a message) when it didn't go. */
+  async function uploadOne(file: File): Promise<string | null> {
     const ext = "." + (file.name.split(".").pop() ?? "").toLowerCase();
     if (!accept.includes(ext)) {
       toast.error(
         `${file.name}: Billie reads PDF, Word (.docx), Excel (.xlsx), CSV and text files.`,
       );
-      return false;
+      return null;
     }
     if (file.size > limit) {
       toast.error(
         `${file.name} is over ${Math.round(limit / 1024 / 1024)} MB. Split it or paste the text instead.`,
       );
-      return false;
+      return null;
     }
     setBusy({ name: file.name, pct: 0 });
     try {
@@ -154,23 +159,23 @@ function FileDrop({
         });
         if (!r.ok) {
           toast.error(r.error);
-          return false;
+          return null;
         }
-      } else {
-        const form = new FormData();
-        form.set("kbId", kbId);
-        form.set("file", file);
-        const r = await uploadFileAction(form);
-        if (!r.ok) {
-          toast.error(r.error);
-          return false;
-        }
+        return r.data?.id ?? null;
       }
-      return true;
+      const form = new FormData();
+      form.set("kbId", kbId);
+      form.set("file", file);
+      const r = await uploadFileAction(form);
+      if (!r.ok) {
+        toast.error(r.error);
+        return null;
+      }
+      return r.data?.id ?? null;
     } catch (err) {
       console.error(err);
       toast.error(`${file.name} couldn't be uploaded. Try again.`);
-      return false;
+      return null;
     } finally {
       setBusy(null);
     }
@@ -178,51 +183,40 @@ function FileDrop({
 
   async function take(files: FileList | File[]) {
     const list = Array.from(files);
-    let added = 0;
-    for (const f of list) if (await uploadOne(f)) added += 1;
-    if (added)
-      toast.success(
-        added === 1
-          ? "Added. Billie is reading it."
-          : `${added} files added. Billie is reading them.`,
-      );
     if (input.current) input.current.value = "";
+    for (const f of list) {
+      const sourceId = await uploadOne(f);
+      if (sourceId)
+        setLearning((prev) => [
+          ...prev,
+          { sourceId, name: f.name, status: "queued", passages: 0, error: null },
+        ]);
+    }
   }
 
   return (
     <div className="flex flex-col gap-2">
-      <label
-        htmlFor="file-input"
-        onDragOver={(e) => {
-          e.preventDefault();
-          setOver(true);
-        }}
-        onDragLeave={() => setOver(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setOver(false);
-          if (!busy) void take(e.dataTransfer.files);
-        }}
-        className={`flex min-h-36 cursor-pointer flex-col items-center justify-center gap-2 rounded-[12px] border-2 border-dashed px-4 py-6 text-center ${
-          over ? "border-primary bg-accent" : "border-border hover:border-primary/50"
-        }`}
-      >
-        <FileUp className="size-7 text-primary" aria-hidden />
-        {busy ? (
-          <span className="font-semibold" role="status">
-            Uploading {busy.name}
-            {busy.pct ? ` (${busy.pct}%)` : "…"}
-          </span>
-        ) : (
-          <>
-            <span className="font-semibold">Drop files here, or click to choose</span>
-            <span className="text-sm text-muted-foreground">
-              PDF, Word (.docx), Excel (.xlsx), CSV or text, up to {Math.round(limit / 1024 / 1024)}{" "}
-              MB each. The exhibitor manual is the best place to start.
-            </span>
-          </>
-        )}
-      </label>
+      {learning.length ? (
+        <LearningPanel
+          items={learning}
+          uploading={busy}
+          onChange={setLearning}
+          onAddMore={() => {
+            setLearning([]);
+            input.current?.click();
+          }}
+        />
+      ) : (
+        <DropZone
+          over={over}
+          busy={busy}
+          limit={limit}
+          onOver={setOver}
+          onDrop={(files) => {
+            if (!busy) void take(files);
+          }}
+        />
+      )}
       <input
         ref={input}
         id="file-input"
@@ -234,6 +228,55 @@ function FileDrop({
         onChange={(e) => e.target.files && void take(e.target.files)}
       />
     </div>
+  );
+}
+
+function DropZone({
+  over,
+  busy,
+  limit,
+  onOver,
+  onDrop,
+}: {
+  over: boolean;
+  busy: { name: string; pct: number } | null;
+  limit: number;
+  onOver: (over: boolean) => void;
+  onDrop: (files: FileList) => void;
+}) {
+  return (
+    <label
+      htmlFor="file-input"
+      onDragOver={(e) => {
+        e.preventDefault();
+        onOver(true);
+      }}
+      onDragLeave={() => onOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        onOver(false);
+        onDrop(e.dataTransfer.files);
+      }}
+      className={`flex min-h-36 cursor-pointer flex-col items-center justify-center gap-2 rounded-[12px] border-2 border-dashed px-4 py-6 text-center ${
+        over ? "border-primary bg-accent" : "border-border hover:border-primary/50"
+      }`}
+    >
+      <FileUp className="size-7 text-primary" aria-hidden />
+      {busy ? (
+        <span className="font-semibold" role="status">
+          Uploading {busy.name}
+          {busy.pct ? ` (${busy.pct}%)` : "…"}
+        </span>
+      ) : (
+        <>
+          <span className="font-semibold">Drop files here, or click to choose</span>
+          <span className="text-sm text-muted-foreground">
+            PDF, Word (.docx), Excel (.xlsx), CSV or text, up to {Math.round(limit / 1024 / 1024)}{" "}
+            MB each. The exhibitor manual is the best place to start.
+          </span>
+        </>
+      )}
+    </label>
   );
 }
 

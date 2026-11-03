@@ -45,7 +45,9 @@ async function pdfSegments(bytes: Buffer): Promise<Segment[]> {
         "This PDF is password-protected. Save a copy without the password and add that.",
       );
     }
-    throw new UnreadableFileError("This file couldn't be opened as a PDF.");
+    throw new UnreadableFileError(
+      "This file couldn't be opened as a PDF. Check it opens on your computer, then upload it again.",
+    );
   }
   const { text } = await extractText(doc, { mergePages: false });
   const pages = text
@@ -104,10 +106,15 @@ async function docxSegments(bytes: Buffer): Promise<Segment[]> {
   try {
     ({ value: html } = await mammoth.convertToHtml({ buffer: bytes }));
   } catch {
-    throw new UnreadableFileError("This file couldn't be opened as a Word document (.docx).");
+    throw new UnreadableFileError(
+      "This file couldn't be opened as a Word document (.docx). Check it opens in Word, then upload it again.",
+    );
   }
   const segments = htmlToSegments(html);
-  if (!segments.length) throw new UnreadableFileError("No text found in this Word document.");
+  if (!segments.length)
+    throw new UnreadableFileError(
+      "No text found in this Word document. Check you chose the right file, or paste the text instead.",
+    );
   return segments;
 }
 
@@ -134,7 +141,9 @@ async function xlsxSegments(bytes: Buffer): Promise<Segment[]> {
   try {
     await wb.xlsx.load(bytes as unknown as ArrayBuffer);
   } catch {
-    throw new UnreadableFileError("This file couldn't be opened as an Excel workbook (.xlsx).");
+    throw new UnreadableFileError(
+      "This file couldn't be opened as an Excel workbook (.xlsx). Check it opens in Excel, then upload it again.",
+    );
   }
   const segments: Segment[] = [];
   wb.eachSheet((ws) => {
@@ -151,7 +160,10 @@ async function xlsxSegments(bytes: Buffer): Promise<Segment[]> {
     const lines = body.length ? rowsToText(header, body) : rowsToText([], [header]);
     if (lines.length) segments.push({ text: lines.join("\n\n"), label: `Sheet: ${ws.name}` });
   });
-  if (!segments.length) throw new UnreadableFileError("No data found in this workbook.");
+  if (!segments.length)
+    throw new UnreadableFileError(
+      "No data found in this workbook. Check the sheets have data in them, then upload it again.",
+    );
   return segments;
 }
 
@@ -159,7 +171,10 @@ async function csvSegments(text: string): Promise<Segment[]> {
   const Papa = (await import("papaparse")).default;
   const parsed = Papa.parse<string[]>(text.replace(/^﻿/, ""), { skipEmptyLines: true });
   const rows = parsed.data.filter((r) => Array.isArray(r));
-  if (!rows.length) throw new UnreadableFileError("No rows found in this CSV file.");
+  if (!rows.length)
+    throw new UnreadableFileError(
+      "No rows found in this CSV file. Check it has a header row and data, then upload it again.",
+    );
   const [header, ...body] = rows;
   const lines = body.length ? rowsToText(header, body) : rowsToText([], [header]);
   return [{ text: lines.join("\n\n"), label: "" }];
@@ -193,7 +208,8 @@ export async function extractFile(
       return htmlToSegments(decodeText(bytes));
     case "text": {
       const text = clean(decodeText(bytes));
-      if (!text) throw new UnreadableFileError("This file is empty.");
+      if (!text)
+        throw new UnreadableFileError("This file is empty. Check you chose the right file.");
       return [{ text, label: "" }];
     }
     default:

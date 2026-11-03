@@ -14,7 +14,7 @@ import {
   renameKnowledgeBase,
   setKnowledgeBaseDeleted,
 } from "@/lib/knowledge/bases";
-import { passagesOf } from "@/lib/knowledge/queries";
+import { passagesOf, sourceStatuses } from "@/lib/knowledge/queries";
 import { fileKind, MAX_FILE_BYTES } from "@/lib/knowledge/files";
 import { putFile, storedBlobSize } from "@/lib/storage";
 import { UserError } from "@/lib/errors";
@@ -126,7 +126,7 @@ export async function addWebAction(input: unknown) {
 }
 
 /** Small files straight through the action (under Vercel's 4.5 MB request limit). */
-export async function uploadFileAction(form: FormData): Promise<ActionResult> {
+export async function uploadFileAction(form: FormData): Promise<ActionResult<{ id: string }>> {
   const actor = await getActor();
   if (!actor) return fail("Your session has ended. Sign in again.");
   if (!can(actor, "knowledge.edit")) return fail("You don't have access to do that.");
@@ -143,7 +143,7 @@ export async function uploadFileAction(form: FormData): Promise<ActionResult> {
       Buffer.from(await file.arrayBuffer()),
       file.type || "application/octet-stream",
     );
-    await addSource(actor, kbId, {
+    const id = await addSource(actor, kbId, {
       kind: "file",
       name: file.name,
       fileKey,
@@ -151,7 +151,7 @@ export async function uploadFileAction(form: FormData): Promise<ActionResult> {
       mimeType: file.type || "application/octet-stream",
     });
     refresh();
-    return { ok: true };
+    return { ok: true, data: { id } };
   } catch (err) {
     const text = friendly(err);
     if (text) return fail(text);
@@ -180,7 +180,7 @@ export async function registerUploadAction(input: unknown) {
     // Trust the store, not the browser: the file must really be there.
     const size = await storedBlobSize(d.pathname);
     if (size === null) throw new UserError(`${d.name} didn't finish uploading. Try again.`);
-    await addSource(actor, d.kbId, {
+    const id = await addSource(actor, d.kbId, {
       kind: "file",
       name: d.name,
       fileKey: `blob:${d.pathname}`,
@@ -188,7 +188,14 @@ export async function registerUploadAction(input: unknown) {
       mimeType: d.type || "application/octet-stream",
     });
     refresh();
+    return { id };
   });
+}
+
+/** How the reading of new files is going, for the "Billie is learning" panel. */
+export async function sourceStatusAction(input: unknown) {
+  const schema = z.object({ ids: z.array(z.uuid()).min(1).max(20) });
+  return runAction("knowledge.view", schema, input, async (_actor, d) => sourceStatuses(d.ids));
 }
 
 export async function rereadAction(input: unknown) {

@@ -1,7 +1,8 @@
 import "server-only";
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, query } from "@/lib/db/client";
-import { passages } from "@/lib/db/schema";
+import { passages, sources } from "@/lib/db/schema";
+import type { FreshStatus } from "./learning";
 
 export type KbSummary = {
   id: string;
@@ -84,6 +85,20 @@ export async function sourcesFor(kbId: string): Promise<SourceRow[]> {
     createdAt: new Date(r.created_at).toISOString(),
     lastReadAt: r.last_read_at ? new Date(r.last_read_at).toISOString() : null,
   }));
+}
+
+/** How the reading is going, for the panel shown after an upload (deleted sources left out). */
+export async function sourceStatuses(ids: string[]): Promise<FreshStatus[]> {
+  if (!ids.length) return [];
+  return db
+    .select({
+      id: sources.id,
+      status: sources.status,
+      passageCount: sources.passageCount,
+      error: sources.error,
+    })
+    .from(sources)
+    .where(and(inArray(sources.id, ids), isNull(sources.deletedAt)));
 }
 
 export async function passagesOf(sourceId: string) {

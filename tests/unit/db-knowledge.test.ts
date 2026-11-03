@@ -3,7 +3,9 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { passages, sources } from "@/lib/db/schema";
 import { retrieve, SEND_ALL_CHARS } from "@/lib/knowledge/search";
-import { deleteSource, restoreSource } from "@/lib/knowledge/sources";
+import { addSource, deleteSource, restoreSource } from "@/lib/knowledge/sources";
+import { sourceStatuses } from "@/lib/knowledge/queries";
+import { ingestSource } from "@/lib/knowledge/ingest";
 import { addAndRead, addFixture, hasDb, makeBot, makeUser } from "../helpers/db";
 
 describe.skipIf(!hasDb)("knowledge: reading files and searching (Postgres)", () => {
@@ -65,6 +67,22 @@ describe.skipIf(!hasDb)("knowledge: reading files and searching (Postgres)", () 
     const src = await db.query.sources.findFirst({ where: eq(sources.id, id) });
     expect(src?.status).toBe("failed");
     expect(src?.error).toMatch(/couldn't be opened as a PDF/);
+  });
+
+  it("reports how new files are going for the learning panel, leaving deleted ones out", async () => {
+    const actor = await makeUser("editor");
+    const { kb } = await makeBot();
+    const id = await addSource(actor, kb.id, { kind: "text", title: "Wi-Fi", body: "Free Wi-Fi." });
+    expect(await sourceStatuses([id])).toEqual([
+      { id, status: "queued", passageCount: 0, error: null },
+    ]);
+    await ingestSource(id);
+    expect(await sourceStatuses([id])).toEqual([
+      { id, status: "ready", passageCount: 1, error: null },
+    ]);
+    await deleteSource(actor, id);
+    expect(await sourceStatuses([id])).toEqual([]);
+    expect(await sourceStatuses([])).toEqual([]);
   });
 
   it("sends a small knowledge base whole, typed answers first, and leaves deleted sources out", async () => {

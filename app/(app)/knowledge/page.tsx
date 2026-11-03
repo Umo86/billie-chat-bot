@@ -56,8 +56,9 @@ export default async function KnowledgePage({
         <GapList gaps={gaps} kbs={kbs.map((k) => ({ id: k.id, name: k.name }))} canEdit={canEdit} />
       ) : !selected ? (
         <EmptyState title="No knowledge bases yet" action={canEdit ? <NewKbButton /> : null}>
-          Start with two: one for exhibitors (the exhibitor manual, price lists, deadlines) and one
-          for visitors (opening times, travel, tickets). Each bot answers from the ones you give it.
+          Create a knowledge base, then drop your files into it. Start with two: one for exhibitors
+          (the exhibitor manual, price lists, deadlines) and one for visitors (opening times,
+          travel, tickets). Each bot answers from the ones you give it.
         </EmptyState>
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">

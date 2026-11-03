@@ -3,6 +3,13 @@ import { chunkSegments, MAX_PASSAGE } from "@/lib/knowledge/chunk";
 import { fuseRankings, searchTerms } from "@/lib/knowledge/rank";
 import { questionKey } from "@/lib/knowledge/gaps";
 import { orQuery } from "@/lib/knowledge/search";
+import {
+  learnedSummary,
+  learningPhase,
+  mergeStatuses,
+  namesList,
+  type LearningItem,
+} from "@/lib/knowledge/learning";
 
 describe("chunking", () => {
   it("keeps each passage within the limit and never mixes labels", () => {
@@ -71,5 +78,70 @@ describe("gaps", () => {
   it("groups the same question however it is typed", () => {
     expect(questionKey("Is there a crèche?")).toBe(questionKey("is there   creche"));
     expect(questionKey("Hi! Is there a crèche, please?")).toBe("is there creche");
+  });
+});
+
+describe("the panel after an upload", () => {
+  const item = (over: Partial<LearningItem> = {}): LearningItem => ({
+    sourceId: "a",
+    name: "Exhibitor manual.pdf",
+    status: "queued",
+    passages: 0,
+    error: null,
+    ...over,
+  });
+
+  it("says Billie is learning until every file is read, and while one is uploading", () => {
+    expect(learningPhase([item()])).toBe("learning");
+    expect(learningPhase([item({ status: "reading" })])).toBe("learning");
+    expect(learningPhase([item({ status: "ready" })], true)).toBe("learning");
+    expect(learningPhase([item({ status: "ready" }), item({ sourceId: "b" })])).toBe("learning");
+  });
+
+  it("is ready when any file was learned, and failed only when none was", () => {
+    expect(learningPhase([item({ status: "ready", passages: 12 })])).toBe("ready");
+    expect(
+      learningPhase([item({ status: "ready" }), item({ sourceId: "b", status: "failed" })]),
+    ).toBe("ready");
+    expect(learningPhase([item({ status: "failed" })])).toBe("failed");
+  });
+
+  it("sums what was learned, by file name or by count", () => {
+    expect(learnedSummary([item({ status: "ready", passages: 128 })])).toBe(
+      "Learned 128 passages from Exhibitor manual.pdf.",
+    );
+    expect(learnedSummary([item({ status: "ready", passages: 1 })])).toBe(
+      "Learned 1 passage from Exhibitor manual.pdf.",
+    );
+    expect(
+      learnedSummary([
+        item({ status: "ready", passages: 100 }),
+        item({ sourceId: "b", name: "Prices.xlsx", status: "ready", passages: 40 }),
+        item({ sourceId: "c", status: "failed" }),
+      ]),
+    ).toBe("Learned 140 passages from 2 files.");
+  });
+
+  it("lists file names the way a person would", () => {
+    expect(namesList(["a.pdf"])).toBe("a.pdf");
+    expect(namesList(["a.pdf", "b.pdf"])).toBe("a.pdf and b.pdf");
+    expect(namesList(["a.pdf", "b.pdf", "c.csv"])).toBe("a.pdf, b.pdf and c.csv");
+  });
+
+  it("takes fresh statuses, keeps finished files, and fails a file removed meanwhile", () => {
+    const merged = mergeStatuses(
+      [
+        item(),
+        item({ sourceId: "b", status: "ready", passages: 5 }),
+        item({ sourceId: "c", name: "Gone.pdf" }),
+      ],
+      [
+        { id: "a", status: "ready", passageCount: 42, error: null },
+        { id: "b", status: "queued", passageCount: 0, error: null },
+      ],
+    );
+    expect(merged[0]).toMatchObject({ status: "ready", passages: 42 });
+    expect(merged[1]).toMatchObject({ status: "ready", passages: 5 });
+    expect(merged[2]).toMatchObject({ status: "failed", error: expect.stringMatching(/removed/) });
   });
 });

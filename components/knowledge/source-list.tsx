@@ -109,7 +109,7 @@ function SourceItem({
         ) : s.status === "failed" ? (
           <Chip tone="bad">Couldn&apos;t read</Chip>
         ) : (
-          <Chip tone="info">Reading…</Chip>
+          <Chip tone="info">Learning…</Chip>
         )}
         {s.kind === "web" && s.refreshWeekly ? <Chip>Checked weekly</Chip> : null}
         {s.status === "ready" ? (

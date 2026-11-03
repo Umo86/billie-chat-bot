@@ -230,4 +230,181 @@
     letter-spacing: -0.015em;
     line-height: 1;
   }
+
+  /*
+   * "Billie is learning": a page being read line by line, with Billie's
+   * bubble beside it, its signal dot pulsing. Then "Billie is ready": a tick
+   * drawn in a green circle. Still versions when motion is reduced.
+   */
+  .learn-visual {
+    position: relative;
+    width: 66px;
+    height: 74px;
+    flex: none;
+  }
+  .learn-page {
+    position: absolute;
+    inset: 0 10px 0 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 9px;
+    overflow: hidden;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    background: var(--card);
+    box-shadow: var(--shadow-panel);
+  }
+  .learn-page i {
+    display: block;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--muted);
+  }
+  .learn-page i:nth-child(2n) {
+    width: 68%;
+  }
+  .learn-scan {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 18px;
+    background: linear-gradient(
+      to bottom,
+      transparent,
+      color-mix(in oklab, var(--primary) 32%, transparent),
+      transparent
+    );
+    animation: learn-scan 1.8s ease-in-out infinite;
+  }
+  .brand-mark.learn-think {
+    position: absolute;
+    right: 0;
+    bottom: -4px;
+    width: 28px;
+    height: 28px;
+    border-radius: 9px 9px 9px 3px;
+  }
+  .learn-think::after {
+    animation: learn-pulse 1.2s ease-in-out infinite;
+  }
+  .learn-dots span {
+    animation: learn-dot 1.4s infinite both;
+  }
+  .learn-dots span:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+  .learn-dots span:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+  .learn-bar {
+    position: relative;
+    width: 100%;
+    max-width: 320px;
+    height: 4px;
+    overflow: hidden;
+    border-radius: 4px;
+    background: var(--muted);
+  }
+  .learn-bar::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 40%;
+    border-radius: 4px;
+    background: var(--primary);
+    animation: learn-bar 1.5s ease-in-out infinite;
+  }
+  .ready-tick {
+    animation: ready-pop 0.35s 0.65s ease-out both;
+  }
+  .ready-tick circle {
+    stroke-dasharray: 151;
+    stroke-dashoffset: 151;
+    animation: ready-draw 0.5s ease-out forwards;
+  }
+  .ready-tick path {
+    stroke-dasharray: 32;
+    stroke-dashoffset: 32;
+    animation: ready-draw 0.3s 0.45s ease-out forwards;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .learn-scan,
+    .learn-think::after,
+    .learn-dots span,
+    .learn-bar::after,
+    .ready-tick,
+    .ready-tick circle,
+    .ready-tick path {
+      animation: none;
+    }
+    .learn-scan {
+      display: none;
+    }
+    .learn-dots span {
+      opacity: 1;
+    }
+    .learn-bar::after {
+      width: 100%;
+      opacity: 0.35;
+    }
+    .ready-tick circle,
+    .ready-tick path {
+      stroke-dashoffset: 0;
+    }
+  }
+}
+
+@keyframes learn-scan {
+  from {
+    transform: translateY(-18px);
+  }
+  to {
+    transform: translateY(74px);
+  }
+}
+@keyframes learn-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.4);
+  }
+}
+@keyframes learn-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.2;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+@keyframes learn-bar {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+@keyframes ready-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes ready-pop {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
 }
