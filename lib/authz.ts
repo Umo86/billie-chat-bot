@@ -31,6 +31,7 @@ export const ACTIONS = [
   "emails.view",
   "emails.handle",
   "reports.view",
+  "reminders.send",
   "team.manage",
   "settings.manage",
   "data.export",
@@ -51,6 +52,8 @@ const MATRIX: Record<Action, readonly Role[]> = {
   "emails.view": ["admin", "editor", "agent"],
   "emails.handle": ["admin", "editor", "agent"],
   "reports.view": ["admin", "editor"],
+  // Deadline reminders go to many exhibitors at once: people who run the bot.
+  "reminders.send": ["admin", "editor"],
   "team.manage": ["admin"],
   "settings.manage": ["admin"],
   "data.export": ["admin"],

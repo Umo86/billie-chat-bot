@@ -11,6 +11,7 @@ import type {
   EmailTagJson,
   KnowledgeCheckJson,
   LearnFromSentJson,
+  ReminderJson,
 } from "./schemas";
 import type { FakeContext } from "./provider";
 import type { PromptPassage } from "./prompts";
@@ -320,6 +321,23 @@ function fakeLearn(ctx: Extract<FakeContext, { purpose: "learn_from_sent" }>): L
   };
 }
 
+/** A reminder: what's due and when, plus the passage that best matches the deadline. */
+function fakeReminder(ctx: Extract<FakeContext, { purpose: "deadline_reminder" }>): ReminderJson {
+  const hit = bestPassage(ctx.deadline, ctx.passages);
+  return {
+    subject: `Reminder: ${ctx.deadline} by ${ctx.due}`,
+    body: [
+      "Hi {first_name},",
+      "",
+      `This is a reminder that the ${ctx.deadline.toLowerCase()} for {company} ({stand}) is due by ${ctx.due}.${hit ? ` ${hit.sentences}` : ""}`,
+      "",
+      "If you've already done this, thank you, and you can ignore this email.",
+    ].join("\n"),
+    used: hit ? [hit.index + 1] : [],
+    missing: hit ? "" : `How and where to do the ${ctx.deadline.toLowerCase()}.`,
+  };
+}
+
 export function fakeStructured(ctx: FakeContext): unknown {
   switch (ctx.purpose) {
     case "answer":
@@ -334,5 +352,7 @@ export function fakeStructured(ctx: FakeContext): unknown {
       return fakeSuggestion(ctx);
     case "learn_from_sent":
       return fakeLearn(ctx);
+    case "deadline_reminder":
+      return fakeReminder(ctx);
   }
 }

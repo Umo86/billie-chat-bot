@@ -7,9 +7,12 @@ import {
   conversations,
   emailThreads,
   emailTombstones,
+  deadlines,
   exhibitorLists,
   exhibitors,
   messages,
+  reminderBatches,
+  reminders,
   whatsappContacts,
 } from "@/lib/db/schema";
 import { writeAudit } from "@/lib/audit";
@@ -20,8 +23,8 @@ import type { Actor } from "@/lib/authz";
  * UK GDPR requests about one person: find what Billie holds (chats they left
  * details in or signed in to, WhatsApp chats from their number, emails from
  * their address, requests they sent from a chat's form, their rows on
- * exhibitor lists), give them a copy, or delete it. Searches by email address
- * or phone number.
+ * exhibitor lists and deadline reminders to them), give them a copy, or
+ * delete it. Searches by email address or phone number.
  */
 export type PersonQuery = { kind: "email"; value: string } | { kind: "phone"; value: string };
 
@@ -80,30 +83,58 @@ async function matchingIds(q: PersonQuery) {
         .from(conversations)
         .where(inArray(conversations.exhibitorId, exhibitorIds))
     : [];
+  const reminded =
+    q.kind === "email"
+      ? await query<{ id: string }>(
+          db,
+          sql`SELECT id FROM reminders WHERE "to" @> ARRAY[${q.value}]::text[]`,
+        )
+      : [];
   return {
     chatIds: [...new Set([...chats, ...signedIn].map((r) => r.id))],
     emailIds: emails.map((r) => r.id),
     requestIds: requests.map((r) => r.id),
     exhibitorIds,
+    reminderIds: reminded.map((r) => r.id),
   };
 }
 
 export async function findPerson(raw: string) {
   const q = parsePersonQuery(raw);
-  const { chatIds, emailIds, requestIds, exhibitorIds } = await matchingIds(q);
+  const { chatIds, emailIds, requestIds, exhibitorIds, reminderIds } = await matchingIds(q);
   return {
     query: q,
     chats: chatIds.length,
     emails: emailIds.length,
     requests: requestIds.length,
     exhibitors: exhibitorIds.length,
+    reminders: reminderIds.length,
   };
 }
 
 /** Everything Billie holds about the person, for a subject access request. */
 export async function exportPerson(actor: Actor, raw: string) {
   const q = parsePersonQuery(raw);
-  const { chatIds, emailIds, requestIds, exhibitorIds } = await matchingIds(q);
+  const { chatIds, emailIds, requestIds, exhibitorIds, reminderIds } = await matchingIds(q);
+  const reminded = reminderIds.length
+    ? await db
+        .select({
+          bot: bots.name,
+          deadline: deadlines.name,
+          dueOn: deadlines.dueOn,
+          company: reminders.company,
+          stand: reminders.stand,
+          name: reminders.name,
+          to: reminders.to,
+          status: reminders.status,
+          sentAt: reminders.sentAt,
+        })
+        .from(reminders)
+        .innerJoin(reminderBatches, eq(reminderBatches.id, reminders.batchId))
+        .innerJoin(deadlines, eq(deadlines.id, reminderBatches.deadlineId))
+        .innerJoin(bots, eq(bots.id, reminderBatches.botId))
+        .where(inArray(reminders.id, reminderIds))
+    : [];
   const listed = exhibitorIds.length
     ? await db
         .select({
@@ -167,7 +198,7 @@ export async function exportPerson(actor: Actor, raw: string) {
     entityType: "privacy",
     entityId: null,
     action: "export",
-    summary: `Exported a person's data (${chats.length} chats, ${emails.length} emails, ${requests.length} requests, ${listed.length} exhibitor list rows)`,
+    summary: `Exported a person's data (${chats.length} chats, ${emails.length} emails, ${requests.length} requests, ${listed.length} exhibitor list rows, ${reminded.length} reminders)`,
   });
   return {
     generatedAt: new Date().toISOString(),
@@ -184,6 +215,7 @@ export async function exportPerson(actor: Actor, raw: string) {
     emails,
     requests: requests.map((r) => ({ ...r, ref: `R-${r.ref}` })),
     exhibitorLists: listed,
+    reminders: reminded,
   };
 }
 
@@ -193,8 +225,9 @@ export async function exportPerson(actor: Actor, raw: string) {
  */
 export async function deletePerson(actor: Actor, raw: string) {
   const q = parsePersonQuery(raw);
-  const { chatIds, emailIds, requestIds, exhibitorIds } = await matchingIds(q);
+  const { chatIds, emailIds, requestIds, exhibitorIds, reminderIds } = await matchingIds(q);
   await db.transaction(async (tx) => {
+    if (reminderIds.length) await tx.delete(reminders).where(inArray(reminders.id, reminderIds));
     if (exhibitorIds.length) {
       const gone = await tx
         .delete(exhibitors)
@@ -232,7 +265,7 @@ export async function deletePerson(actor: Actor, raw: string) {
       entityType: "privacy",
       entityId: null,
       action: "delete",
-      summary: `Deleted a person's data on request (${chatIds.length} chats, ${emailIds.length} emails, ${requestIds.length} requests, ${exhibitorIds.length} exhibitor list rows)`,
+      summary: `Deleted a person's data on request (${chatIds.length} chats, ${emailIds.length} emails, ${requestIds.length} requests, ${exhibitorIds.length} exhibitor list rows, ${reminderIds.length} reminders)`,
     });
   });
   return {
@@ -240,5 +273,6 @@ export async function deletePerson(actor: Actor, raw: string) {
     emails: emailIds.length,
     requests: requestIds.length,
     exhibitors: exhibitorIds.length,
+    reminders: reminderIds.length,
   };
 }

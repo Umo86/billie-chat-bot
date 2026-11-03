@@ -16,6 +16,10 @@ import { TestStep } from "@/components/bots/test-step";
 import { LiveStep } from "@/components/bots/live-step";
 import { ExhibitorsStep } from "@/components/bots/exhibitors-step";
 import { listSummary } from "@/lib/exhibitors/service";
+import { DeadlinesPanel } from "@/components/bots/deadlines-panel";
+import { deadlineSetup } from "@/lib/exhibitors/deadlines";
+import { dueLabel } from "@/lib/exhibitors/reminders";
+import { daysLeft, daysUntil } from "@/lib/exhibitors/deadline-rules";
 import { requireActor } from "@/lib/auth/actor";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -38,7 +42,7 @@ import {
 } from "@/lib/config";
 import { botEmailSetup, mailboxManagers } from "@/lib/emails/mailboxes";
 import { getSettings } from "@/lib/settings";
-import { timeAgo } from "@/lib/time";
+import { londonDate, timeAgo } from "@/lib/time";
 
 export const metadata: Metadata = { title: "Bot" };
 // Running a bot's test questions asks Claude once per question.
@@ -150,8 +154,9 @@ export default async function BotPage({
       );
     }
   } else if (step === "exhibitors") {
-    const list = await listSummary(bot.id);
+    const [list, setup] = await Promise.all([listSummary(bot.id), deadlineSetup(bot.id)]);
     const next = nextStep("exhibitors", bot.audience);
+    const today = londonDate();
     body = (
       <ExhibitorsStep
         botId={bot.id}
@@ -171,7 +176,27 @@ export default async function BotPage({
         canEdit={canEdit}
         next={next}
         nextLabel={steps.find((s) => s.key === next)!.label}
-      />
+      >
+        <DeadlinesPanel
+          botId={bot.id}
+          columns={setup.columns}
+          values={setup.values}
+          filled={setup.filled}
+          total={setup.total}
+          hasList={Boolean(list)}
+          canEdit={canEdit}
+          emailReady={emailConfigured()}
+          deadlines={setup.deadlines.map((d) => ({
+            ...d,
+            due: dueLabel(d.dueOn),
+            left: daysLeft(daysUntil(d.dueOn, today)),
+            latest: d.latest && {
+              ...d.latest,
+              when: timeAgo(d.latest.sentAt ?? d.latest.createdAt),
+            },
+          }))}
+        />
+      </ExhibitorsStep>
     );
   } else if (step === "rules") {
     const people = await mailboxManagers(bot.id);

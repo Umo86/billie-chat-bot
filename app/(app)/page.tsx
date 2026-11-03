@@ -9,6 +9,7 @@ import { can, worksOnEveryBot } from "@/lib/authz";
 import { botCards, homeCounters } from "@/lib/bots/queries";
 import { myBotIds } from "@/lib/auth/bots";
 import { timeAgo } from "@/lib/time";
+import { remindersToCheck } from "@/lib/exhibitors/reminders";
 
 export const metadata: Metadata = { title: "Home" };
 
@@ -21,9 +22,10 @@ export default async function HomePage({
   const params = await searchParams;
   const canBots = can(actor, "bots.view");
   const ids = await myBotIds(actor);
-  const [counters, bots] = await Promise.all([
+  const [counters, bots, reminders] = await Promise.all([
     homeCounters(ids),
     canBots ? botCards(ids) : Promise.resolve([]),
+    can(actor, "reminders.send") ? remindersToCheck(ids) : Promise.resolve([]),
   ]);
 
   const tiles = [
@@ -69,6 +71,25 @@ export default async function HomePage({
       {params.welcome ? (
         <Note tone="good">
           You&apos;re set up. Start by creating your first bot, then invite the team in Settings.
+        </Note>
+      ) : null}
+
+      {reminders.length ? (
+        <Note tone="warn">
+          <p className="font-semibold">Deadline reminders to check</p>
+          <ul className="mt-1 flex flex-col gap-0.5">
+            {reminders.map((r) => (
+              <li key={r.id}>
+                <Link
+                  href={`/bots/${r.botId}/reminders/${r.id}`}
+                  className="font-semibold text-primary"
+                >
+                  {r.deadline}
+                </Link>{" "}
+                · {r.botName} · {r.count} {r.count === 1 ? "exhibitor" : "exhibitors"}
+              </li>
+            ))}
+          </ul>
         </Note>
       ) : null}
 

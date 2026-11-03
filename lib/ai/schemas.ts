@@ -172,3 +172,30 @@ export const learnFromSentSchema = z.object({
   why: z.string(),
 });
 export type LearnFromSentJson = z.infer<typeof learnFromSentSchema>;
+
+export const reminderJsonSchema = {
+  type: "object",
+  properties: {
+    subject: { type: "string", description: "The email's subject line." },
+    body: {
+      type: "string",
+      description: "The email, from the greeting to the last line, with no sign-off.",
+    },
+    used: { type: "array", items: { type: "integer" }, description: "Passage numbers used." },
+    missing: {
+      type: "string",
+      description:
+        "What the passages don't say that exhibitors need (how or where to do it), or empty.",
+    },
+  },
+  required: ["subject", "body", "used", "missing"],
+  additionalProperties: false,
+} as const;
+
+export const reminderSchema = z.object({
+  subject: z.string(),
+  body: z.string(),
+  used: z.array(z.number()),
+  missing: z.string(),
+});
+export type ReminderJson = z.infer<typeof reminderSchema>;

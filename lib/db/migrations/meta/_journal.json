@@ -127,6 +127,13 @@
       "when": 1793729937009,
       "tag": "0017_exhibitor_lists",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793732115530,
+      "tag": "0018_deadline_reminders",
+      "breakpoints": true
     }
   ]
 }

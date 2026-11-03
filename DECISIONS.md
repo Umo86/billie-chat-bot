@@ -180,6 +180,31 @@ show a code form there. The list is personal data: only people on the bot
 see it, it's in privacy requests (by email), it goes with the bot, and a
 list nobody has uploaded again within the retention time is deleted.
 
+## Deadline reminders are written once, checked by a person, sent gently
+
+A deadline says which column of the exhibitor list shows who has done it,
+and which answers mean done (Billie guesses yes-like words, or "any
+answer" for a column of dates; the person ticks the rest). Everyone else
+gets the reminder. If the list is replaced by one without that column,
+Billie refuses to chase anyone, rather than chasing everybody.
+
+Billie writes one email per round, not one per exhibitor: a single Claude
+call on the queue, from the bot's knowledge, with {first_name}, {company}
+and {stand} filled in for each person when it's sent. Unknown placeholders
+are refused, so nobody gets "{portal_link}". Rounds start a set number of
+days before the deadline (once per reminder day, after 08:00 UK time so
+nobody's phone buzzes at dawn) or on request, never more than one open at a
+time, and nothing is sent until a person checks the email and the
+recipients and confirms. Anyone who has done it since (by the current list)
+is left out at send time.
+
+Sending is one job per round that sends one email at a time with a pause,
+and queues itself again when its time is up: the job runner runs five jobs
+at once, which would trip the email service's rate limit. Each reminder is
+marked sent or failed as it goes (failed ones can be tried again), replies
+go to the event mailbox when there is one, and every round is in privacy
+requests and goes with retention.
+
 ## Billie learns from sent drafts, but a person saves what it learns
 
 Message ids are immutable, so Billie's Outlook draft keeps its id once it's

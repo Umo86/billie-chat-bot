@@ -32,7 +32,10 @@ export type JobKind =
   | "nudge_waiting"
   | "weekly_bot_summary"
   | "outlook_sent_check"
-  | "learn_from_sent";
+  | "learn_from_sent"
+  | "deadline_reminders"
+  | "draft_reminders"
+  | "send_reminders";
 
 export type Job = typeof jobs.$inferSelect;
 
@@ -82,7 +85,7 @@ export async function enqueue(
  * function has the time, the every-minute sweep and the pages that queue
  * them (maxDuration 300), never straight after a chat message (60 seconds).
  */
-export const LONG_KINDS: JobKind[] = ["knowledge_check"];
+export const LONG_KINDS: JobKind[] = ["knowledge_check", "send_reminders"];
 
 /**
  * Takes up to `limit` due jobs: queued and due, or running with an expired

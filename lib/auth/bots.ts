@@ -8,9 +8,11 @@ import {
   bots,
   chatRequests,
   conversations,
+  deadlines,
   emailThreads,
   gaps,
   knowledgeBases,
+  reminderBatches,
   sources,
   users,
 } from "@/lib/db/schema";
@@ -100,12 +102,30 @@ export async function mayOnBot(
   return canOnBot(actor, action, await botScope(actor), botId);
 }
 
-/** The bot a chat, request, email, unanswered question or knowledge belongs to. */
+/** The bot a chat, request, email, unanswered question, knowledge or deadline belongs to. */
 export async function botOf(
-  kind: "conversation" | "request" | "email" | "gap" | "kb" | "source",
+  kind: "conversation" | "request" | "email" | "gap" | "kb" | "source" | "deadline" | "reminders",
   id: string,
 ): Promise<string | null> {
   switch (kind) {
+    case "deadline":
+      return (
+        (
+          await db.query.deadlines.findFirst({
+            where: eq(deadlines.id, id),
+            columns: { botId: true },
+          })
+        )?.botId ?? null
+      );
+    case "reminders":
+      return (
+        (
+          await db.query.reminderBatches.findFirst({
+            where: eq(reminderBatches.id, id),
+            columns: { botId: true },
+          })
+        )?.botId ?? null
+      );
     case "conversation":
       return (
         (

@@ -239,6 +239,45 @@ export function suggestReplyUser(history: Turn[], now = new Date(), recordN?: nu
 }
 
 /**
+ * A deadline chaser: one email for every exhibitor who hasn't done something
+ * yet, with placeholders Billie fills in for each. A person checks it before
+ * it goes to anyone.
+ */
+export function reminderSystem(input: {
+  show: string;
+  tone: PromptBot["tone"];
+  personality: string;
+}): string {
+  const style = personalityLine(input.personality);
+  return [
+    `You write a reminder email for the operations team of ${input.show || "the show"}. It goes to every exhibitor who hasn't done something by its deadline yet. A person checks it before it's sent.`,
+    "Use only the numbered passages in KNOWLEDGE for what to do and how or where to do it. Never invent dates, times, prices, rules, links or contact details. If the passages don't say how or where to do it, say what's missing in \"missing\" and keep the email to what's due and when.",
+    "Today's date comes with the deadline. Say plainly how long is left, or that the deadline has passed.",
+    'Write it once for everyone, with these placeholders, exactly as written, which are filled in for each exhibitor: {first_name} (their first name), {company} (their company), {stand} (for example "stand B12": it already includes the word stand). Use no other placeholders or brackets.',
+    "Start with \"Hi {first_name},\". Say what's due and by when, and how to do it. Say near the end that if they've already done it, they can ignore this email. Keep it short: a few short paragraphs.",
+    `Style: ${TONES[input.tone]}, UK English, a plain-text email with no emoji. No sign-off or name: the team's sign-off is added after your text.`,
+    ...(style ? [style] : []),
+    "Write a short, plain subject line that says what's due and when.",
+  ].join("\n");
+}
+
+export function reminderUser(
+  input: { deadline: string; due: string; column: string },
+  now = new Date(),
+): string {
+  return [
+    todayLine(now),
+    "",
+    "DEADLINE",
+    `What's due: ${quoteUntrusted(input.deadline, 120)}`,
+    `Due on: ${input.due}`,
+    `(On the team's exhibitor list this is the column "${quoteUntrusted(input.column, 120)}".)`,
+    "",
+    "Write the reminder.",
+  ].join("\n");
+}
+
+/**
  * Learning from a reply the team changed before sending: if they corrected
  * or added a fact, it becomes a question and answer to offer as a typed
  * answer. Changes of wording, tone, greetings and sign-offs don't count.

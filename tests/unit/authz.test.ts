@@ -32,6 +32,7 @@ const MATRIX: Record<(typeof ACTIONS)[number], [boolean, boolean, boolean]> = {
   "emails.view": [true, true, true],
   "emails.handle": [true, true, true],
   "reports.view": [true, true, false],
+  "reminders.send": [true, true, false],
   "team.manage": [true, false, false],
   "settings.manage": [true, false, false],
   "data.export": [true, false, false],

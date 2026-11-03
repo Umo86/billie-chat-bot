@@ -3,9 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { runAction } from "@/lib/actions/run";
-import { assertOnBot } from "@/lib/auth/bots";
+import { assertOnBot, assertOnBotOf } from "@/lib/auth/bots";
 import { UserError } from "@/lib/errors";
 import { removeList, uploadList } from "@/lib/exhibitors/service";
+import { deleteDeadline, saveDeadline, startReminders } from "@/lib/exhibitors/deadlines";
+import {
+  discardReminders,
+  retryFailedReminders,
+  saveReminderText,
+  sendReminders,
+} from "@/lib/exhibitors/reminders";
 
 /** Under the server action limit (next.config.ts), and far more than 5,000 rows need. */
 const MAX_LIST_BYTES = 4 * 1024 * 1024;
@@ -52,5 +59,118 @@ export async function removeExhibitorListAction(input: unknown) {
       revalidatePath(`/bots/${d.botId}`);
     },
     "List removed.",
+  );
+}
+
+const deadlineBody = z.object({
+  botId: z.uuid(),
+  id: z.uuid().optional(),
+  name: z.string().max(200),
+  dueOn: z.string().max(10),
+  column: z.string().max(300),
+  doneValues: z.array(z.string().max(500)).max(100),
+  remindDaysBefore: z.number().int(),
+});
+
+export async function saveDeadlineAction(input: unknown) {
+  return runAction(
+    "bots.edit",
+    deadlineBody,
+    input,
+    async (actor, d) => {
+      await assertOnBot(actor, "bots.edit", d.botId);
+      const id = await saveDeadline(actor, d.botId, d, d.id);
+      revalidatePath(`/bots/${d.botId}`);
+      return { id };
+    },
+    "Deadline saved.",
+  );
+}
+
+export async function deleteDeadlineAction(input: unknown) {
+  return runAction(
+    "bots.edit",
+    z.object({ id: z.uuid() }),
+    input,
+    async (actor, d) => {
+      await assertOnBotOf(actor, "bots.edit", "deadline", d.id);
+      await deleteDeadline(actor, d.id);
+      revalidatePath("/bots/[id]", "page");
+    },
+    "Deadline deleted.",
+  );
+}
+
+/** Billie drafts reminders now, for everyone who hasn't done it. */
+export async function startRemindersAction(input: unknown) {
+  return runAction("bots.edit", z.object({ deadlineId: z.uuid() }), input, async (actor, d) => {
+    await assertOnBotOf(actor, "bots.edit", "deadline", d.deadlineId);
+    const started = await startReminders(actor, d.deadlineId);
+    revalidatePath("/bots/[id]", "page");
+    return started;
+  });
+}
+
+const reminderText = z.object({
+  batchId: z.uuid(),
+  subject: z.string().max(1000),
+  body: z.string().max(20_000),
+});
+
+export async function saveReminderTextAction(input: unknown) {
+  return runAction(
+    "reminders.send",
+    reminderText,
+    input,
+    async (actor, d) => {
+      await assertOnBotOf(actor, "reminders.send", "reminders", d.batchId);
+      await saveReminderText(actor, d.batchId, d);
+      revalidatePath("/bots/[id]/reminders/[batchId]", "page");
+    },
+    "Saved.",
+  );
+}
+
+export async function sendRemindersAction(input: unknown) {
+  return runAction(
+    "reminders.send",
+    reminderText.extend({ leaveOut: z.array(z.uuid()).max(10_000) }),
+    input,
+    async (actor, d) => {
+      await assertOnBotOf(actor, "reminders.send", "reminders", d.batchId);
+      const sent = await sendReminders(actor, d.batchId, d);
+      revalidatePath("/bots/[id]/reminders/[batchId]", "page");
+      revalidatePath("/bots/[id]", "page");
+      return sent;
+    },
+  );
+}
+
+export async function discardRemindersAction(input: unknown) {
+  return runAction(
+    "reminders.send",
+    z.object({ batchId: z.uuid() }),
+    input,
+    async (actor, d) => {
+      await assertOnBotOf(actor, "reminders.send", "reminders", d.batchId);
+      await discardReminders(actor, d.batchId);
+      revalidatePath("/bots/[id]/reminders/[batchId]", "page");
+      revalidatePath("/bots/[id]", "page");
+    },
+    "Discarded.",
+  );
+}
+
+export async function retryFailedRemindersAction(input: unknown) {
+  return runAction(
+    "reminders.send",
+    z.object({ batchId: z.uuid() }),
+    input,
+    async (actor, d) => {
+      await assertOnBotOf(actor, "reminders.send", "reminders", d.batchId);
+      await retryFailedReminders(actor, d.batchId);
+      revalidatePath("/bots/[id]/reminders/[batchId]", "page");
+    },
+    "Trying them again.",
   );
 }

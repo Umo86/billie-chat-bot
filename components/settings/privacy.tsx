@@ -12,7 +12,13 @@ import { deletePersonAction, findPersonAction } from "@/app/actions/settings";
 
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-type Found = { chats: number; emails: number; requests: number; exhibitors: number };
+type Found = {
+  chats: number;
+  emails: number;
+  requests: number;
+  exhibitors: number;
+  reminders: number;
+};
 
 /** "2 chats, 1 email and 1 request" (and "1 exhibitor list row" when there are any) */
 function holding(f: Found): string {
@@ -21,6 +27,7 @@ function holding(f: Found): string {
     count(f.emails, "email", "emails"),
     count(f.requests, "request", "requests"),
     ...(f.exhibitors ? [count(f.exhibitors, "exhibitor list row", "exhibitor list rows")] : []),
+    ...(f.reminders ? [count(f.reminders, "deadline reminder", "deadline reminders")] : []),
   ];
   return `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
 }
@@ -41,8 +48,8 @@ export function Privacy({ retentionMonths }: { retentionMonths: number }) {
           <p className="mt-1 text-sm text-muted-foreground">
             Search by the email address or phone number they gave. You&apos;ll find chats where they
             left details or signed in, WhatsApp chats from their number, emails from their address,
-            requests they sent from a chat and their rows on exhibitor lists. Everything else is
-            deleted automatically after {retentionMonths} months.
+            requests they sent from a chat, their rows on exhibitor lists and deadline reminders
+            sent to them. Everything else is deleted automatically after {retentionMonths} months.
           </p>
         </div>
         <form
@@ -58,6 +65,7 @@ export function Privacy({ retentionMonths }: { retentionMonths: number }) {
                   emails: d.emails,
                   requests: d.requests,
                   exhibitors: d.exhibitors,
+                  reminders: d.reminders,
                 }),
             });
           }}
@@ -70,7 +78,7 @@ export function Privacy({ retentionMonths }: { retentionMonths: number }) {
           </Button>
         </form>
         {found ? (
-          found.chats + found.emails + found.requests + found.exhibitors === 0 ? (
+          found.chats + found.emails + found.requests + found.exhibitors + found.reminders === 0 ? (
             <Note>Nothing found for {found.q}.</Note>
           ) : (
             <Note tone="warn">

@@ -3,6 +3,7 @@ import { and, eq, isNull, lt, or } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { sources } from "@/lib/db/schema";
 import { microsoftConfigured } from "@/lib/config";
+import { londonParts } from "@/lib/time";
 import { enqueue, pruneJobs, runDueJobs, type Handlers } from "./queue";
 
 /**
@@ -89,6 +90,18 @@ const handlers: Handlers = {
   weekly_bot_summary: async (p) => {
     await (await import("@/lib/reports/bot-week")).postBotWeek(String(p.botId));
   },
+  deadline_reminders: async () => {
+    await (await import("@/lib/exhibitors/deadlines")).startScheduledReminders();
+  },
+  draft_reminders: async (p, job) =>
+    (await import("@/lib/exhibitors/reminders")).writeReminders(String(p.batchId), {
+      lastTry: job.attempts >= job.maxAttempts,
+    }),
+  send_reminders: async (p) => {
+    await (
+      await import("@/lib/exhibitors/reminders")
+    ).sendReminderBatch(String(p.batchId), { round: Number(p.round) || 1 });
+  },
 };
 
 export function runJobsNow(opts: { budgetMs?: number; long?: boolean } = {}) {
@@ -136,6 +149,14 @@ export async function minuteTick(now = new Date()) {
         );
     }
   }
+  // Once a day, from 08:00 UK time: deadline reminders whose day has come.
+  const uk = londonParts(now);
+  if (uk.minutes >= 8 * 60)
+    await enqueue(
+      "deadline_reminders",
+      {},
+      { dedupeKey: `deadlines:${uk.date}`, once: true, maxAttempts: 2 },
+    );
   // Every 15 minutes: Teams nudges about chats and emails still waiting for a reply.
   await enqueue(
     "nudge_waiting",

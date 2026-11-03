@@ -11,6 +11,7 @@ import {
   exhibitorLists,
   exhibitors,
   knowledgeBases,
+  reminderBatches,
   sources,
 } from "@/lib/db/schema";
 import { writeAudit } from "@/lib/audit";
@@ -66,6 +67,11 @@ export async function runRetention(now = new Date()): Promise<Record<string, num
       );
     return gone;
   });
+  // Deadline reminders (who they went to, and what) go with their round.
+  const oldReminders = await db
+    .delete(reminderBatches)
+    .where(lt(reminderBatches.createdAt, cutoff))
+    .returning({ id: reminderBatches.id });
   // Sign-in codes last ten minutes; keep a day, for the attempts count.
   await db
     .delete(exhibitorCodes)
@@ -112,6 +118,7 @@ export async function runRetention(now = new Date()): Promise<Record<string, num
     emails: emails.length,
     requests: requests.length,
     exhibitorLists: oldLists.length,
+    reminderRounds: oldReminders.length,
     sources: oldSources.length,
     bots: oldBots.length,
     knowledgeBases: oldKbs.length,
@@ -121,7 +128,7 @@ export async function runRetention(now = new Date()): Promise<Record<string, num
       actorType: "system",
       entityType: "retention",
       action: "purge",
-      summary: `Retention: deleted ${counts.chats} chats, ${counts.emails} emails, ${counts.requests} requests and ${counts.exhibitorLists} exhibitor lists older than ${s.retentionMonths} months; emptied ${counts.sources + counts.bots + counts.knowledgeBases} items from the bin`,
+      summary: `Retention: deleted ${counts.chats} chats, ${counts.emails} emails, ${counts.requests} requests, ${counts.exhibitorLists} exhibitor lists and ${counts.reminderRounds} rounds of reminders older than ${s.retentionMonths} months; emptied ${counts.sources + counts.bots + counts.knowledgeBases} items from the bin`,
       after: counts,
     });
   }

@@ -17,7 +17,8 @@ export type StructuredCall = {
     | "email_draft"
     | "knowledge_check"
     | "reply_suggestion"
-    | "learn_from_sent";
+    | "learn_from_sent"
+    | "deadline_reminder";
   model: string;
   fallbackModel?: string;
   /** Instructions: who Billie is and the rules. */
@@ -45,7 +46,13 @@ export type FakeContext =
   | { purpose: "email_draft"; email: PromptEmail; passages: PromptPassage[] }
   | { purpose: "knowledge_check"; sources: CheckSource[]; now: Date }
   | { purpose: "reply_suggestion"; history: Turn[]; passages: PromptPassage[] }
-  | { purpose: "learn_from_sent"; subject: string; draft: string; sent: string };
+  | { purpose: "learn_from_sent"; subject: string; draft: string; sent: string }
+  | {
+      purpose: "deadline_reminder";
+      deadline: string;
+      due: string;
+      passages: PromptPassage[];
+    };
 
 export type Usage = { inputTokens: number; outputTokens: number; cachedTokens: number };
 

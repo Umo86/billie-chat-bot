@@ -57,6 +57,13 @@ Chatbots, live handover and an email assistant for Media10 shows.
   booked with, and Billie then answers from their own row: their stand,
   orders, stand plan and build-up times. The Inbox shows who is signed in.
   Needs email sending (Resend).
+- **Deadline chasers**: on the Exhibitors step, each deadline (stand
+  plan, nameboard, electrics) is tied to a column of the exhibitor list
+  that shows who has done it. A week before (or when asked), Billie writes
+  one reminder from the bot's knowledge for everyone who hasn't, and tells
+  whoever set it up in Teams. A person checks the email and who it goes to,
+  then sends them all at once (replies go to the event mailbox). Needs
+  email sending (Resend).
 - **People on each bot**: admins choose who works on each bot. Editors run
   their bots; agents answer their bots' Inbox, requests and emails. Each
   person sees only their bots, with a filter for one bot's Inbox.

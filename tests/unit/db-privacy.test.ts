@@ -51,6 +51,7 @@ describe.skipIf(!hasDb)("privacy requests", () => {
       emails: 1,
       requests: 0,
       exhibitors: 0,
+      reminders: 0,
     });
     expect(
       await db.query.conversations.findFirst({ where: eq(conversations.id, mine.id) }),

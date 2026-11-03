@@ -95,6 +95,52 @@ test("build a bot with its own knowledge, test it and put it live", async ({ pag
   await expect(list.getByText(/Remove the list\?/)).toBeVisible();
   await list.getByRole("button", { name: "Keep it" }).click();
   await expect(list.getByRole("cell", { name: "Acme Displays Ltd" })).toBeVisible();
+  // Deadlines: Billie drafts reminders, and a person checks them before anything is sent.
+  const panel = page.getByTestId("deadlines");
+  await panel.getByRole("button", { name: "Add a deadline" }).click();
+  await panel.getByLabel("What's due").fill("Stand plan");
+  await panel.getByLabel("Due date").fill("2027-02-14");
+  await panel.getByLabel("Which column shows who has done it?").selectOption("Stand plan approved");
+  // Billie guesses that "Yes" means done, and says who that leaves.
+  await expect(panel.getByRole("checkbox", { name: /^Yes/ })).toBeChecked();
+  await expect(panel.getByRole("checkbox", { name: /^No/ })).not.toBeChecked();
+  await expect(panel).toContainText("With these answers, 2 exhibitors haven't done it.");
+  await panel.getByRole("button", { name: "Add deadline" }).click();
+  await expect(page.getByText("Deadline saved.")).toBeVisible();
+  const deadline = panel.getByTestId("deadline").filter({ hasText: "Stand plan" });
+  await expect(deadline).toContainText("2 exhibitors haven't done it yet (of 3).");
+  await expect(deadline).toContainText("Billie drafts reminders 7 days before");
+  await shot(page, "deadlines");
+  await deadline.getByRole("button", { name: "Draft reminders now" }).click();
+
+  // Billie writes it on the job queue; the page updates by itself.
+  await expect(page.getByRole("heading", { name: "Reminders: Stand plan" })).toBeVisible();
+  const preview = page.getByTestId("reminder-preview");
+  await expect(preview).toContainText("Hi Sam,", { timeout: 30_000 });
+  await expect(preview).toContainText("Acme Displays Ltd (stand B12)");
+  await expect(preview).toContainText("sam@acme-displays.test");
+  const recipients = page.getByTestId("reminder-recipients");
+  await expect(recipients).toContainText("Northwind Stands");
+  await expect(recipients).not.toContainText("Bolt & Co");
+  // Email sending isn't set up in tests, so nothing can be sent.
+  await expect(page.getByText(/Email sending isn't set up yet/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Send 2 reminders" })).toBeDisabled();
+  await recipients.getByRole("checkbox", { name: "Send to Northwind Stands, stand D7" }).uncheck();
+  await expect(page.getByRole("button", { name: "Send 1 reminder" })).toBeVisible();
+  // A placeholder Billie can't fill in is flagged before anything goes.
+  const body = page.getByLabel("Email", { exact: true });
+  await body.fill(`${await body.inputValue()}\n\nSee {portal_link}.`);
+  await expect(page.getByText(/Billie can't fill in \{portal_link\}/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save changes" })).toBeDisabled();
+  await shot(page, "reminders-review");
+  await page.getByRole("button", { name: "Discard" }).click();
+  await expect(page.getByText("Discarded.").first()).toBeVisible();
+  await expect(
+    page
+      .getByTestId("deadline")
+      .filter({ hasText: "Stand plan" })
+      .getByText("Discarded", { exact: true }),
+  ).toBeVisible();
   await page.getByRole("link", { name: "Continue to Rules" }).click();
 
   // Step 5: rules (defaults are fine).
@@ -109,8 +155,11 @@ test("build a bot with its own knowledge, test it and put it live", async ({ pag
   const priya = people.getByRole("checkbox", { name: "Priya Shah" });
   await expect(priya).not.toBeChecked();
   await priya.check();
+  // The Rules step's "Saved." can still be showing: wait for it to go, then for this one.
+  const saved = page.getByText("Saved.", { exact: true });
+  await expect(saved).toHaveCount(0, { timeout: 10_000 });
   await people.getByRole("button", { name: "Save people" }).click();
-  await expect(page.getByText("Saved.").first()).toBeVisible();
+  await expect(saved.first()).toBeVisible();
   await page.reload();
   await expect(
     page.getByTestId("people-step").getByRole("checkbox", { name: "Priya Shah" }),
