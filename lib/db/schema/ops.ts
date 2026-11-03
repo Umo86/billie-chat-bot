@@ -135,6 +135,13 @@ export const settings = pgTable("settings", {
   /** Where handover alerts go by email (comma-separated), in addition to Teams. */
   alertEmails: text("alert_emails").notNull().default(""),
   weeklySummary: boolean("weekly_summary").notNull().default(true),
+  /**
+   * Nudges (lib/alerts/nudge.ts): a chat or "needs you" email with no reply
+   * after this many of the bot's working hours messages whoever handles it
+   * in Teams; after the second number, admins too. 0 switches each off.
+   */
+  nudgeAfterHours: integer("nudge_after_hours").notNull().default(4),
+  escalateAfterHours: integer("escalate_after_hours").notNull().default(8),
   /** WhatsApp: the first reply asks "Visiting or exhibiting?" and routes to these bots. */
   whatsappVisitorBotId: uuid("whatsapp_visitor_bot_id").references(() => bots.id, {
     onDelete: "set null",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeHours, withinHours, validTime } from "@/lib/conversations/hours";
+import { describeHours, validTime, withinHours, workingMinutes } from "@/lib/conversations/hours";
 import {
   afterAnswer,
   afterRating,
@@ -67,5 +67,36 @@ describe("handover rules", () => {
     expect(handoverRoute(2)).toBe("live");
     expect(handoverLine("live", "unknown")).toMatch(/Connecting you/);
     expect(handoverLine("details", "always_human")).toMatch(/handles this personally/);
+  });
+});
+
+describe("working minutes, for nudges", () => {
+  const office = { days: [1, 2, 3, 4, 5], start: "09:00", end: "17:30" };
+
+  it("counts only the team's hours, over nights and weekends", () => {
+    // Friday 16:00 to Monday 10:00 (UK, GMT in November): 1.5 hours + 1 hour.
+    expect(
+      workingMinutes(office, new Date("2026-11-06T16:00:00Z"), new Date("2026-11-09T10:00:00Z")),
+    ).toBe(150);
+    // A Saturday counts for nothing.
+    expect(
+      workingMinutes(office, new Date("2026-11-07T10:00:00Z"), new Date("2026-11-07T18:00:00Z")),
+    ).toBe(0);
+  });
+
+  it("uses UK time in summer, and stops at the cap", () => {
+    // 08:00 to 10:00 UTC on a Monday in June is 09:00 to 11:00 in London.
+    expect(
+      workingMinutes(office, new Date("2026-06-01T08:00:00Z"), new Date("2026-06-01T10:00:00Z")),
+    ).toBe(120);
+    expect(
+      workingMinutes(
+        office,
+        new Date("2026-11-02T09:00:00Z"),
+        new Date("2026-11-20T09:00:00Z"),
+        240,
+      ),
+    ).toBe(240);
+    expect(workingMinutes({ ...office, days: [] }, new Date(0), new Date())).toBe(0);
   });
 });

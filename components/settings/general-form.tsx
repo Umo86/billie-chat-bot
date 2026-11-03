@@ -15,6 +15,8 @@ type Values = {
   consentText: string;
   alertEmails: string;
   weeklySummary: boolean;
+  nudgeAfterHours: number;
+  escalateAfterHours: number;
   emailSignature: string;
   emailBotId: string | null;
   whatsappVisitorBotId: string | null;
@@ -141,6 +143,48 @@ export function GeneralForm({
           </Field>
           <Field id="wa-exhibitors" label="WhatsApp: exhibitors talk to">
             {botSelect("wa-exhibitors", "whatsappExhibitorBotId")}
+          </Field>
+        </div>
+      </Panel>
+
+      <Panel className="flex flex-col gap-4">
+        <div>
+          <h2 className="text-[1.05rem]">Nudges when nobody has replied</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            A chat passed to the team, or an email that needs you, with no reply after this many of
+            the bot&apos;s working hours gets a Teams message to whoever handles it (the person on
+            the chat, or the event mailbox&apos;s manager). After the second number, admins get one
+            too. Use 0 to switch either off.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-4">
+          <Field id="nudge" label="Remind whoever handles it after" error={errors.nudgeAfterHours}>
+            <span className="flex items-center gap-2">
+              <Input
+                id="nudge"
+                type="number"
+                min={0}
+                max={80}
+                value={v.nudgeAfterHours}
+                onChange={(e) => set("nudgeAfterHours", Number(e.target.value))}
+                className="w-24"
+              />
+              <span className="text-sm text-muted-foreground">working hours</span>
+            </span>
+          </Field>
+          <Field id="escalate" label="Tell admins after" error={errors.escalateAfterHours}>
+            <span className="flex items-center gap-2">
+              <Input
+                id="escalate"
+                type="number"
+                min={0}
+                max={160}
+                value={v.escalateAfterHours}
+                onChange={(e) => set("escalateAfterHours", Number(e.target.value))}
+                className="w-24"
+              />
+              <span className="text-sm text-muted-foreground">working hours</span>
+            </span>
           </Field>
         </div>
       </Panel>

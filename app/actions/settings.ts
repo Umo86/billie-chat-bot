@@ -29,6 +29,8 @@ export async function saveSettingsAction(input: unknown) {
           "Use email addresses separated by commas.",
         ),
       weeklySummary: z.boolean(),
+      nudgeAfterHours: z.number().int().min(0, "Use 0 to switch it off.").max(80),
+      escalateAfterHours: z.number().int().min(0, "Use 0 to switch it off.").max(160),
       emailSignature: z.string().max(500),
       emailBotId: z.uuid().nullable(),
       whatsappVisitorBotId: z.uuid().nullable(),

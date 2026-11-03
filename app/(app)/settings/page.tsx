@@ -53,6 +53,8 @@ export default async function SettingsPage({
         initial={{
           companyName: s.companyName,
           retentionMonths: s.retentionMonths,
+          nudgeAfterHours: s.nudgeAfterHours,
+          escalateAfterHours: s.escalateAfterHours,
           dailyAnswerCap: s.dailyAnswerCap,
           consentText: s.consentText,
           alertEmails: s.alertEmails,

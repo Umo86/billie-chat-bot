@@ -73,6 +73,9 @@ const handlers: Handlers = {
   retention: async () => {
     await (await import("@/lib/privacy/retention")).runRetention();
   },
+  nudge_waiting: async () => {
+    await (await import("@/lib/alerts/nudge")).runNudges();
+  },
   weekly_summary: async () => {
     await (await import("@/lib/reports/summary")).sendWeeklySummary();
   },
@@ -114,6 +117,12 @@ export async function minuteTick(now = new Date()) {
     if (await hasMailboxToSync())
       await enqueue("outlook_sync", {}, { dedupeKey: `outlook:${minute}`, maxAttempts: 1 });
   }
+  // Every 15 minutes: Teams nudges about chats and emails still waiting for a reply.
+  await enqueue(
+    "nudge_waiting",
+    {},
+    { dedupeKey: `nudge:${Math.floor(minute / 15)}`, once: true, maxAttempts: 1 },
+  );
   // The sweep's function has five minutes, so it also takes the long jobs.
   return runJobsNow({ budgetMs: 50_000, long: true });
 }

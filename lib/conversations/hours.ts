@@ -50,3 +50,29 @@ export function describeHours(hours: BotRules["hours"]): string {
 export function validTime(hhmm: string): boolean {
   return toMinutes(hhmm) !== null;
 }
+
+const STEP_MINUTES = 15;
+
+/**
+ * Working minutes between two moments, counted in the bot's team hours (UK
+ * time), in 15-minute steps and up to `cap`: enough to tell whether a reply
+ * has waited 4 working hours, over nights and weekends.
+ */
+export function workingMinutes(
+  hours: BotRules["hours"],
+  from: Date,
+  to: Date,
+  cap = 24 * 60,
+): number {
+  const start = toMinutes(hours.start);
+  const end = toMinutes(hours.end);
+  if (start === null || end === null || end <= start || !hours.days.length) return 0;
+  const stepMs = STEP_MINUTES * 60_000;
+  const last = Math.min(to.getTime(), from.getTime() + 31 * 86_400_000);
+  let counted = 0;
+  for (let t = from.getTime(); t + stepMs <= last && counted < cap; t += stepMs) {
+    const { day, minutes } = londonParts(new Date(t));
+    if (hours.days.includes(day) && minutes >= start && minutes < end) counted += STEP_MINUTES;
+  }
+  return Math.min(counted, cap);
+}

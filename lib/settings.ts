@@ -26,6 +26,8 @@ export type SettingsPatch = Partial<
     | "consentText"
     | "alertEmails"
     | "weeklySummary"
+    | "nudgeAfterHours"
+    | "escalateAfterHours"
     | "whatsappVisitorBotId"
     | "whatsappExhibitorBotId"
     | "emailBotId"

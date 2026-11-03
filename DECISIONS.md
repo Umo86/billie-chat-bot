@@ -152,6 +152,20 @@ Each bot's tone, personality (in the team's own words), emoji choice and
 email sign-off go into its prompts as style. The prompt says the rules win,
 answers still come only from the knowledge, and emails never get emoji.
 
+## Nudges count the bot's working hours, and go once
+
+The bot promises people the team will come back to them, so a chat passed
+to the team (waiting or with details left) or an email that needs a person
+gets a Teams message when nobody has replied after N of the bot's own team
+hours (Settings, default 4): to whoever has the chat, else the event
+mailbox's manager, as long as they work on the bot. After the second number
+(default 8) admins get one too. Hours are counted in the bot's team hours,
+UK time, in 15-minute steps, so a Friday-evening handover isn't "late" on
+Saturday. The job runs every 15 minutes and each message is queued once per
+handover (keyed by it), so a handover back and forth can nudge again but a
+rerun never repeats one. Drafts in Outlook aren't nudged: Billie can't yet
+tell when one was sent.
+
 ## Suggested replies are written once, on the queue, and never sent
 
 Handovers are the hard questions, so a starting draft saves the most time

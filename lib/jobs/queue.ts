@@ -28,7 +28,8 @@ export type JobKind =
   | "refresh_web_sources"
   | "retention"
   | "weekly_summary"
-  | "suggest_reply";
+  | "suggest_reply"
+  | "nudge_waiting";
 
 export type Job = typeof jobs.$inferSelect;
 
