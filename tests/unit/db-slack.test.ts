@@ -292,13 +292,14 @@ describe.skipIf(!hasDb)("chats that need a person, in Slack", () => {
     const at = new Date();
     await handover(bot, conversation.id, "asked_for_person", at);
     await notifyHandover(conversation.id, "live");
-    // Four minutes on: still waiting.
-    expect(await expireWaiting(new Date(at.getTime() + 4 * 60_000))).toBe(0);
+    const statusNow = async () =>
+      (await db.query.conversations.findFirst({ where: eq(conversations.id, conversation.id) }))
+        ?.status;
+    // Four minutes on: still waiting (other tests' chats may be due; this one isn't).
+    await expireWaiting(new Date(at.getTime() + 4 * 60_000));
+    expect(await statusNow()).toBe("waiting");
     expect(await expireWaiting(new Date(at.getTime() + 6 * 60_000))).toBeGreaterThanOrEqual(1);
-    const c = await db.query.conversations.findFirst({
-      where: eq(conversations.id, conversation.id),
-    });
-    expect(c?.status).toBe("collecting");
+    expect(await statusNow()).toBe("collecting");
     const last = await db
       .select({ text: messages.text })
       .from(messages)

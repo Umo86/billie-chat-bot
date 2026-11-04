@@ -61,20 +61,25 @@ Billie. Email replies to check and requests only go to a bot's own channel.
 ## Setting it up (an admin, about 10 minutes)
 
 1. Go to **api.slack.com/apps** → **Create New App** → **From a manifest**,
-   choose Media10's workspace, and paste the manifest below. Settings →
-   Connections in Billie shows the same manifest, ready to copy.
-2. Choose **Install to Workspace**, and allow it.
-3. In Vercel → billie → Settings → Environment Variables, add these two for
+   and choose Media10's workspace. In the box, choose the **YAML** tab, paste
+   the manifest below, then **Next** → **Create**. Settings → Connections in
+   Billie shows the same manifest, ready to copy (and as JSON, for the
+   **JSON** tab).
+2. If Slack says the **Request URL** isn't verified (under Event
+   Subscriptions, or App Manifest), press **Verify** or **Retry**. Billie
+   answers it straight away, even before step 4.
+3. Choose **Install to Workspace**, and allow it.
+4. In Vercel → billie → Settings → Environment Variables, add these two for
    Production, then redeploy:
    - `SLACK_BOT_TOKEN`: OAuth & Permissions → **Bot User OAuth Token**
      (starts `xoxb-`).
    - `SLACK_SIGNING_SECRET`: Basic Information → **Signing Secret**.
-4. In each event's channel, type `/invite @Billie`. A private channel is
+5. In each event's channel, type `/invite @billie`. A private channel is
    best: posts include visitors' names and contact details.
-5. In Billie, choose each bot's channel on its **Email** step. Choose the
+6. In Billie, choose each bot's channel on its **Email** step. Choose the
    company-wide one in **Settings → Connections**. Then press **Send a
    test post**.
-6. Make sure everyone who answers is on Billie, with the same email as
+7. Make sure everyone who answers is on Billie, with the same email as
    their Slack account, and on the bots they answer for (each bot's People
    step).
 
@@ -89,7 +94,7 @@ features:
     messages_tab_enabled: true
     messages_tab_read_only_enabled: true
   bot_user:
-    display_name: Billie
+    display_name: billie
     always_online: true
 oauth_config:
   scopes:
@@ -116,6 +121,10 @@ settings:
   socket_mode_enabled: false
   token_rotation_enabled: false
 ```
+
+The bot's name in the manifest is lowercase (`billie`): Slack only allows
+a-z, 0-9, `-`, `_` and `.` there, and refuses the manifest otherwise. People
+still see the app as Billie.
 
 What each permission is for:
 

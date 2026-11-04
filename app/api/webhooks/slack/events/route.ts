@@ -1,14 +1,13 @@
 import { verifySlackSignature } from "@/lib/channels/slack-rules";
 import { slackConfigured } from "@/lib/channels/slack";
-import { enqueue } from "@/lib/jobs/queue";
-import { kickJobs } from "@/lib/jobs/kick";
 
 /**
  * Slack's Events API (docs/slack.md): replies in the threads of Billie's
  * posts. Every request is signed with the app's signing secret and checked
  * before anything is read from it. Each reply is queued once (Slack sends
  * again if it hasn't heard back within three seconds) and handled straight
- * after this answers.
+ * after this answers. Slack's one-off address check, made while the app is
+ * being created, is answered before anything else is loaded.
  */
 export const dynamic = "force-dynamic";
 
@@ -64,6 +63,11 @@ export async function POST(request: Request) {
     typeof e.text === "string" &&
     payload.event_id
   ) {
+    // Loaded only for an event: Slack's address check (above) answers fast, even from cold.
+    const [{ enqueue }, { kickJobs }] = await Promise.all([
+      import("@/lib/jobs/queue"),
+      import("@/lib/jobs/kick"),
+    ]);
     const id = await enqueue(
       "slack_event",
       {

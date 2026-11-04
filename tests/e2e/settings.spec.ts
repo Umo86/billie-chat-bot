@@ -67,6 +67,11 @@ test("general settings save, connections and reports render", async ({ page }) =
     "Not connected",
   );
   await expect(page.locator("#slack-manifest")).toContainText("/api/webhooks/slack/events");
+  // Slack only takes a lowercase bot name; the same manifest is there as JSON too.
+  await expect(page.locator("#slack-manifest")).toContainText("display_name: billie");
+  await page.getByText("The same as JSON, for Slack's JSON tab").click();
+  await expect(page.locator("#slack-manifest-json")).toContainText('"display_name": "billie"');
+  await expect(page.getByRole("button", { name: "Copy it as JSON" })).toBeVisible();
   const signIn = page.getByRole("listitem").filter({ hasText: "Sign-in" });
   await expect(signIn).toContainText(/Neon Auth|Test stand-in/);
   await expect(page.locator("#na-hook")).toContainText("/api/webhooks/neon-auth");

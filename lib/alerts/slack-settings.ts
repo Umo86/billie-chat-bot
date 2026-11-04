@@ -71,7 +71,7 @@ export async function setSlackChannel(
     const found = (await billieChannels()).find((c) => c.id === channelId);
     if (!found)
       throw new UserError(
-        "Billie isn't in that channel any more. Add it in Slack (/invite @Billie), then choose it again.",
+        "Billie isn't in that channel any more. Add it in Slack (/invite @billie), then choose it again.",
       );
     name = found.name;
   }
@@ -112,7 +112,7 @@ export async function testSlackChannel(
       (err.code === "not_in_channel" || err.code === "channel_not_found")
     )
       throw new UserError(
-        "Billie isn't in that channel. Add it in Slack (/invite @Billie), then try again.",
+        "Billie isn't in that channel. Add it in Slack (/invite @billie), then try again.",
       );
     throw err;
   }

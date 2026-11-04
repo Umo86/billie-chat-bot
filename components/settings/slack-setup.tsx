@@ -107,7 +107,7 @@ export function SlackChannelPicker({
       {canManage && !slack.channels.length ? (
         <Note tone="warn">
           Billie isn&apos;t in any channel yet. In Slack, open the channel and type{" "}
-          <code>/invite @Billie</code>, then reload this page.
+          <code>/invite @billie</code>, then reload this page.
         </Note>
       ) : null}
     </div>
@@ -122,10 +122,13 @@ export function SlackChannelPicker({
 export function SlackSetup({
   slack,
   manifest,
+  manifestJson,
   channelId,
 }: {
   slack: SlackScreen;
+  /** The app's manifest as YAML, and the same as JSON (Slack's two tabs). */
   manifest: string;
+  manifestJson: string;
   channelId: string | null;
 }) {
   return (
@@ -166,7 +169,9 @@ export function SlackSetup({
         <ol className="flex list-decimal flex-col gap-2 pl-5 text-sm">
           <li>
             In Slack, go to <strong>api.slack.com/apps</strong> → <strong>Create New App</strong> →{" "}
-            <strong>From a manifest</strong>, choose your workspace, and paste this:
+            <strong>From a manifest</strong>, and choose your workspace. In the box, choose the{" "}
+            <strong>YAML</strong> tab and paste this (or paste the JSON copy into the{" "}
+            <strong>JSON</strong> tab), then <strong>Next</strong> → <strong>Create</strong>:
             <pre
               id="slack-manifest"
               className="mt-2 max-h-72 overflow-auto rounded-[8px] bg-muted px-3 py-2 text-[0.78rem]"
@@ -176,6 +181,29 @@ export function SlackSetup({
             <div className="mt-2">
               <CopyButton text={manifest} label="Copy the manifest" selectId="slack-manifest" />
             </div>
+            <details className="mt-2">
+              <summary className="cursor-pointer font-semibold">
+                The same as JSON, for Slack&apos;s JSON tab
+              </summary>
+              <pre
+                id="slack-manifest-json"
+                className="mt-2 max-h-72 overflow-auto rounded-[8px] bg-muted px-3 py-2 text-[0.78rem]"
+              >
+                {manifestJson}
+              </pre>
+              <div className="mt-2">
+                <CopyButton
+                  text={manifestJson}
+                  label="Copy it as JSON"
+                  selectId="slack-manifest-json"
+                />
+              </div>
+            </details>
+          </li>
+          <li>
+            If Slack says the <strong>Request URL</strong> isn&apos;t verified (Event Subscriptions,
+            or App Manifest), press <strong>Verify</strong> or <strong>Retry</strong>. Billie
+            answers it straight away, even before the next steps.
           </li>
           <li>
             Choose <strong>Install to Workspace</strong>, and allow it.
@@ -186,7 +214,7 @@ export function SlackSetup({
             <code>SLACK_SIGNING_SECRET</code> (Basic Information → Signing Secret). Then redeploy.
           </li>
           <li>
-            In each event&apos;s Slack channel, type <code>/invite @Billie</code>. Then choose the
+            In each event&apos;s Slack channel, type <code>/invite @billie</code>. Then choose the
             channel on the bot&apos;s Email step.
           </li>
           <li>

@@ -10,7 +10,7 @@ import { Privacy } from "@/components/settings/privacy";
 import { TeamsDirect } from "@/components/settings/teams-direct";
 import { SlackSetup } from "@/components/settings/slack-setup";
 import { slackStatus } from "@/lib/alerts/slack-settings";
-import { slackManifest } from "@/lib/channels/slack-manifest";
+import { slackManifest, slackManifestJson } from "@/lib/channels/slack-manifest";
 import { AiUsage } from "@/components/settings/ai-usage";
 import { ModelsForm } from "@/components/settings/models-form";
 import { SavingsForm } from "@/components/settings/savings-form";
@@ -284,6 +284,7 @@ export default async function SettingsPage({
         <SlackSetup
           slack={slack}
           manifest={slackManifest(base)}
+          manifestJson={slackManifestJson(base)}
           channelId={s.slackChannelId ?? null}
         />
         {slack.connected ? null : <TeamsDirect saved={direct} me={actor.email} />}

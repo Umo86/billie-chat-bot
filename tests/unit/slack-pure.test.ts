@@ -14,7 +14,12 @@ import {
   verifySlackSignature,
 } from "@/lib/channels/slack-rules";
 import { SlackError, slackRetryable } from "@/lib/channels/slack";
-import { slackManifest } from "@/lib/channels/slack-manifest";
+import {
+  manifestProblems,
+  slackManifest,
+  slackManifestJson,
+  slackManifestObject,
+} from "@/lib/channels/slack-manifest";
 import { adaptiveMessage, plainLine } from "@/lib/alerts/card";
 import { contactComplete } from "@/lib/conversations/handover";
 
@@ -178,6 +183,35 @@ describe("Billie's posts in Slack", () => {
     const guide = readFileSync(path.join(__dirname, "..", "..", "docs", "slack.md"), "utf8");
     const inGuide = /```yaml\n([\s\S]*?)```/.exec(guide)![1];
     expect(inGuide.trim()).toBe(slackManifest("https://billie-teal.vercel.app").trim());
+  });
+
+  it("has a manifest Slack accepts: its rules for every field, a lowercase bot name", () => {
+    const base = "https://billie-teal.vercel.app";
+    const m = slackManifestObject(base);
+    expect(manifestProblems(m)).toEqual([]);
+    expect(slackManifest(base)).toContain("    display_name: billie\n");
+    // The name Slack refused ("Billie"), and other things it refuses, are caught.
+    const refused = {
+      ...m,
+      display_information: { ...m.display_information, name: "B".repeat(36) },
+      features: { ...m.features, bot_user: { display_name: "Billie", always_online: true } },
+    };
+    expect(manifestProblems(refused)).toEqual([
+      "display_information.name: 1 to 35 characters",
+      "features.bot_user.display_name: a-z, 0-9, -, _ and . only, up to 80",
+    ]);
+    // The JSON copy (Slack's JSON tab) is the same manifest.
+    expect(JSON.parse(slackManifestJson(base))).toEqual(m);
+  });
+
+  it("writes the manifest as YAML Slack reads the same way", () => {
+    const yaml = slackManifest("https://billie-teal.vercel.app");
+    // A colour starts with "#", which YAML would read as a comment: quoted.
+    expect(yaml).toContain('  background_color: "#0d6a5b"\n');
+    expect(yaml).toContain("  description: Media10's chat and email assistant.");
+    expect(yaml).toContain("    bot:\n      - chat:write\n      - channels:read\n");
+    expect(yaml).toContain("    is_enabled: true\n");
+    expect(yaml.endsWith("  token_rotation_enabled: false\n")).toBe(true);
   });
 
   it("has a manifest with this Billie's own addresses and only the permissions it needs", () => {
