@@ -7,6 +7,7 @@ import { BotAvatar } from "@/components/bots/bot-avatar";
 import { requireActor } from "@/lib/auth/actor";
 import { can, worksOnEveryBot } from "@/lib/authz";
 import { botCards, homeCounters } from "@/lib/bots/queries";
+import { BOT_TYPES } from "@/lib/bots/defaults";
 import { myBotIds } from "@/lib/auth/bots";
 import { timeAgo } from "@/lib/time";
 import { remindersToCheck } from "@/lib/exhibitors/reminders";
@@ -121,9 +122,7 @@ export default async function HomePage({
                       <Chip tone={b.status === "live" ? "good" : "neutral"}>
                         {b.status === "live" ? "Live" : "Draft"}
                       </Chip>
-                      <Chip tone="accent">
-                        {b.audience === "visitors" ? "Visitors" : "Exhibitors"}
-                      </Chip>
+                      <Chip tone="accent">{BOT_TYPES[b.audience].label}</Chip>
                       {b.showName ? (
                         <span className="text-sm text-muted-foreground">{b.showName}</span>
                       ) : null}

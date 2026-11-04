@@ -2,10 +2,13 @@
 
 Chatbots, live handover and an email assistant for Media10 shows.
 
-- **Bots** for visitors and exhibitors, each answering only from its own
-  knowledge (exhibitor manual, price lists, FAQs, web pages, typed answers),
-  with sources under every answer. Bots never share knowledge: each bot's is
-  managed in its Knowledge step, or on the Knowledge page.
+- **Two kinds of chatbot**, chosen first when a bot is made (and changeable
+  on its Look step): an **exhibitor chatbot**, for BluePrint, the exhibitor
+  manual, and a **visitor chatbot**, for the event website. Each answers only
+  from its own knowledge (exhibitor manual, price lists, FAQs, web pages,
+  typed answers), with sources under every answer. Bots never share
+  knowledge: each bot's is managed in its Knowledge step, or on the
+  Knowledge page.
 - **A chat widget** for the show websites (one line of code), a chat page
   with a QR code, and **WhatsApp**.
 - **Live handover** to the team, by the bot's working hours: during them,

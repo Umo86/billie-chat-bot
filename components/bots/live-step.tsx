@@ -99,10 +99,24 @@ export function LiveStep({
 
       <Panel className="flex flex-col gap-3">
         <div>
-          <h2 className="text-[1.05rem]">Add it to a website</h2>
+          <h2 className="text-[1.05rem]">
+            {bot.audience === "exhibitors"
+              ? "Add it to BluePrint, the exhibitor manual"
+              : "Add it to the event website"}
+          </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Paste this just before <code>&lt;/body&gt;</code> on every page that should show the
-            chat button, or send it to whoever looks after the website.
+            {bot.audience === "exhibitors" ? (
+              <>
+                Paste this just before <code>&lt;/body&gt;</code> on BluePrint&apos;s pages, or send
+                it to whoever looks after BluePrint. To sign exhibitors in to the chat from
+                BluePrint, connect it on the Exhibitors step.
+              </>
+            ) : (
+              <>
+                Paste this just before <code>&lt;/body&gt;</code> on every page of the event website
+                that should show the chat button, or send it to whoever looks after the website.
+              </>
+            )}
           </p>
         </div>
         <pre
@@ -119,6 +133,7 @@ export function LiveStep({
           botId={bot.id}
           saved={bot.domains}
           canEdit={can.edit}
+          exhibitors={bot.audience === "exhibitors"}
         />
       </Panel>
 
@@ -245,10 +260,13 @@ function DomainsEditor({
   botId,
   saved,
   canEdit,
+  exhibitors = false,
 }: {
   botId: string;
   saved: string[];
   canEdit: boolean;
+  /** An exhibitor chatbot: it goes in BluePrint. */
+  exhibitors?: boolean;
 }) {
   const [domains, setDomains] = useState(saved.join("\n"));
   const saveDomains = useRunner();
@@ -259,7 +277,11 @@ function DomainsEditor({
       <Field
         id="domains"
         label="Websites allowed to show it"
-        hint="One per line, e.g. ukconstructionweek.com (its subdomains are included). The chat button only appears on these websites, so copied code can't be used elsewhere."
+        hint={
+          exhibitors
+            ? "BluePrint's web address, one per line (its subdomains are included). The chat button only appears on these websites, so copied code can't be used elsewhere."
+            : "One per line, e.g. ukconstructionweek.com (its subdomains are included). The chat button only appears on these websites, so copied code can't be used elsewhere."
+        }
       >
         <Textarea
           id="domains"

@@ -222,6 +222,23 @@ embed page picks the starters before it renders, and the rules never go
 to the browser. The hosted chat page isn't on the website, so it gets the
 usual starters. Copies keep the rules: the website usually stays.
 
+## Two kinds of chatbot, chosen first
+
+Billie supports both of a show's sites: BluePrint, the exhibitor manual,
+has an exhibitor chatbot, and the event website a visitor chatbot. The kind
+is the first thing chosen when a bot is made, and nothing is picked for
+you, because so much follows from it: who the answers are written for, the
+topics that always go to a person, what it asks for outside working hours
+(name, email and stand; or name, email and phone, to call back), its answer
+quality, and whether it has an Exhibitors step (the list, BluePrint and
+deadlines). It can be changed later on the Look step: whatever was still on
+the old kind's defaults moves to the new kind's, and anything the team chose
+stays. An exhibitor chatbot can't become a visitor one while it has an
+exhibitor list, BluePrint connected or deadlines: a visitor chatbot has no
+Exhibitors step, so that list of people's details would sit out of sight.
+They're removed there first, and answers about their own stand go off with
+them. The change is in the audit log.
+
 ## Personality is style only
 
 Each bot's tone, personality (in the team's own words), emoji choice and

@@ -42,7 +42,7 @@ export function GeneralForm({
       <option value="">None</option>
       {bots.map((b) => (
         <option key={b.id} value={b.id}>
-          {b.name} ({b.audience === "visitors" ? "visitors" : "exhibitors"})
+          {b.name} ({b.audience === "visitors" ? "visitor chatbot" : "exhibitor chatbot"})
         </option>
       ))}
     </Select>

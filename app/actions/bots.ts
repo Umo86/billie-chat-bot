@@ -33,7 +33,9 @@ const look = z.object({
     .trim()
     .min(1, "Give the bot a name.")
     .max(60, "Keep the name under 60 characters."),
-  audience: z.enum(["visitors", "exhibitors"]),
+  audience: z.enum(["visitors", "exhibitors"], {
+    error: "Choose what kind of chatbot it is: for exhibitors or for visitors.",
+  }),
   showName: z.string().trim().max(80),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Pick a colour."),
   avatarUrl: z

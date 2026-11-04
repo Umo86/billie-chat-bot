@@ -1,7 +1,7 @@
 import "server-only";
 import { and, eq, isNull } from "drizzle-orm";
-import { db } from "@/lib/db/client";
-import { bots } from "@/lib/db/schema";
+import { db, type Tx } from "@/lib/db/client";
+import { blueprintLinks, bots, deadlines, exhibitorLists, exhibitors } from "@/lib/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { answerQuestion } from "@/lib/ai/answer";
 import { normaliseDomain } from "@/lib/chat/domains";
@@ -11,7 +11,7 @@ import { UserError } from "@/lib/errors";
 import { createBotKnowledgeBase, renameBotKnowledgeBase } from "@/lib/knowledge/bases";
 import { answerBotFor, botById } from "./load";
 import { addToBot } from "./people";
-import { defaultQuality, defaultRules } from "./defaults";
+import { defaultQuality, defaultRules, forNewType } from "./defaults";
 import { uniqueSlug } from "./slug";
 import type { ShowDays } from "./show-days";
 import type { PageStarters } from "./page-starters";
@@ -100,21 +100,86 @@ export async function updateBot(actor: Actor, id: string, patch: BotPatch): Prom
     ];
   }
   await db.transaction(async (tx) => {
+    const [before] = await tx
+      .select({
+        name: bots.name,
+        audience: bots.audience,
+        rules: bots.rules,
+        quality: bots.quality,
+      })
+      .from(bots)
+      .where(and(eq(bots.id, id), isNull(bots.deletedAt)))
+      .for("update");
+    if (!before) throw new UserError("That bot no longer exists.");
+    const switched = patch.audience !== undefined && patch.audience !== before.audience;
+    if (switched) {
+      // A visitor chatbot has no exhibitor list: one left on it would be out of sight.
+      if (patch.audience === "visitors") await refuseIfExhibitorData(tx, id);
+      const next = forNewType(before.audience, patch.audience!, {
+        rules: patch.rules ?? before.rules,
+        quality: patch.quality ?? before.quality,
+      });
+      values.rules = next.rules;
+      values.quality = next.quality;
+      if (patch.audience === "visitors") values.personalAnswers = false;
+    }
     const [bot] = await tx
       .update(bots)
       .set(values)
-      .where(and(eq(bots.id, id), isNull(bots.deletedAt)))
+      .where(eq(bots.id, id))
       .returning({ id: bots.id, name: bots.name });
-    if (!bot) throw new UserError("That bot no longer exists.");
     if (patch.name !== undefined) await renameBotKnowledgeBase(tx, bot.id, bot.name);
     await writeAudit(tx, {
       actorUserId: actor.id,
       entityType: "bot",
       entityId: bot.id,
       action: "update",
-      summary: `Changed ${Object.keys(patch).join(", ")} on "${bot.name}"`,
+      summary: switched
+        ? `Made "${bot.name}" ${patch.audience === "visitors" ? "a visitor" : "an exhibitor"} chatbot (it was ${before.audience === "visitors" ? "a visitor" : "an exhibitor"} chatbot)`
+        : `Changed ${Object.keys(patch).join(", ")} on "${bot.name}"`,
     });
   });
+}
+
+/**
+ * Before an exhibitor chatbot becomes a visitor one: its exhibitor list,
+ * BluePrint connection and deadlines have to go first (Exhibitors step), as
+ * a visitor chatbot has no Exhibitors step to see or remove them on.
+ */
+async function refuseIfExhibitorData(tx: Tx, botId: string): Promise<void> {
+  const [list] = await tx
+    .select({ id: exhibitorLists.botId })
+    .from(exhibitorLists)
+    .where(eq(exhibitorLists.botId, botId))
+    .limit(1);
+  const [row] = list
+    ? [list]
+    : await tx
+        .select({ id: exhibitors.id })
+        .from(exhibitors)
+        .where(eq(exhibitors.botId, botId))
+        .limit(1);
+  const [link] = await tx
+    .select({ id: blueprintLinks.botId })
+    .from(blueprintLinks)
+    .where(eq(blueprintLinks.botId, botId))
+    .limit(1);
+  const [deadline] = await tx
+    .select({ id: deadlines.id })
+    .from(deadlines)
+    .where(eq(deadlines.botId, botId))
+    .limit(1);
+  const has = [
+    row && "an exhibitor list",
+    link && "BluePrint connected",
+    deadline && "deadlines",
+  ].filter(Boolean) as string[];
+  if (!has.length) return;
+  const what =
+    has.length === 1 ? has[0] : `${has.slice(0, -1).join(", ")} and ${has[has.length - 1]}`;
+  throw new UserError(
+    `This bot has ${what}. A visitor chatbot doesn't use them, so remove them on the Exhibitors step first, then switch it.`,
+  );
 }
 
 export async function setStatus(actor: Actor, id: string, status: "draft" | "live"): Promise<void> {

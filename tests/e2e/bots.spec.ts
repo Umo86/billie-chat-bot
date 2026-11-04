@@ -19,7 +19,7 @@ test("build a bot with its own knowledge, test it and put it live", async ({ pag
   // Step 1: look.
   await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Home" }).click();
   await page.getByRole("link", { name: "New bot" }).first().click();
-  await expect(page.getByText(/^Eight short steps/)).toBeVisible();
+  await expect(page.getByText(/^First choose the kind: an exhibitor chatbot/)).toBeVisible();
   await page.getByLabel("Bot name").fill("Exhibitor Help");
   await page.getByLabel("Show name").fill("UK Construction Week 2027");
   await page.getByLabel("First day of build-up").fill("2027-03-08");
@@ -30,11 +30,21 @@ test("build a bot with its own knowledge, test it and put it live", async ({ pag
   await page.getByLabel("Page 1, starter question 1").fill("Where do we unload?");
   await page.getByRole("button", { name: "Suggest a welcome message" }).click();
   await expect(page.getByLabel("Welcome message")).toHaveValue(/Exhibitor Help/);
+  // The kind of chatbot comes first, and has to be chosen: for exhibitors, in BluePrint.
+  await page.getByRole("button", { name: "Create bot and continue" }).click();
+  await expect(
+    page.getByText("Choose what kind of chatbot it is: for exhibitors or for visitors."),
+  ).toBeVisible();
+  await page.getByRole("radio", { name: /^Exhibitor chatbot In BluePrint/ }).check();
+  await expect(page.getByText("Choose what kind of chatbot it is", { exact: false })).toHaveCount(
+    0,
+  );
   await shot(page, "bot-look");
   await page.getByRole("button", { name: "Create bot and continue" }).click();
 
   // Step 2: personality.
   await expect(page.getByText("Bot created.")).toBeVisible();
+  await expect(page.getByText("Exhibitor chatbot", { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: "Formal" }).click();
   await page.getByRole("button", { name: "Use the example" }).click();
   await expect(page.getByLabel("Personality, in your own words")).toHaveValue(/ops manager/);
@@ -176,7 +186,17 @@ test("build a bot with its own knowledge, test it and put it live", async ({ pag
       .filter({ hasText: "Stand plan" })
       .getByText("Discarded", { exact: true }),
   ).toBeVisible();
-  await page.getByRole("link", { name: "Continue to Rules" }).click();
+  // The kind can be changed on the Look step, but not while it has an exhibitor list.
+  await page.getByRole("link", { name: "1 Look" }).click();
+  await page.getByRole("radio", { name: /^Visitor chatbot/ }).check();
+  await expect(page.getByText(/^Saving makes it a visitor chatbot/)).toBeVisible();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(
+    page.getByText(
+      "This bot has an exhibitor list, BluePrint connected and deadlines. A visitor chatbot doesn't use them, so remove them on the Exhibitors step first, then switch it.",
+    ),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "5 Rules" }).click();
 
   // Step 5: rules. A new bot's team works Mon–Fri, 9 to 5; this one has no hours yet (tests run
   // at any time of day), so asking for a person takes details until the live chat test below.

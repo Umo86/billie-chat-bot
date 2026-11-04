@@ -30,6 +30,8 @@ import {
 } from "@/lib/exhibitors/sign-in";
 import { startConversation, visitorMessage, visitorUpdates } from "@/lib/conversations/service";
 import { botById } from "@/lib/bots/load";
+import { updateBot } from "@/lib/bots/service";
+import { defaultRules } from "@/lib/bots/defaults";
 import { publicBot } from "@/lib/chat/public";
 import { writeSuggestion } from "@/lib/conversations/suggest";
 import { deletePerson, exportPerson, findPerson } from "@/lib/privacy/requests";
@@ -435,5 +437,54 @@ describe.skipIf(!hasDb)("exhibitors signing in to the chat", () => {
         .from(exhibitorCodes)
         .where(and(eq(exhibitorCodes.conversationId, conversation.id))),
     ).toHaveLength(0);
+  });
+});
+
+describe.skipIf(!hasDb)("the kind of chatbot: exhibitor or visitor (Postgres)", () => {
+  it("brings the new kind's defaults with it, keeps what the team chose, and logs it", async () => {
+    const admin = await makeUser("admin");
+    const { bot } = await makeBot(); // an exhibitor chatbot, on its defaults
+    await db.update(bots).set({ quality: "thorough" }).where(eq(bots.id, bot.id));
+    await updateBot(admin, bot.id, { audience: "visitors" });
+    let b = (await botById(bot.id))!;
+    expect(b.audience).toBe("visitors");
+    // Outside hours a visitor leaves a number to call back, not a stand.
+    expect(b.rules.collect).toEqual(["name", "email", "phone"]);
+    expect(b.rules.alwaysHuman).toEqual(defaultRules("visitors").alwaysHuman);
+    expect(b.quality).toBe("fast");
+    expect(b.rules.hours).toEqual(defaultRules("exhibitors").hours);
+
+    // Back again, with what it asks for changed by the team: that stays.
+    await db
+      .update(bots)
+      .set({ rules: { ...b.rules, collect: ["name", "company", "email"] } })
+      .where(eq(bots.id, bot.id));
+    await updateBot(admin, bot.id, { audience: "exhibitors" });
+    b = (await botById(bot.id))!;
+    expect(b.audience).toBe("exhibitors");
+    expect(b.rules.collect).toEqual(["name", "company", "email"]);
+    expect(b.rules.alwaysHuman).toEqual(defaultRules("exhibitors").alwaysHuman);
+    expect(b.quality).toBe("thorough");
+    const audit = await db.select().from(auditLog).where(eq(auditLog.entityId, bot.id));
+    expect(audit.map((a) => a.summary)).toEqual(
+      expect.arrayContaining([
+        'Made "Exhibitor Help" a visitor chatbot (it was an exhibitor chatbot)',
+        'Made "Exhibitor Help" an exhibitor chatbot (it was a visitor chatbot)',
+      ]),
+    );
+  });
+
+  it("won't make an exhibitor chatbot a visitor one while it still has an exhibitor list", async () => {
+    const { admin, bot } = await signInBot();
+    await expect(updateBot(admin, bot.id, { audience: "visitors" })).rejects.toThrow(
+      "This bot has an exhibitor list. A visitor chatbot doesn't use them, so remove them on the Exhibitors step first, then switch it.",
+    );
+    expect((await botById(bot.id))!.audience).toBe("exhibitors");
+    // Removed on the Exhibitors step: now it can, and answers about a stand go off with it.
+    await removeList(admin, bot.id);
+    await updateBot(admin, bot.id, { audience: "visitors" });
+    const b = (await botById(bot.id))!;
+    expect(b.audience).toBe("visitors");
+    expect(b.personalAnswers).toBe(false);
   });
 });

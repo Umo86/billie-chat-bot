@@ -8,6 +8,7 @@ import { Chip, Note, PageHeader, Panel } from "@/components/ui/bits";
 import { BotAvatar } from "@/components/bots/bot-avatar";
 import { nextStep, stepsFor, WizardSteps, type StepKey } from "@/components/bots/wizard-steps";
 import { LookForm } from "@/components/bots/look-form";
+import { BOT_TYPES } from "@/lib/bots/defaults";
 import { PersonalityStep } from "@/components/bots/personality-step";
 import { KnowledgeStep } from "@/components/bots/knowledge-step";
 import { ReplaceDialog } from "@/components/knowledge/replace-dialog";
@@ -87,6 +88,7 @@ export default async function BotPage({
       <LookForm
         botId={bot.id}
         hasTeamsChannel={Boolean(bot.teamsWebhookUrl?.trim())}
+        live={bot.status === "live"}
         initial={{
           name: bot.name,
           audience: bot.audience,
@@ -359,7 +361,7 @@ export default async function BotPage({
             <Chip tone={bot.status === "live" ? "good" : "neutral"}>
               {bot.status === "live" ? "Live" : "Draft"}
             </Chip>
-            <Chip tone="accent">{bot.audience === "visitors" ? "Visitors" : "Exhibitors"}</Chip>
+            <Chip tone="accent">{BOT_TYPES[bot.audience].label}</Chip>
             {bot.showName ? <span>{bot.showName}</span> : null}
           </span>
         }

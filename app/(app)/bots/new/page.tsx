@@ -12,7 +12,7 @@ export default async function NewBotPage() {
     <>
       <PageHeader
         title="New bot"
-        lede="Eight short steps: how it looks, how it comes across, what it knows, when it passes to a person, who works on it, its email, a test, then the code for your website. Exhibitor bots also have a step for the exhibitor list."
+        lede="First choose the kind: an exhibitor chatbot for BluePrint, the exhibitor manual, or a visitor chatbot for the event website. Then eight short steps: how it looks, how it comes across, what it knows, when it passes to a person, who works on it, its email, a test, then the code for the site. Exhibitor chatbots also have a step for the exhibitor list."
       />
       <WizardSteps current="look" />
       <LookForm />

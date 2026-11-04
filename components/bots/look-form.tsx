@@ -7,11 +7,11 @@ import { ImagePlus, Plus, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Note, Panel } from "@/components/ui/bits";
 import { Field, Input, Textarea } from "@/components/ui/form";
-import { Segmented } from "@/components/ui/segmented";
 import { useRunner } from "@/components/ui/use-runner";
 import { BotAvatar } from "@/components/bots/bot-avatar";
 import { BOT_COLOURS, textOn } from "@/lib/bots/slug";
 import { STARTER_EXAMPLES, suggestedWelcome } from "@/lib/bots/defaults";
+import { BotTypeChoice } from "@/components/bots/bot-type";
 import { MAX_PAGE_RULES, MAX_STARTERS } from "@/lib/bots/page-starters";
 import { createBotAction, updateBotAction } from "@/app/actions/bots";
 import { cn } from "@/lib/utils";
@@ -64,21 +64,27 @@ async function toAvatar(file: File): Promise<string> {
   }
 }
 
+/** The form's own copy: a new bot has no kind until one is chosen. */
+type Draft = Omit<Look, "audience"> & { audience: Look["audience"] | null };
+
 export function LookForm({
   botId,
   initial,
   hasTeamsChannel = false,
+  live = false,
 }: {
   botId?: string;
   initial?: Look;
   /** The event's Teams channel is set (Email step): where the morning post goes. */
   hasTeamsChannel?: boolean;
+  /** The bot is live: a change of kind applies to chats straight away. */
+  live?: boolean;
 }) {
   const router = useRouter();
-  const [look, setLook] = useState<Look>(
+  const [look, setLook] = useState<Draft>(
     initial ?? {
       name: "",
-      audience: "exhibitors",
+      audience: null,
       showName: "",
       color: BOT_COLOURS[0],
       avatarUrl: null,
@@ -92,8 +98,11 @@ export function LookForm({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const file = useRef<HTMLInputElement>(null);
   const { pending, run } = useRunner();
-  const set = <K extends keyof Look>(k: K, v: Look[K]) => setLook((l) => ({ ...l, [k]: v }));
+  const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setLook((l) => ({ ...l, [k]: v }));
   const starters = [...look.starters, "", "", ""].slice(0, 3);
+  // Examples and the preview follow the kind chosen (exhibitors' until one is).
+  const kind = look.audience ?? "exhibitors";
+  const switching = Boolean(initial && look.audience && look.audience !== initial.audience);
 
   // Updates nest the look ("look.name"); new bots don't ("name").
   const err = (k: string) => errors[k] ?? errors[`look.${k}`];
@@ -101,9 +110,15 @@ export function LookForm({
   function save(e: React.FormEvent) {
     e.preventDefault();
     setErrors({});
-    const { showFrom, showTo, ...rest } = look;
+    const { showFrom, showTo, audience, ...rest } = look;
+    if (!audience) {
+      setErrors({ audience: "Choose what kind of chatbot it is: for exhibitors or for visitors." });
+      document.getElementById("bot-type-error")?.scrollIntoView({ block: "center" });
+      return;
+    }
     const payload = {
       ...rest,
+      audience,
       starters: starters.map((s) => s.trim()).filter(Boolean),
       pageStarters: look.pageStarters.map((r) => ({
         match: r.match,
@@ -127,10 +142,35 @@ export function LookForm({
   return (
     <form onSubmit={save} className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
       <Panel className="flex flex-col gap-5">
+        <BotTypeChoice
+          value={look.audience}
+          onChange={(v) => {
+            set("audience", v);
+            setErrors(({ audience: _chosen, ...rest }) => rest);
+          }}
+          error={err("audience")}
+          note={
+            switching && look.audience ? (
+              <Note tone="warn">
+                Saving makes it {look.audience === "visitors" ? "a visitor" : "an exhibitor"}{" "}
+                chatbot, for {look.audience === "visitors" ? "the event website" : "BluePrint"}. It
+                answers {look.audience}, and outside working hours asks for{" "}
+                {look.audience === "visitors"
+                  ? "their name, email and phone number"
+                  : "their name, email and stand number"}{" "}
+                (unless you changed that on the Rules step).{" "}
+                {look.audience === "exhibitors"
+                  ? "It gets an Exhibitors step for the exhibitor list and BluePrint."
+                  : "The Exhibitors step goes: remove any exhibitor list, BluePrint connection and deadlines there first."}
+                {live ? " It's live, so this applies to chats straight away." : ""}
+              </Note>
+            ) : null
+          }
+        />
         <Field
           id="bot-name"
           label="Bot name"
-          hint="What visitors see at the top of the chat, e.g. Exhibitor Help"
+          hint={`What people see at the top of the chat, e.g. ${kind === "visitors" ? "Visitor Help" : "Exhibitor Help"}`}
           error={err("name")}
         >
           <Input
@@ -142,23 +182,6 @@ export function LookForm({
             aria-invalid={!!err("name")}
           />
         </Field>
-        <div className="flex flex-col gap-1.5">
-          <span className="text-[0.9rem] font-semibold">Who is it for?</span>
-          <Segmented<Look["audience"]>
-            label="Who is it for"
-            value={look.audience}
-            onChange={(v) => set("audience", v)}
-            options={[
-              { value: "exhibitors", label: "Exhibitors" },
-              { value: "visitors", label: "Visitors" },
-            ]}
-          />
-          <p className="text-sm text-muted-foreground">
-            {look.audience === "exhibitors"
-              ? "For the exhibitor manual site: build-up, deliveries, badges, stand rules and prices."
-              : "For the show website: dates, opening times, travel, tickets and what's on."}
-          </p>
-        </div>
         <Field id="bot-show" label="Show name" hint="e.g. UK Construction Week London 2027">
           <Input
             id="bot-show"
@@ -269,14 +292,18 @@ export function LookForm({
           />
         </Field>
         <div>
-          <Button size="sm" variant="ghost" onClick={() => set("welcome", suggestedWelcome(look))}>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => set("welcome", suggestedWelcome({ ...look, audience: kind }))}
+          >
             <Sparkles /> Suggest a welcome message
           </Button>
         </div>
         <fieldset className="flex flex-col gap-2">
           <legend className="mb-1 text-[0.9rem] font-semibold">Starter questions (optional)</legend>
           <p className="text-sm text-muted-foreground">
-            Shown as buttons when the chat opens, e.g. &ldquo;{STARTER_EXAMPLES[look.audience][0]}
+            Shown as buttons when the chat opens, e.g. &ldquo;{STARTER_EXAMPLES[kind][0]}
             &rdquo;
           </p>
           {starters.map((s, i) => (
@@ -285,7 +312,7 @@ export function LookForm({
               aria-label={`Starter question ${i + 1}`}
               value={s}
               maxLength={80}
-              placeholder={STARTER_EXAMPLES[look.audience][i]}
+              placeholder={STARTER_EXAMPLES[kind][i]}
               onChange={(e) => {
                 const next = [...starters];
                 next[i] = e.target.value;
@@ -396,11 +423,11 @@ export function LookForm({
           </div>
           <div className="flex flex-col gap-2 p-4">
             <p className="max-w-[85%] rounded-[14px] rounded-tl-sm bg-muted px-3 py-2 text-sm">
-              {look.welcome || suggestedWelcome(look)}
+              {look.welcome || suggestedWelcome({ ...look, audience: kind })}
             </p>
             <div className="flex flex-wrap gap-1.5">
               {starters
-                .map((s, i) => s.trim() || STARTER_EXAMPLES[look.audience][i])
+                .map((s, i) => s.trim() || STARTER_EXAMPLES[kind][i])
                 .map((s) => (
                   <span
                     key={s}
