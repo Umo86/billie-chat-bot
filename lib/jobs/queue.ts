@@ -40,7 +40,14 @@ export type JobKind =
   | "show_day_post"
   | "budget_check"
   | "crawl_website"
-  | "email_history";
+  | "email_history"
+  | "expire_waiting"
+  | "slack_relay"
+  | "slack_note"
+  | "slack_event"
+  | "slack_action"
+  | "slack_direct"
+  | "slack_email_digest";
 
 export type Job = typeof jobs.$inferSelect;
 

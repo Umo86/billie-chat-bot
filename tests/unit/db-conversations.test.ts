@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { agentPresence, conversations, gaps, jobs, messages } from "@/lib/db/schema";
+import { agentPresence, bots, conversations, gaps, jobs, messages } from "@/lib/db/schema";
 import {
   conversationForToken,
   handBack,
@@ -13,11 +13,22 @@ import {
   visitorUpdates,
   cleanContact,
 } from "@/lib/conversations/service";
-import { addAndRead, hasDb, makeBot, makeUser, putOnBot, setAvailableAgent } from "../helpers/db";
+import { addAndRead, hasDb, makeBot, makeUser, putOnBot } from "../helpers/db";
+import { botById } from "@/lib/bots/load";
 
-async function readyBot() {
+/** Team hours that are always open, or never: whether a chat goes live is the bot's hours. */
+const ALWAYS = { days: [0, 1, 2, 3, 4, 5, 6], start: "00:00", end: "23:59" };
+const NEVER = { days: [] as number[], start: "09:00", end: "17:00" };
+
+async function readyBot(hours = ALWAYS) {
   const actor = await makeUser("editor");
-  const { bot, kb } = await makeBot();
+  const made = await makeBot();
+  await db
+    .update(bots)
+    .set({ rules: { ...made.bot.rules, hours } })
+    .where(eq(bots.id, made.bot.id));
+  const bot = (await botById(made.bot.id))!;
+  const kb = made.kb;
   await addAndRead(actor, kb.id, {
     kind: "text",
     title: "Exhibitor manual",
@@ -66,8 +77,8 @@ describe.skipIf(!hasDb)("conversations (Postgres, stand-in Claude)", () => {
     expect(g).toMatchObject({ askCount: 2, status: "open" });
   });
 
-  it("nobody online: takes details, opens a ticket and queues the alert", async () => {
-    const { bot } = await readyBot();
+  it("outside the team's hours: takes details, opens a ticket and queues the alert", async () => {
+    const { bot } = await readyBot(NEVER);
     const t = await visitorMessage({
       bot,
       conversation: null,
@@ -75,7 +86,8 @@ describe.skipIf(!hasDb)("conversations (Postgres, stand-in Claude)", () => {
       text: "Can I speak to a person please?",
     });
     expect(t.status).toBe("collecting");
-    expect(t.form?.fields).toEqual(["name", "company", "stand", "email", "phone"]);
+    // An exhibitor bot asks for their name, email and stand.
+    expect(t.form?.fields).toEqual(["name", "email", "stand"]);
     expect(t.messages.at(-1)?.text).toMatch(/Nobody from the team is online/);
 
     const bad = cleanContact(bot.rules.collect, { name: "", email: "nope" });
@@ -95,10 +107,9 @@ describe.skipIf(!hasDb)("conversations (Postgres, stand-in Claude)", () => {
     expect(job?.kind).toBe("notify_handover");
   });
 
-  it("someone online: live chat, staff reply, Billie paused, then handed back", async () => {
-    const { bot, actor } = await readyBot();
+  it("in the team's hours: live chat, staff reply, Billie paused, then handed back", async () => {
+    const { bot, actor } = await readyBot(ALWAYS);
     await putOnBot(bot.id, actor.id);
-    await setAvailableAgent(actor.id, true);
     const t = await visitorMessage({
       bot,
       conversation: null,
@@ -144,7 +155,7 @@ describe.skipIf(!hasDb)("conversations (Postgres, stand-in Claude)", () => {
   });
 
   it("always-human topics go straight to the team", async () => {
-    const { bot } = await readyBot();
+    const { bot } = await readyBot(NEVER);
     const t = await visitorMessage({
       bot,
       conversation: null,
@@ -187,7 +198,7 @@ describe.skipIf(!hasDb)("conversations (Postgres, stand-in Claude)", () => {
   });
 
   it("WhatsApp out of hours goes straight to a ticket (they already gave their number)", async () => {
-    const { bot } = await readyBot();
+    const { bot } = await readyBot(NEVER);
     const t = await visitorMessage({
       bot,
       conversation: null,

@@ -1,7 +1,7 @@
 import "server-only";
-import { eq } from "drizzle-orm";
+import { and, eq, gte } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { bots, conversations } from "@/lib/db/schema";
+import { bots, conversations, slackThreads } from "@/lib/db/schema";
 import { appUrl, emailConfigured } from "@/lib/config";
 import { getSettings } from "@/lib/settings";
 import { REASON_LABEL, type HandoverReason } from "@/lib/conversations/handover";
@@ -11,12 +11,14 @@ import { postToTeams, teamsLinkFor } from "@/lib/channels/teams";
 import { adaptiveMessage, plainLine } from "./card";
 import { availablePeople, cardOf, eventManager, queueDirect } from "./direct";
 import { assignByRoute, routeFor, visitorWords } from "@/lib/conversations/routing";
+import { postHandoverToSlack } from "./slack-chat";
 
 /**
- * Telling the team a chat needs them: a Teams message to each person who
- * should answer (whoever is available, else the event's mailbox manager), a
- * post in the bot's Teams channel (or the company-wide one), and an email
- * to the alert addresses. Each is optional; the Inbox shows the chat either
+ * Telling the team a chat needs them: once Slack is connected, a post in the
+ * event's Slack channel, answered in its thread (lib/alerts/slack-chat.ts);
+ * otherwise a Teams message to each person who should answer (whoever is
+ * available, else the event's mailbox manager) and a post in the bot's Teams
+ * channel (or the company-wide one). Either way, an email to the alert addresses. Each is optional; the Inbox shows the chat either
  * way, and its browser alert fires while it's open. A transient failure
  * throws, so the job retries.
  */
@@ -66,6 +68,27 @@ export function teamsCard(a: HandoverAlert) {
   });
 }
 
+/** Has this handover already been posted in Slack (a retry of the job)? */
+async function alreadyInSlack(
+  conversationId: string,
+  kind: "live" | "ticket",
+  since: Date | null,
+): Promise<boolean> {
+  if (!since) return false;
+  const [t] = await db
+    .select({ ts: slackThreads.ts })
+    .from(slackThreads)
+    .where(
+      and(
+        eq(slackThreads.conversationId, conversationId),
+        eq(slackThreads.kind, kind),
+        gte(slackThreads.createdAt, since),
+      ),
+    )
+    .limit(1);
+  return Boolean(t);
+}
+
 export async function notifyHandover(
   conversationId: string,
   kind: "live" | "ticket",
@@ -90,19 +113,36 @@ export async function notifyHandover(
     link: `${appUrl()}/inbox?c=${conv.id}`,
   };
 
-  // First, Teams messages to people (queued once, so a retry of this job never repeats them):
-  // whoever is available for live chats, or, when nobody is, whoever manages the event's mailbox.
-  // With a person for the topic: them, and for a live chat whoever is available too
-  // when they aren't.
-  const available = kind === "live" ? await availablePeople(conv.botId) : [];
-  const people = routed
-    ? [
-        { email: routed.email },
-        ...(available.some((p) => p.email === routed.email) ? [] : available),
-      ]
-    : kind === "live"
-      ? available
-      : await eventManager(conv.botId);
+  // Slack, once it's connected: the chat in the event's channel, answered in its thread.
+  // (A retry finds the thread already posted, so it never posts twice.)
+  const slack =
+    (await alreadyInSlack(conv.id, kind, conv.handoverAt)) ||
+    (await postHandoverToSlack(conv.id, conv.botId, {
+      kind,
+      botName: alert.botName,
+      reason: alert.reason,
+      contact: alert.contact,
+      routed: routed && { topic: routed.topic, name: routed.name, email: routed.email },
+      alsoEmails:
+        kind === "ticket" && !routed ? (await eventManager(conv.botId)).map((p) => p.email) : [],
+      link: alert.link,
+    }));
+
+  // Otherwise Teams: messages to people (queued once, so a retry of this job never repeats
+  // them): whoever is available for live chats, or, when nobody is, whoever manages the
+  // event's mailbox. With a person for the topic: them, and for a live chat whoever is
+  // available too when they aren't.
+  const available = !slack && kind === "live" ? await availablePeople(conv.botId) : [];
+  const people = slack
+    ? []
+    : routed
+      ? [
+          { email: routed.email },
+          ...(available.some((p) => p.email === routed.email) ? [] : available),
+        ]
+      : kind === "live"
+        ? available
+        : await eventManager(conv.botId);
   await queueDirect(
     people,
     `chat:${conv.id}:${conv.handoverAt?.getTime() ?? 0}`,
@@ -111,7 +151,7 @@ export async function notifyHandover(
 
   const failures: string[] = [];
   // The event's own Teams channel when the bot has one, else the company-wide one.
-  const teams = teamsLinkFor(bot?.teamsWebhookUrl);
+  const teams = slack ? null : teamsLinkFor(bot?.teamsWebhookUrl);
   if (teams) {
     await postToTeams(teams, teamsCard(alert)).catch((err) =>
       failures.push(err instanceof Error ? err.message : String(err)),

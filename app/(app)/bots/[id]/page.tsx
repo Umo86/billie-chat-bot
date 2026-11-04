@@ -21,6 +21,7 @@ import { ExhibitorsStep } from "@/components/bots/exhibitors-step";
 import { BlueprintPanel } from "@/components/bots/blueprint-panel";
 import { listSummary } from "@/lib/exhibitors/service";
 import { blueprintStatus } from "@/lib/exhibitors/blueprint";
+import { slackStatus } from "@/lib/alerts/slack-settings";
 import { DeadlinesPanel } from "@/components/bots/deadlines-panel";
 import { deadlineSetup } from "@/lib/exhibitors/deadlines";
 import { dueLabel } from "@/lib/exhibitors/reminders";
@@ -259,11 +260,17 @@ export default async function BotPage({
     );
   } else if (step === "email") {
     const canManage = can(actor, "settings.manage");
-    const [setup, people, history] = await Promise.all([
+    const [setup, people, history, slack, s] = await Promise.all([
       botEmailSetup(bot.id),
       mailboxManagers(bot.id),
       historyState(bot.id),
+      slackStatus(),
+      getSettings(),
     ]);
+    const fallback =
+      slack.connected && s.slackChannelId
+        ? (slack.channels.find((c) => c.id === s.slackChannelId)?.name ?? null)
+        : null;
     const m = setup.mailbox;
     const microsoft = microsoftConfigured();
     body = (
@@ -298,6 +305,9 @@ export default async function BotPage({
         canManage={canManage}
         history={history}
         canLearn={await mayOnBot(actor, "knowledge.edit", bot.id)}
+        slack={slack}
+        slackChannelId={bot.slackChannelId}
+        slackFallback={fallback}
       />
     );
   } else if (step === "test") {

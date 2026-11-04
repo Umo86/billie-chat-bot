@@ -7,7 +7,7 @@ import { enqueue, PermanentJobError } from "@/lib/jobs/queue";
 import { kickJobs } from "@/lib/jobs/kick";
 import { appUrl, emailConfigured } from "@/lib/config";
 import { UserError } from "@/lib/errors";
-import { postToTeams } from "@/lib/channels/teams";
+import { postToTeam } from "@/lib/alerts/slack-chat";
 import { adaptiveMessage, plainLine } from "@/lib/alerts/card";
 import { cardOf, eventManager, queueDirect } from "@/lib/alerts/direct";
 import { inView, worksOnBotSql, type BotView } from "@/lib/auth/bots";
@@ -368,9 +368,14 @@ export async function notifyRequest(requestId: string): Promise<void> {
       })
     : null;
   const people = assignee ? [assignee] : await eventManager(bot.id);
-  await queueDirect(people, `request:${r.id}`, cardOf(card));
-  const channel = bot.teamsWebhookUrl?.trim();
-  if (channel) await postToTeams(channel, card);
+  // Slack, once it's connected: the event's channel, naming them. Otherwise Teams.
+  const posted = await postToTeam({
+    botId: bot.id,
+    teamsLink: bot.teamsWebhookUrl,
+    message: card,
+    mention: people.map((p) => p.email),
+  });
+  if (posted !== "slack") await queueDirect(people, `request:${r.id}`, cardOf(card));
 }
 
 /**

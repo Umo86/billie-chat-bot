@@ -3,8 +3,9 @@ import { londonParts } from "@/lib/time";
 
 /**
  * Team hours (pure). Hours are UK time; days 0 = Sunday … 6 = Saturday.
- * Billie hands over live only when someone is marked available in the Inbox;
- * hours are what it tells people when nobody is.
+ * During them, a chat that needs a person goes to the team live (Slack, or
+ * the Inbox); outside them, Billie takes the person's details. An end of
+ * 23:59 means until midnight.
  */
 const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -17,9 +18,15 @@ function toMinutes(hhmm: string): number | null {
   return h * 60 + min;
 }
 
+/** The end time in minutes: 23:59 is midnight, so "00:00 to 23:59" is the whole day. */
+function endMinutes(hhmm: string): number | null {
+  const m = toMinutes(hhmm);
+  return m === 23 * 60 + 59 ? 24 * 60 : m;
+}
+
 export function withinHours(hours: BotRules["hours"], now: Date): boolean {
   const start = toMinutes(hours.start);
-  const end = toMinutes(hours.end);
+  const end = endMinutes(hours.end);
   if (start === null || end === null || end <= start) return false;
   const { day, minutes } = londonParts(now);
   return hours.days.includes(day) && minutes >= start && minutes < end;
@@ -65,7 +72,7 @@ export function workingMinutes(
   cap = 24 * 60,
 ): number {
   const start = toMinutes(hours.start);
-  const end = toMinutes(hours.end);
+  const end = endMinutes(hours.end);
   if (start === null || end === null || end <= start || !hours.days.length) return 0;
   const stepMs = STEP_MINUTES * 60_000;
   const last = Math.min(to.getTime(), from.getTime() + 31 * 86_400_000);

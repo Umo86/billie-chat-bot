@@ -27,6 +27,33 @@ const handlers: Handlers = {
       p.kind === "ticket" ? "ticket" : "live",
     ),
   teams_direct: async (p) => (await import("@/lib/alerts/direct")).sendDirect(String(p.to), p.card),
+  slack_direct: async (p) =>
+    (await import("@/lib/alerts/slack-chat")).sendSlackDirect(String(p.to), p.card),
+  slack_relay: async (p) =>
+    (await import("@/lib/alerts/slack-chat")).relayToSlack(String(p.messageId)),
+  slack_note: async (p) =>
+    (await import("@/lib/alerts/slack-chat")).noteInSlack(String(p.conversationId), String(p.text)),
+  slack_event: async (p) =>
+    (await import("@/lib/alerts/slack-chat")).handleThreadReply({
+      channel: String(p.channel),
+      threadTs: String(p.threadTs),
+      ts: String(p.ts),
+      user: String(p.user),
+      text: String(p.text),
+    }),
+  slack_action: async (p) =>
+    (await import("@/lib/alerts/slack-chat")).handleSlackAction({
+      action: String(p.action),
+      conversationId: String(p.conversationId),
+      user: String(p.user),
+      channel: String(p.channel),
+      ts: String(p.ts),
+    }),
+  slack_email_digest: async (p) =>
+    (await import("@/lib/emails/slack-digest")).postEmailDigest(String(p.botId)),
+  expire_waiting: async () => {
+    await (await import("@/lib/conversations/service")).expireWaiting();
+  },
   notify_request: async (p) =>
     (await import("@/lib/requests/service")).notifyRequest(String(p.requestId)),
   send_request_update: async (p) => {
@@ -184,6 +211,14 @@ export async function minuteTick(now = new Date()) {
       "show_days",
       {},
       { dedupeKey: `show-days:${uk.date}`, once: true, maxAttempts: 2 },
+    );
+  // Live chats nobody has answered in five minutes: Billie takes their details instead.
+  const { hasExpiredWaiting } = await import("@/lib/conversations/service");
+  if (await hasExpiredWaiting(now))
+    await enqueue(
+      "expire_waiting",
+      {},
+      { dedupeKey: `expire-waiting:${minute}`, once: true, maxAttempts: 1 },
     );
   // Every 15 minutes: Teams nudges about chats and emails still waiting for a reply,
   // and a look at the month's Claude spend against the budget.

@@ -4,6 +4,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   smallint,
   text,
   timestamp,
@@ -207,5 +208,28 @@ export const exhibitorCodes = pgTable(
   (t) => [
     index("exhibitor_codes_conversation_idx").on(t.conversationId, t.createdAt),
     index("exhibitor_codes_exhibitor_idx").on(t.exhibitorId),
+  ],
+);
+
+/**
+ * A chat's thread in Slack (lib/alerts/slack-chat.ts): each time a chat is
+ * passed to the team, Billie posts it in the event's Slack channel, and the
+ * team answers in that post's thread. A chat handed over twice has two.
+ */
+export const slackThreads = pgTable(
+  "slack_threads",
+  {
+    channel: text("channel").notNull(),
+    /** The post's timestamp: Slack's id for a message, and its thread's. */
+    ts: text("ts").notNull(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<"live" | "ticket">().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.channel, t.ts] }),
+    index("slack_threads_conversation_idx").on(t.conversationId, t.createdAt),
   ],
 );

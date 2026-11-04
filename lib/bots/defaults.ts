@@ -22,11 +22,9 @@ export function defaultRules(audience: "visitors" | "exhibitors"): BotRules {
   return {
     alwaysHuman:
       audience === "visitors" ? ALWAYS_HUMAN_DEFAULT.slice(0, 3) : ALWAYS_HUMAN_DEFAULT.slice(),
-    hours: { days: [1, 2, 3, 4, 5], start: "09:00", end: "17:30" },
-    collect:
-      audience === "visitors"
-        ? ["name", "email", "phone"]
-        : ["name", "company", "stand", "email", "phone"],
+    hours: { days: [1, 2, 3, 4, 5], start: "09:00", end: "17:00" },
+    // Outside working hours: visitors leave a number to call back; exhibitors, their stand.
+    collect: audience === "visitors" ? ["name", "email", "phone"] : ["name", "email", "stand"],
     promise: "by the next working day",
   };
 }

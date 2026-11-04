@@ -8,6 +8,7 @@ import { UserError } from "@/lib/errors";
 import type { Actor } from "@/lib/authz";
 import { enqueue } from "@/lib/jobs/queue";
 import { postToTeams } from "@/lib/channels/teams";
+import { slackConfigured } from "@/lib/channels/slack";
 import { teamsLinkLabel, teamsLinkProblem } from "@/lib/emails/mailbox-rules";
 import { getSettings } from "@/lib/settings";
 
@@ -56,21 +57,23 @@ export function cardOf(message: { attachments: { content: unknown }[] }): unknow
 }
 
 /**
- * Queues one Teams message to each person, once per `key`. Does nothing
- * until Teams direct messages are set up in Settings.
+ * Queues one message to each person, once per `key`: a Slack direct message
+ * once Slack is connected, otherwise a Teams chat (once Teams direct messages
+ * are set up in Settings); nothing if neither is.
  */
 export async function queueDirect(
   people: { email: string }[],
   key: string,
   card: unknown,
 ): Promise<number> {
-  if (!people.length || !(await directLink())) return 0;
+  const viaSlack = slackConfigured();
+  if (!people.length || (!viaSlack && !(await directLink()))) return 0;
   let queued = 0;
   for (const p of people) {
     const to = p.email.trim().toLowerCase();
     if (!to) continue;
     const id = await enqueue(
-      "teams_direct",
+      viaSlack ? "slack_direct" : "teams_direct",
       { to, card },
       { dedupeKey: `dm:${key}:${to}`, once: true },
     );

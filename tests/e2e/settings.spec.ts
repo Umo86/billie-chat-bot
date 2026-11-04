@@ -62,6 +62,11 @@ test("general settings save, connections and reports render", async ({ page }) =
   await expect(page.getByLabel("Keep chats and emails for (months)")).toHaveValue("6");
 
   await page.goto("/settings?tab=connections");
+  // Slack for the team: not connected here, so how to set it up, with the app's manifest.
+  await expect(page.getByRole("listitem").filter({ hasText: "Slack (the team)" })).toContainText(
+    "Not connected",
+  );
+  await expect(page.locator("#slack-manifest")).toContainText("/api/webhooks/slack/events");
   const signIn = page.getByRole("listitem").filter({ hasText: "Sign-in" });
   await expect(signIn).toContainText(/Neon Auth|Test stand-in/);
   await expect(page.locator("#na-hook")).toContainText("/api/webhooks/neon-auth");

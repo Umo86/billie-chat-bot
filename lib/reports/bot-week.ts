@@ -1,11 +1,11 @@
 import "server-only";
-import { and, desc, eq, gte, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { bots, conversations, gaps } from "@/lib/db/schema";
 import { appUrl } from "@/lib/config";
 import { getSettings } from "@/lib/settings";
 import { adaptiveMessage, plainLine } from "@/lib/alerts/card";
-import { postToTeams } from "@/lib/channels/teams";
+import { hasOwnChannel, ownChannelSql, postToTeam } from "@/lib/alerts/slack-chat";
 import { enqueue } from "@/lib/jobs/queue";
 import { kpis, topQuestions, type Kpis } from "./queries";
 
@@ -106,7 +106,7 @@ export async function botWeek(botId: string, now = new Date()): Promise<BotWeek 
 }
 
 /**
- * Mondays: one job per bot with its own Teams channel that is live or had
+ * Mondays: one job per bot with its own Slack or Teams channel that is live or had
  * chats last week (queued once a day, so a retry never posts twice).
  */
 export async function queueBotWeeks(now = new Date()): Promise<number> {
@@ -119,8 +119,7 @@ export async function queueBotWeeks(now = new Date()): Promise<number> {
     .where(
       and(
         isNull(bots.deletedAt),
-        isNotNull(bots.teamsWebhookUrl),
-        ne(bots.teamsWebhookUrl, ""),
+        ownChannelSql(),
         or(
           eq(bots.status, "live"),
           sql`EXISTS (SELECT 1 FROM ${conversations} c WHERE c.bot_id = ${bots.id} AND c.channel <> 'try' AND c.created_at >= ${since.toISOString()})`,
@@ -140,8 +139,13 @@ export async function queueBotWeeks(now = new Date()): Promise<number> {
 /** The "weekly_bot_summary" job: one post in that event's channel. */
 export async function postBotWeek(botId: string, now = new Date()): Promise<void> {
   const bot = await db.query.bots.findFirst({ where: eq(bots.id, botId) });
-  const channel = bot?.teamsWebhookUrl?.trim();
-  if (!bot || bot.deletedAt || !channel) return;
+  if (!bot || bot.deletedAt || !hasOwnChannel(bot)) return;
   const week = await botWeek(botId, now);
-  if (week) await postToTeams(channel, botWeekCard(week));
+  if (week)
+    await postToTeam({
+      botId,
+      teamsLink: bot.teamsWebhookUrl,
+      message: botWeekCard(week),
+      ownOnly: true,
+    });
 }

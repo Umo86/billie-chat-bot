@@ -1,4 +1,4 @@
-import type { HandoverKind } from "@/lib/types";
+import type { ContactDetails, ContactField, HandoverKind } from "@/lib/types";
 
 /**
  * When Billie passes a chat to the team (pure). Billie hands over when it
@@ -35,9 +35,31 @@ export function afterRating(thumbsDownStreak: number): HandoverDecision {
     : { kind: "none" };
 }
 
-/** Live chat when someone is available, otherwise take details for a ticket. */
-export function handoverRoute(agentsAvailable: number): "live" | "details" {
-  return agentsAvailable > 0 ? "live" : "details";
+/**
+ * Live chat during the bot's working hours (the team answers in Slack, or
+ * in the Inbox); outside them, the person's details, for a ticket.
+ */
+export function handoverRoute(withinHours: boolean): "live" | "details" {
+  return withinHours ? "live" : "details";
+}
+
+/** A live chat nobody has answered in this long gets the details form instead. */
+export const WAIT_MINUTES = 5;
+
+export const WAITED_LINE =
+  "Sorry, nobody from the team is free right now. Leave your details and they'll get back to you.";
+
+/** Has Billie already got everything the form would ask (an exhibitor signed in from the manual)? */
+export function contactComplete(
+  fields: ContactField[],
+  contact: ContactDetails | null | undefined,
+): boolean {
+  const c = contact ?? {};
+  return (
+    fields.length > 0 &&
+    fields.every((f) => Boolean(c[f]?.trim())) &&
+    (!fields.includes("email") || /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(c.email ?? ""))
+  );
 }
 
 export const REASON_LABEL: Record<HandoverReason, string> = {

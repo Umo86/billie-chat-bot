@@ -135,8 +135,10 @@ export function RulesStep({
         <div>
           <h2 className="text-[1.05rem]">Team hours (UK time)</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Chats go to a person live only when someone has switched on &ldquo;Available&rdquo; in
-            the Inbox. Outside these hours, Billie says when the team will reply.
+            During these hours, a chat that needs a person goes to the team live: in Slack once
+            it&apos;s connected, and in the Inbox. Outside them, Billie takes the person&apos;s
+            details for a reply. A live chat nobody answers in 5 minutes gets the details form too.
+            To 23:59 means until midnight.
           </p>
         </div>
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="Days">

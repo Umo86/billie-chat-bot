@@ -56,6 +56,8 @@ export const emailThreads = pgTable(
     outlookDraftEtag: text("outlook_draft_etag"),
     /** Which text the Outlook draft holds (a hash of `draft`): a new text gets a new draft. */
     outlookDraftVersion: text("outlook_draft_version"),
+    /** When it went into a "replies to check" post in the event's Slack channel. */
+    slackPostedAt: timestamp("slack_posted_at", { withTimezone: true }),
     error: text("error"),
     handledBy: uuid("handled_by").references(() => users.id, { onDelete: "set null" }),
     handledAt: timestamp("handled_at", { withTimezone: true }),
@@ -215,6 +217,8 @@ export const settings = pgTable("settings", {
    * (lib/alerts/direct.ts). A secret: set by admins, never shown again.
    */
   teamsDmWebhookUrl: text("teams_dm_webhook_url"),
+  /** The company-wide Slack channel, for bots without one of their own. */
+  slackChannelId: text("slack_channel_id"),
   /**
    * No longer used: each bot's mailbox keeps its own sync point (bot_mailboxes).
    * Kept because migrations run before a new version goes live, and the

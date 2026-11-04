@@ -8,6 +8,9 @@ import { GeneralForm } from "@/components/settings/general-form";
 import { Team } from "@/components/settings/team";
 import { Privacy } from "@/components/settings/privacy";
 import { TeamsDirect } from "@/components/settings/teams-direct";
+import { SlackSetup } from "@/components/settings/slack-setup";
+import { slackStatus } from "@/lib/alerts/slack-settings";
+import { slackManifest } from "@/lib/channels/slack-manifest";
 import { AiUsage } from "@/components/settings/ai-usage";
 import { ModelsForm } from "@/components/settings/models-form";
 import { SavingsForm } from "@/components/settings/savings-form";
@@ -142,7 +145,12 @@ export default async function SettingsPage({
   } else {
     const base = appUrl();
     const dbUrl = appDatabaseUrl();
-    const [mailboxes, direct] = await Promise.all([mailboxOverview(), directLinkLabel()]);
+    const [mailboxes, direct, slack, s] = await Promise.all([
+      mailboxOverview(),
+      directLinkLabel(),
+      slackStatus(),
+      getSettings(),
+    ]);
     const microsoft = microsoftConfigured();
     const rows: { name: string; ok: boolean; detail: string; vars?: string }[] = [
       {
@@ -213,20 +221,35 @@ export default async function SettingsPage({
         vars: "WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_TOKEN, WHATSAPP_APP_SECRET, WHATSAPP_VERIFY_TOKEN",
       },
       {
-        name: "Teams messages to people",
-        ok: Boolean(direct),
-        detail: direct
-          ? "On. Mailbox managers and whoever is available get a Teams chat."
-          : "Off. Set it up below: one Teams workflow, about 10 minutes for IT.",
+        name: "Slack (the team)",
+        ok: slack.connected && !slack.problem,
+        detail: !slack.connected
+          ? "Not connected: set it up below, about 10 minutes."
+          : slack.problem
+            ? slack.problem
+            : `Connected to ${slack.team || "your workspace"}. Chats that need a person, email replies to check and the bots' posts go to Slack.`,
+        vars: "SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET",
       },
-      {
-        name: "Teams (company-wide channel)",
-        ok: teamsConfigured(),
-        detail: teamsConfigured()
-          ? "Connected. Chats from bots without their own channel are posted here."
-          : "Optional. Each bot can post to its event's own channel (set on its Email step).",
-        vars: "TEAMS_WEBHOOK_URL",
-      },
+      // Teams, until Slack is connected.
+      ...(slack.connected
+        ? []
+        : [
+            {
+              name: "Teams messages to people",
+              ok: Boolean(direct),
+              detail: direct
+                ? "On. Mailbox managers and whoever is available get a Teams chat."
+                : "Off. Set it up below: one Teams workflow, about 10 minutes for IT.",
+            },
+            {
+              name: "Teams (company-wide channel)",
+              ok: teamsConfigured(),
+              detail: teamsConfigured()
+                ? "Connected. Chats from bots without their own channel are posted here."
+                : "Optional. Each bot can post to its event's own channel (set on its Email step).",
+              vars: "TEAMS_WEBHOOK_URL",
+            },
+          ]),
     ];
     body = (
       <div className="flex flex-col gap-4">
@@ -258,7 +281,12 @@ export default async function SettingsPage({
             ))}
           </ul>
         </Panel>
-        <TeamsDirect saved={direct} me={actor.email} />
+        <SlackSetup
+          slack={slack}
+          manifest={slackManifest(base)}
+          channelId={s.slackChannelId ?? null}
+        />
+        {slack.connected ? null : <TeamsDirect saved={direct} me={actor.email} />}
         <Panel className="flex flex-col gap-3">
           <h2 className="text-[1.05rem]">Event mailboxes</h2>
           {mailboxes.length ? (

@@ -71,6 +71,12 @@ export const bots = pgTable(
      * drafts and chats that need a person are posted there. Set by admins only.
      */
     teamsWebhookUrl: text("teams_webhook_url"),
+    /**
+     * The event's Slack channel (its id, "C0…"): chats that need a person
+     * (two-way, in a thread each), tickets, email drafts to check and the
+     * bot's own posts go there once Slack is connected. Set by admins only.
+     */
+    slackChannelId: text("slack_channel_id"),
     quality: quality("quality").notNull().default("fast"),
     status: botStatus("status").notNull().default("draft"),
     /** Websites allowed to show the chat (hostnames, e.g. "ukconstructionweek.com"). */

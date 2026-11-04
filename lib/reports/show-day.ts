@@ -1,10 +1,10 @@
 import "server-only";
-import { and, eq, gte, isNotNull, isNull, lte, ne, sql } from "drizzle-orm";
+import { and, eq, gte, isNull, lte, sql } from "drizzle-orm";
 import { db, query } from "@/lib/db/client";
 import { bots } from "@/lib/db/schema";
 import { appUrl } from "@/lib/config";
 import { adaptiveMessage, plainLine } from "@/lib/alerts/card";
-import { postToTeams } from "@/lib/channels/teams";
+import { hasOwnChannel, ownChannelSql, postToTeam } from "@/lib/alerts/slack-chat";
 import { enqueue } from "@/lib/jobs/queue";
 import { REASON_LABEL, type HandoverReason } from "@/lib/conversations/handover";
 import { addDays, dayLabel, isPostDay } from "@/lib/bots/show-days";
@@ -220,7 +220,7 @@ export async function showDay(botId: string, today: string): Promise<ShowDay | n
 
 /**
  * Each morning from 7:30 UK time: one job per bot with show days covering
- * today and its own Teams channel (queued once a day each, so a retry never
+ * today and its own Slack or Teams channel (queued once a day each, so a retry never
  * posts twice).
  */
 export async function queueShowDays(now = new Date()): Promise<number> {
@@ -231,8 +231,7 @@ export async function queueShowDays(now = new Date()): Promise<number> {
     .where(
       and(
         isNull(bots.deletedAt),
-        isNotNull(bots.teamsWebhookUrl),
-        ne(bots.teamsWebhookUrl, ""),
+        ownChannelSql(),
         lte(bots.showStartsOn, today),
         // The day after the last one too: for breakdown day itself.
         gte(bots.showEndsOn, addDays(today, -1)),
@@ -250,12 +249,17 @@ export async function queueShowDays(now = new Date()): Promise<number> {
 /** The "show_day_post" job: one post in that event's channel. */
 export async function postShowDay(botId: string, today: string): Promise<void> {
   const bot = await db.query.bots.findFirst({ where: eq(bots.id, botId) });
-  const channel = bot?.teamsWebhookUrl?.trim();
-  if (!bot || bot.deletedAt || !channel) return;
+  if (!bot || bot.deletedAt || !hasOwnChannel(bot)) return;
   // The days may have changed since it was queued.
   const days =
     bot.showStartsOn && bot.showEndsOn ? { from: bot.showStartsOn, to: bot.showEndsOn } : null;
   if (!isPostDay(days, today)) return;
   const d = await showDay(botId, today);
-  if (d) await postToTeams(channel, showDayCard(d));
+  if (d)
+    await postToTeam({
+      botId,
+      teamsLink: bot.teamsWebhookUrl,
+      message: showDayCard(d),
+      ownOnly: true,
+    });
 }

@@ -127,6 +127,54 @@ because everyone on the team then sees that mailbox's emails in Billie.
 - **Logs and stored job errors** never carry query values (an email's
   text, a Teams link): `safeError()` leaves them out.
 
+## The team works in Slack: a thread per chat, answered there
+
+Media10's team lives in Slack, so once Slack is connected (docs/slack.md),
+everything Billie tells the team goes there, and Teams stops: chats that
+need a person, tickets, email replies to check, the bots' weekly and
+show-day posts and requests in each event's channel (the company-wide one
+for bots without), and messages to one person as Slack direct messages.
+The Teams code stays, for anyone without Slack, and its settings are
+hidden once Slack is on. Billie's existing Teams cards are turned into
+Slack blocks rather than written twice; everything anyone wrote goes in as
+plain text, never Slack markup, so nobody can slip a link or an @channel
+into the team's channel, and links are Billie's own buttons.
+
+A chat that needs a person is one post with the chat so far, and its
+thread is the conversation: Slack's Events API sends the team's thread
+replies to Billie, which hands them to the same staff reply the Inbox uses
+(so they reach the chat, WhatsApp, or email for a ticket), and the
+visitor's messages, and replies written in the Inbox, are posted into the
+thread. Two-way chat needs an app, not a webhook; Slack's is a manifest
+an admin pastes in, about ten minutes, against a week and IT approval for
+a Teams app. Who may answer is Billie's own rule, not channel membership:
+the Slack user's email must be a Billie user who works on that bot, or they
+get a private note and nothing goes. "note:" keeps a message to the team.
+Every request from Slack is signed (HMAC of the timestamp and body with
+the signing secret, at most five minutes old) and checked before it's
+read, except the one-off address check Slack makes while the app is being
+made, which only echoes a challenge. Slack wants an answer in three
+seconds, so each event and button press is queued once (by Slack's event
+id) and handled straight after. Billie's buttons say which chat they're for,
+and a press only acts on the chat of the post it's on.
+
+Whether a chat goes live is now the bot's working hours (its Rules step,
+UK time; new bots Mon–Fri 9 to 5, and 23:59 means until midnight), not
+who has switched "Available" on in the Inbox: in Slack nobody sits on a
+switch. So nobody waits on a chat nobody is watching, a live chat nobody
+answers in five minutes gets the details form instead, and the thread says
+so. Outside the hours Billie asks for details at once: name, email and stand
+for exhibitor bots (the exhibitor manual's people), name, email and phone
+for visitor bots (to call back). Someone Billie already knows (WhatsApp,
+or an exhibitor signed in from BluePrint) isn't asked: it's a ticket
+straight away. "Available" remains only to choose who gets a Teams message
+while Teams is used.
+
+Email replies to check are one post for about two minutes of emails, not
+one per email: each email goes in one post only (claimed and marked in the
+same transaction as the post, so a failed post is tried again rather than
+lost), naming the mailbox's manager and whoever handles an email's topic.
+
 ## Teams messages to people: one workflow, not a Teams app
 
 Microsoft Graph doesn't let an app start a 1:1 Teams chat, and a Teams bot

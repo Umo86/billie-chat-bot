@@ -18,6 +18,8 @@ import { routeFor } from "@/lib/conversations/routing";
 import { safeError } from "@/lib/errors";
 import { draftFailureIsFinal, draftProblem } from "./mailbox-rules";
 import { emailTeamsCard, type EmailPost } from "./teams-card";
+import { queueEmailDigest } from "./slack-digest";
+import { slackChannelFor } from "@/lib/alerts/slack-chat";
 
 /** Which text an Outlook draft holds. */
 export function draftVersion(text: string): string {
@@ -99,6 +101,9 @@ export async function deliverEmailDraft(
       .update(emailThreads)
       .set({ routedTo: routed.userId })
       .where(eq(emailThreads.id, email.id));
+  // Slack, once it's connected: one "replies to check" post for the emails of the next
+  // two minutes, in the event's channel (lib/emails/slack-digest.ts), instead of Teams.
+  if (await slackChannelFor(box.botId)) return void (await queueEmailDigest(box.botId));
   // The manager, if they still work on the bot (a link they couldn't open is no use).
   const assignee = routed
     ? { fullName: routed.name, email: routed.email }

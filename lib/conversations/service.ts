@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, lt, sql } from "drizzle-orm";
 import { db, type Tx } from "@/lib/db/client";
 import { botMailboxes, chatRequests, conversations, messages, users } from "@/lib/db/schema";
 import { writeAudit } from "@/lib/audit";
@@ -8,7 +8,8 @@ import { kickJobs } from "@/lib/jobs/kick";
 import { forgetReused } from "@/lib/ai/reuse";
 import { recordUnhelpful, withdrawUnhelpful } from "@/lib/knowledge/unhelpful";
 import { answerQuestion, aiFailureLine } from "@/lib/ai/answer";
-import { answerBotFor, type BotRow } from "@/lib/bots/load";
+import { answerBotFor, botById, type BotRow } from "@/lib/bots/load";
+import { slackConfigured } from "@/lib/channels/slack";
 import { recordGap } from "@/lib/knowledge/gap-store";
 import { hashToken, newToken } from "@/lib/chat/token";
 import type { Actor } from "@/lib/authz";
@@ -26,12 +27,15 @@ import { offerFor, requestRef } from "@/lib/requests/rules";
 import {
   afterAnswer,
   afterRating,
+  contactComplete,
   handoverLine,
   handoverRoute,
+  WAIT_MINUTES,
+  WAITED_LINE,
   type HandoverReason,
 } from "./handover";
+import { withinHours } from "./hours";
 import { botPaused, nextStatus, type ConversationEvent, type ConversationStatus } from "./status";
-import { agentsAvailable } from "./presence";
 import { queueSuggestion } from "./suggest";
 import { recordFor, signedInAs } from "@/lib/exhibitors/service";
 
@@ -238,6 +242,13 @@ export async function visitorMessage(input: {
       })
       .where(eq(conversations.id, c.id));
     const status = await move(tx, c, "visitor_wrote");
+    // A person has the chat: what they write goes to its Slack thread too.
+    if (botPaused(status) && slackConfigured())
+      await enqueue(
+        "slack_relay",
+        { messageId: visitorRow.id },
+        { tx, dedupeKey: `slack-relay:${visitorRow.id}` },
+      );
     const earlier = await tx
       .select()
       .from(messages)
@@ -324,35 +335,62 @@ export async function visitorMessage(input: {
 }
 
 /** Pass the chat to the team: live if someone is available, otherwise take details. */
+/**
+ * Straight to a ticket, with no details form, when Billie already knows who
+ * they are: on WhatsApp, or signed in from the exhibitor manual.
+ */
+async function ticketWithoutForm(
+  tx: Tx,
+  bot: BotRow,
+  c: ConversationRow,
+  opening: string,
+): Promise<{ status: ConversationStatus; line: MessageRow } | null> {
+  const contact = c.contact as ContactDetails;
+  if (c.channel !== "whatsapp" && !contactComplete(bot.rules.collect, contact)) return null;
+  const status = await move(tx, c, "details_left");
+  if (status !== "ticket") return null;
+  const where =
+    c.channel === "whatsapp" ? "here" : contact.email ? `by email at ${contact.email}` : "";
+  const line = await insertMessage(tx, c.id, {
+    role: "system",
+    text: `${opening} They'll reply ${where ? `${where} ` : ""}${bot.rules.promise}.`,
+  });
+  await enqueue(
+    "notify_handover",
+    { conversationId: c.id, kind: "ticket" },
+    { tx, dedupeKey: `notify:${c.id}:ticket` },
+  );
+  return { status, line };
+}
+
 export async function handover(
   bot: BotRow,
   conversationId: string,
   reason: HandoverReason,
+  now = new Date(),
 ): Promise<Turn> {
-  // Only people who work on this bot can see its chats.
-  const route = handoverRoute(await agentsAvailable(new Date(), bot.id));
+  // Live during the bot's working hours; outside them, their details for a ticket.
+  const route = handoverRoute(withinHours(bot.rules.hours, now));
   const result = await db.transaction(async (tx) => {
     const c = await lock(tx, conversationId);
     let status = await move(tx, c, route === "live" ? "handover_live" : "handover_offline");
     if (status === c.status) return { status, rows: [] as MessageRow[], changed: false };
     await tx
       .update(conversations)
-      .set({ handoverReason: reason, handoverAt: new Date(), thumbsDownStreak: 0 })
+      .set({ handoverReason: reason, handoverAt: now, thumbsDownStreak: 0 })
       .where(eq(conversations.id, c.id));
-    // WhatsApp already knows who they are: no details form, straight to a ticket.
-    if (c.channel === "whatsapp" && status === "collecting") {
-      status = await move(tx, { ...c, status }, "details_left");
-      const line = await insertMessage(tx, c.id, {
-        role: "system",
-        text: `Nobody from the team is online right now. They'll reply here ${bot.rules.promise}.`,
-      });
-      await enqueue(
-        "notify_handover",
-        { conversationId: c.id, kind: "ticket" },
-        { tx, dedupeKey: `notify:${c.id}:ticket` },
+    if (status === "collecting") {
+      const ticket = await ticketWithoutForm(
+        tx,
+        bot,
+        { ...c, status },
+        "Nobody from the team is online right now.",
       );
-      await queueSuggestion(tx, c.id);
-      return { status, rows: [line], changed: true };
+      if (ticket) {
+        status = ticket.status;
+        await queueSuggestion(tx, c.id);
+        return { status, rows: [ticket.line], changed: true };
+      }
     }
     const line = await insertMessage(tx, c.id, {
       role: "system",
@@ -697,6 +735,7 @@ export async function staffReply(
   actor: Actor,
   conversationId: string,
   text: string,
+  opts: { fromSlack?: boolean } = {},
 ): Promise<MessageRow> {
   const body = text.trim();
   if (!body) throw new ChatError("invalid", "Write a reply first.");
@@ -727,6 +766,13 @@ export async function staffReply(
       Boolean(contact.email) &&
       ["ticket", "replied"].includes(status);
     const followUp = c.channel === "whatsapp" || byEmail;
+    // Written in Billie's Inbox: the chat's Slack thread shows it too.
+    if (!opts.fromSlack && slackConfigured())
+      await enqueue(
+        "slack_relay",
+        { messageId: row.id },
+        { tx, dedupeKey: `slack-relay:${row.id}` },
+      );
     if (followUp) {
       await enqueue(
         "send_staff_reply",
@@ -773,6 +819,71 @@ export async function closeConversation(actor: Actor, conversationId: string): P
       summary: "Closed a chat",
     });
   });
+}
+
+/** Is any live chat still waiting for the team after WAIT_MINUTES? (A cheap look, every minute.) */
+export async function hasExpiredWaiting(now = new Date()): Promise<boolean> {
+  const cutoff = new Date(now.getTime() - WAIT_MINUTES * 60_000);
+  const [row] = await db
+    .select({ id: conversations.id })
+    .from(conversations)
+    .where(and(eq(conversations.status, "waiting"), lt(conversations.handoverAt, cutoff)))
+    .limit(1);
+  return Boolean(row);
+}
+
+/**
+ * Live chats nobody from the team has answered in WAIT_MINUTES: Billie asks
+ * for the person's details instead (or, knowing who they are, makes it a
+ * ticket), so nobody waits on a chat no one is watching. Every minute.
+ */
+export async function expireWaiting(now = new Date()): Promise<number> {
+  const cutoff = new Date(now.getTime() - WAIT_MINUTES * 60_000);
+  const due = await db
+    .select({ id: conversations.id, botId: conversations.botId })
+    .from(conversations)
+    .where(and(eq(conversations.status, "waiting"), lt(conversations.handoverAt, cutoff)))
+    .limit(100);
+  let moved = 0;
+  for (const d of due) {
+    const bot = await botById(d.botId);
+    if (!bot) continue;
+    const changed = await db.transaction(async (tx) => {
+      const c = await lock(tx, d.id);
+      if (c.status !== "waiting" || !c.handoverAt || c.handoverAt >= cutoff) return false;
+      const status = await move(tx, c, "handover_offline");
+      if (status !== "collecting") return false;
+      const ticket = await ticketWithoutForm(
+        tx,
+        bot,
+        { ...c, status },
+        "Sorry, nobody from the team is free right now.",
+      );
+      if (!ticket) await insertMessage(tx, c.id, { role: "system", text: WAITED_LINE });
+      await writeAudit(tx, {
+        actorType: "system",
+        entityType: "conversation",
+        entityId: c.id,
+        action: "status_change",
+        summary: `Nobody answered a chat with ${bot.name} within ${WAIT_MINUTES} minutes: ${ticket ? "made it a ticket" : "asked for their details"}`,
+      });
+      if (slackConfigured())
+        await enqueue(
+          "slack_note",
+          {
+            conversationId: c.id,
+            text: ticket
+              ? `Nobody answered within ${WAIT_MINUTES} minutes, so Billie made it a ticket. Reply here and it goes to them by email.`
+              : `Nobody answered within ${WAIT_MINUTES} minutes, so Billie is asking for their details.`,
+          },
+          { tx, dedupeKey: `slack-waited:${c.id}:${c.handoverAt.getTime()}` },
+        );
+      return true;
+    });
+    if (changed) moved++;
+  }
+  if (moved) await kickJobs();
+  return moved;
 }
 
 export async function markRead(conversationId: string): Promise<void> {

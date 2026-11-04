@@ -8,8 +8,17 @@ Chatbots, live handover and an email assistant for Media10 shows.
   managed in its Knowledge step, or on the Knowledge page.
 - **A chat widget** for the show websites (one line of code), a chat page
   with a QR code, and **WhatsApp**.
-- **Live handover** to the team: the Inbox, availability, contact details
-  when nobody's free, replies by chat, WhatsApp or email.
+- **Live handover** to the team, by the bot's working hours: during them,
+  live (in Slack, or the Inbox); outside them, or when nobody answers in
+  5 minutes, the person's details for a ticket (exhibitor bots: name,
+  email and stand; visitor bots: name, email and phone). Replies go back by
+  chat, WhatsApp or email.
+- **Slack for the team** (docs/slack.md): a chat that needs a person is
+  posted in the event's Slack channel with the chat so far, and the team
+  answers in its thread, two ways. Tickets, email replies to check ("I've
+  prepared these replies, please review and send"), the weekly and
+  show-day posts and requests go there too, and messages to one person are
+  Slack direct messages. Once Slack is connected, Billie stops using Teams.
 - **Each bot has its own** look, personality (tone, a description in your
   own words, emoji, email sign-off), knowledge and rules.
 - **Event mailboxes**: each bot can have its event's Microsoft 365 mailbox.
@@ -17,10 +26,10 @@ Chatbots, live handover and an email assistant for Media10 shows.
   Drafts in the same thread, and a post in the event's Teams channel that
   @mentions whoever manages the mailbox. A person checks and sends every
   reply. Emails can also be pasted in.
-- **Teams messages to people**: the mailbox manager when a reply is waiting
-  in Drafts, and whoever is available when a visitor wants a person, get a
-  Teams chat with an "Open in Billie" button (one company-wide workflow, set
-  up in Settings → Connections).
+- **Teams messages to people** (until Slack is connected): the mailbox
+  manager when a reply is waiting in Drafts, and whoever is available when
+  a visitor wants a person, get a Teams chat with an "Open in Billie"
+  button (one company-wide workflow, set up in Settings → Connections).
 - **Who handles what**: on a bot's People step, topics with their words
   and a person ("Electrics: electric, power, socket → Sam"). A chat passed
   to the team, or an email that needs a person, about that topic goes to
@@ -135,7 +144,7 @@ Chatbots, live handover and an email assistant for Media10 shows.
 | Search          | Hybrid: Postgres full-text + Voyage embeddings (HNSW), fused with RRF         |
 | Background work | A job queue in Postgres, run straight after each request and by Vercel Cron   |
 | Files           | Vercel Blob (private)                                                         |
-| Channels        | WhatsApp Cloud API, Microsoft Graph (Outlook), Teams Workflows, Resend        |
+| Channels        | WhatsApp Cloud API, Microsoft Graph (Outlook), Slack, Teams Workflows, Resend |
 | Hosting         | Vercel, London region (`lhr1`)                                                |
 
 ## Run it on your computer
@@ -207,7 +216,7 @@ components/     UI (ui/ is the shared kit)
 lib/            everything else: ai, auth, bots, chat, conversations, db,
                 emails, jobs, knowledge, reports, team…
 tests/          unit/ (Vitest), e2e/ (Playwright), fixtures/
-docs/           guides for other systems (blueprint.md: the exhibitor manual)
+docs/           guides for other systems (blueprint.md: the exhibitor manual; slack.md)
 prototype/      the original clickable prototype (not part of the app)
 ```
 

@@ -21,6 +21,13 @@ describe("team hours (UK time)", () => {
     expect(withinHours(weekdays, new Date("2026-01-14T08:30:00Z"))).toBe(false);
   });
 
+  it("takes 23:59 as midnight, so a whole day can be open", () => {
+    const always = { days: [0, 1, 2, 3, 4, 5, 6], start: "00:00", end: "23:59" };
+    expect(withinHours(always, new Date("2026-01-14T23:59:30Z"))).toBe(true);
+    expect(withinHours(always, new Date("2026-01-15T00:00:00Z"))).toBe(true);
+    expect(withinHours({ ...always, days: [] }, new Date("2026-01-14T12:00:00Z"))).toBe(false);
+  });
+
   it("closes at the end time and on days off", () => {
     expect(withinHours(weekdays, new Date("2026-01-14T17:30:00Z"))).toBe(false);
     expect(withinHours(weekdays, new Date("2026-01-17T12:00:00Z"))).toBe(false); // Saturday
@@ -62,9 +69,9 @@ describe("handover rules", () => {
     expect(afterRating(2)).toEqual({ kind: "offer", reason: "thumbs_down" });
   });
 
-  it("goes live only when someone is available", () => {
-    expect(handoverRoute(0)).toBe("details");
-    expect(handoverRoute(2)).toBe("live");
+  it("goes live during the team's hours, and takes details outside them", () => {
+    expect(handoverRoute(false)).toBe("details");
+    expect(handoverRoute(true)).toBe("live");
     expect(handoverLine("live", "unknown")).toMatch(/Connecting you/);
     expect(handoverLine("details", "always_human")).toMatch(/handles this personally/);
   });

@@ -1,5 +1,6 @@
 "use client";
 
+import { SlackChannelPicker, type SlackScreen } from "@/components/settings/slack-setup";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -40,6 +41,9 @@ export function EmailStep({
   canManage,
   history = null,
   canLearn = false,
+  slack = null,
+  slackChannelId = null,
+  slackFallback = null,
 }: {
   botId: string;
   botName: string;
@@ -60,6 +64,11 @@ export function EmailStep({
     waiting: number;
   } | null;
   canLearn?: boolean;
+  /** Slack, once connected: then the bot's channel is chosen here, instead of Teams. */
+  slack?: SlackScreen | null;
+  slackChannelId?: string | null;
+  /** The company-wide Slack channel's name, if there is one. */
+  slackFallback?: string | null;
 }) {
   const router = useRouter();
   const { pending, run } = useRunner();
@@ -268,123 +277,153 @@ export function EmailStep({
         <PastEmails botId={botId} history={history} canLearn={canLearn} />
       ) : null}
 
-      <Panel className="flex flex-col gap-4">
-        <div className="flex items-start gap-3">
-          <MessagesSquare className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden />
-          <div className="min-w-0">
-            <h2 className="text-[1.05rem]">Teams channel</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Billie posts in the event&apos;s channel when a reply is waiting in Drafts, or an
-              email needs a person, and @mentions whoever manages the mailbox. Chats with {botName}{" "}
-              that need a person are posted there too.
-            </p>
+      {slack?.connected ? (
+        <Panel className="flex flex-col gap-4" data-testid="bot-slack">
+          <div className="flex items-start gap-3">
+            <MessagesSquare className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden />
+            <div className="min-w-0">
+              <h2 className="text-[1.05rem]">Slack channel</h2>
+              <p className="mt-1 max-w-[68ch] text-sm text-muted-foreground">
+                The event&apos;s channel in Slack. Chats with {botName} that need a person are
+                posted there with what was said so far, and the team answers in the thread. Email
+                replies to check and the bot&apos;s weekly and show-day posts go there too.
+              </p>
+            </div>
           </div>
-        </div>
+          {slack.problem ? (
+            <Note tone="bad">{slack.problem}</Note>
+          ) : (
+            <SlackChannelPicker
+              botId={botId}
+              slack={slack}
+              channelId={slackChannelId}
+              canManage={canManage}
+              fallback={slackFallback}
+            />
+          )}
+        </Panel>
+      ) : null}
 
-        {teams ? (
-          <p className="flex flex-wrap items-center gap-2 text-sm" data-testid="teams-status">
-            <Chip tone="good">Saved</Chip>
-            <span className="text-muted-foreground">Posts go through {teams}.</span>
-          </p>
-        ) : companyTeams ? (
-          <p className="text-sm text-muted-foreground">
-            No channel for this bot yet, so chats that need a person go to the company-wide Teams
-            channel. Email posts need the event&apos;s own channel.
-          </p>
-        ) : null}
+      {/* Teams, until Slack is connected (or to take an old link off). */}
+      {!slack?.connected || teams ? (
+        <Panel className="flex flex-col gap-4">
+          <div className="flex items-start gap-3">
+            <MessagesSquare className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden />
+            <div className="min-w-0">
+              <h2 className="text-[1.05rem]">Teams channel</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Billie posts in the event&apos;s channel when a reply is waiting in Drafts, or an
+                email needs a person, and @mentions whoever manages the mailbox. Chats with{" "}
+                {botName} that need a person are posted there too.
+              </p>
+            </div>
+          </div>
 
-        {canManage ? (
-          <>
-            {teams && !replacing ? (
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  disabled={pending}
-                  onClick={() => run(() => testBotTeamsAction({ botId }))}
-                >
-                  <Send /> Send a test post
-                </Button>
-                <Button type="button" disabled={pending} onClick={() => setReplacing(true)}>
-                  Replace the link
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  disabled={pending}
-                  onClick={() => setConfirm("teams")}
-                >
-                  Remove
-                </Button>
-              </div>
-            ) : (
-              <form onSubmit={saveTeams} className="flex flex-col gap-3">
-                <Field
-                  id="teams-link"
-                  label="Teams Workflows link"
-                  hint={
-                    <>
-                      In Teams, open the event&apos;s channel and choose ••• → Workflows →
-                      &ldquo;Post to a channel when a webhook request is received&rdquo;. Follow the
-                      steps, then copy the link it gives you. Treat it like a password: it
-                      won&apos;t be shown again.
-                    </>
-                  }
-                  error={errors.link}
-                >
-                  <Input
-                    id="teams-link"
-                    type="url"
-                    autoComplete="off"
-                    value={link}
-                    placeholder="https://…"
-                    aria-invalid={Boolean(errors.link)}
-                    onChange={(e) => setLink(e.target.value)}
-                  />
-                </Field>
+          {teams ? (
+            <p className="flex flex-wrap items-center gap-2 text-sm" data-testid="teams-status">
+              <Chip tone="good">Saved</Chip>
+              <span className="text-muted-foreground">Posts go through {teams}.</span>
+            </p>
+          ) : companyTeams ? (
+            <p className="text-sm text-muted-foreground">
+              No channel for this bot yet, so chats that need a person go to the company-wide Teams
+              channel. Email posts need the event&apos;s own channel.
+            </p>
+          ) : null}
+
+          {canManage ? (
+            <>
+              {teams && !replacing ? (
                 <div className="flex flex-wrap gap-2">
-                  <Button type="submit" variant="primary" disabled={pending || !link.trim()}>
-                    Save link
+                  <Button
+                    type="button"
+                    disabled={pending}
+                    onClick={() => run(() => testBotTeamsAction({ botId }))}
+                  >
+                    <Send /> Send a test post
                   </Button>
-                  {teams ? (
-                    <Button type="button" variant="ghost" onClick={() => setReplacing(false)}>
-                      Cancel
-                    </Button>
-                  ) : null}
+                  <Button type="button" disabled={pending} onClick={() => setReplacing(true)}>
+                    Replace the link
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={pending}
+                    onClick={() => setConfirm("teams")}
+                  >
+                    Remove
+                  </Button>
                 </div>
-              </form>
-            )}
-            {confirm === "teams" ? (
-              <Note tone="warn">
-                <span className="flex flex-col gap-2">
-                  <span>Remove the Teams channel? Billie stops posting there.</span>
-                  <span className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="danger"
-                      disabled={pending}
-                      onClick={() =>
-                        run(() => removeBotTeamsAction({ botId }), {
-                          done: () => {
-                            setConfirm(null);
-                            setReplacing(true);
-                            router.refresh();
-                          },
-                        })
-                      }
-                    >
-                      Yes, remove
+              ) : (
+                <form onSubmit={saveTeams} className="flex flex-col gap-3">
+                  <Field
+                    id="teams-link"
+                    label="Teams Workflows link"
+                    hint={
+                      <>
+                        In Teams, open the event&apos;s channel and choose ••• → Workflows →
+                        &ldquo;Post to a channel when a webhook request is received&rdquo;. Follow
+                        the steps, then copy the link it gives you. Treat it like a password: it
+                        won&apos;t be shown again.
+                      </>
+                    }
+                    error={errors.link}
+                  >
+                    <Input
+                      id="teams-link"
+                      type="url"
+                      autoComplete="off"
+                      value={link}
+                      placeholder="https://…"
+                      aria-invalid={Boolean(errors.link)}
+                      onChange={(e) => setLink(e.target.value)}
+                    />
+                  </Field>
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="submit" variant="primary" disabled={pending || !link.trim()}>
+                      Save link
                     </Button>
-                    <Button type="button" size="sm" onClick={() => setConfirm(null)}>
-                      Keep it
-                    </Button>
+                    {teams ? (
+                      <Button type="button" variant="ghost" onClick={() => setReplacing(false)}>
+                        Cancel
+                      </Button>
+                    ) : null}
+                  </div>
+                </form>
+              )}
+              {confirm === "teams" ? (
+                <Note tone="warn">
+                  <span className="flex flex-col gap-2">
+                    <span>Remove the Teams channel? Billie stops posting there.</span>
+                    <span className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="danger"
+                        disabled={pending}
+                        onClick={() =>
+                          run(() => removeBotTeamsAction({ botId }), {
+                            done: () => {
+                              setConfirm(null);
+                              setReplacing(true);
+                              router.refresh();
+                            },
+                          })
+                        }
+                      >
+                        Yes, remove
+                      </Button>
+                      <Button type="button" size="sm" onClick={() => setConfirm(null)}>
+                        Keep it
+                      </Button>
+                    </span>
                   </span>
-                </span>
-              </Note>
-            ) : null}
-          </>
-        ) : null}
-      </Panel>
+                </Note>
+              ) : null}
+            </>
+          ) : null}
+        </Panel>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-3">
         <Button asChild variant="primary">

@@ -5,6 +5,7 @@ import { Chip, EmptyState, PageHeader } from "@/components/ui/bits";
 import { TabsNav } from "@/components/ui/tabs-nav";
 import { AutoRefresh } from "@/components/ui/auto-refresh";
 import { Availability } from "@/components/inbox/availability";
+import { slackConfigured } from "@/lib/channels/slack";
 import { ConversationView } from "@/components/inbox/conversation-view";
 import { requireActor } from "@/lib/auth/actor";
 import { botView, mayOnBot, myBots } from "@/lib/auth/bots";
@@ -100,7 +101,7 @@ export default async function InboxPage({
       />
       <PageHeader
         title="Inbox"
-        lede="Chats with your bots that need a person. Reply here and it reaches them in the chat, on WhatsApp, or by email if they've gone."
+        lede="Chats with your bots that need a person. Reply here (or in Slack, once it's connected) and it reaches them in the chat, on WhatsApp, or by email if they've gone."
         actions={
           <div className="flex flex-wrap items-center gap-3">
             <BotFilter
@@ -110,11 +111,10 @@ export default async function InboxPage({
               keep={{ tab }}
               everyBot={view.ids === null}
             />
-            <Availability
-              available={mine}
-              others={Math.max(0, others - (mine ? 1 : 0))}
-              teams={Boolean(await directLink())}
-            />
+            {/* Who gets a Teams message for a live chat: not needed once Slack is connected. */}
+            {!slackConfigured() && (await directLink()) ? (
+              <Availability available={mine} others={Math.max(0, others - (mine ? 1 : 0))} />
+            ) : null}
           </div>
         }
       />

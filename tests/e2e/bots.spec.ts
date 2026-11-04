@@ -178,8 +178,14 @@ test("build a bot with its own knowledge, test it and put it live", async ({ pag
   ).toBeVisible();
   await page.getByRole("link", { name: "Continue to Rules" }).click();
 
-  // Step 5: rules (defaults are fine).
+  // Step 5: rules. A new bot's team works Mon–Fri, 9 to 5; this one has no hours yet (tests run
+  // at any time of day), so asking for a person takes details until the live chat test below.
   await expect(page.getByRole("heading", { name: "Always pass these to a person" })).toBeVisible();
+  await expect(page.getByLabel("To", { exact: true })).toHaveValue("17:00");
+  const days = page.getByRole("group", { name: "Days" });
+  for (const day of ["Mon", "Tue", "Wed", "Thu", "Fri"])
+    await days.getByRole("button", { name: day }).click();
+  await expect(days.getByRole("button", { pressed: true })).toHaveCount(0);
   await shot(page, "bot-rules");
   await page.getByRole("button", { name: "Save and continue" }).click();
 
@@ -318,14 +324,16 @@ test("a visitor chats on the chat page: answer, rating, then the team", async ({
   );
   await shot(page, "chat-answer");
 
-  // Nobody is marked available, so asking for a person collects details.
+  // Outside the team's hours (this bot has none yet), asking for a person collects details:
+  // for an exhibitor bot, their name, email and stand.
   await page.getByLabel("Your message").fill("Can I get a refund on my stand?");
   await page.getByRole("button", { name: "Send" }).click();
   const form = page.getByRole("form", { name: "Leave your details" });
   await expect(form).toBeVisible({ timeout: 20_000 });
   await form.getByLabel("Name").fill("Priya Shah");
   await form.getByLabel("Email").fill("priya@acme"); // the browser accepts this; Billie asks again
-  await form.getByLabel(/Company/).fill("Acme Stands Ltd");
+  await form.getByLabel("Stand number").fill("B12");
+  await expect(form.getByLabel(/Company/)).toHaveCount(0);
   await form.getByRole("button", { name: "Send my details" }).click();
   await expect(page.getByText("That email doesn't look right.")).toBeVisible();
   await form.getByLabel("Email").fill("priya@acme-stands.test");
@@ -510,9 +518,28 @@ test("the website widget shows only on the bot's own websites", async ({ browser
 
 test("live handover: the team replies from the Inbox and hands back", async ({ page, browser }) => {
   await signInAsAdmin(page);
+  // In the team's hours, a chat that needs a person goes to them live: here, every day.
+  await page.goto("/");
+  await page
+    .getByTestId("bot-card")
+    .filter({ hasText: "Exhibitor Help" })
+    .getByRole("link", { name: "Edit" })
+    .click();
+  await page
+    .getByRole("navigation", { name: "Steps" })
+    .getByRole("link", { name: /Rules/ })
+    .click();
+  const days = page.getByRole("group", { name: "Days" });
+  for (const day of ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])
+    await days.getByRole("button", { name: day }).click();
+  await expect(days.getByRole("button", { pressed: true })).toHaveCount(7);
+  await page.getByLabel("From", { exact: true }).fill("00:00");
+  await page.getByLabel("To", { exact: true }).fill("23:59");
+  await page.getByRole("button", { name: "Save and continue" }).click();
+  await expect(page.getByTestId("people-step")).toBeVisible();
   await page.goto("/inbox");
-  await page.getByRole("switch", { name: "Available for live chats" }).click();
-  await expect(page.getByText("You're available for live chats")).toBeVisible();
+  // Without Slack or Teams messages there's nothing to switch on: hours decide.
+  await expect(page.getByRole("switch", { name: /live chats/ })).toHaveCount(0);
 
   const visitor = await browser.newContext();
   const chat = await visitor.newPage();
@@ -563,8 +590,6 @@ test("live handover: the team replies from the Inbox and hands back", async ({ p
     timeout: 15_000,
   });
 
-  await page.getByRole("switch", { name: "Available for live chats" }).click();
-  await expect(page.getByText("You're not taking live chats")).toBeVisible();
   await visitor.close();
 });
 

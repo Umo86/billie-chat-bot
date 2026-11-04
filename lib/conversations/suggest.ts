@@ -1,4 +1,5 @@
 import "server-only";
+import { slackConfigured } from "@/lib/channels/slack";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { db, type DbOrTx } from "@/lib/db/client";
 import { conversations, messages } from "@/lib/db/schema";
@@ -163,6 +164,16 @@ export async function writeSuggestion(
         : [],
       afterMessageId: lastAsked?.id ?? null,
     });
+    // In Slack, the chat's thread gets it too, to copy into a reply.
+    if (text && slackConfigured())
+      await enqueue(
+        "slack_note",
+        {
+          conversationId,
+          text: `Billie suggests${confident ? "" : " a holding reply"}: ${text}`,
+        },
+        { dedupeKey: `slack-suggest:${conversationId}:${lastAsked?.id ?? "none"}`, once: true },
+      );
   } catch (err) {
     if (err instanceof AiError && err.code === "not_configured") {
       await save(failed("Claude isn't connected yet."));
