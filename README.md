@@ -149,7 +149,8 @@ Chatbots, live handover and an email assistant for Media10 shows.
 
 ## Run it on your computer
 
-Needs Node 22, pnpm 10 and Postgres 16+ with the `vector` extension.
+Needs Node 24 (Vercel runs 24.x, pinned in `package.json`; 22 also works on
+your computer), pnpm 10 and Postgres 16+ with the `vector` extension.
 
 ```bash
 pnpm install

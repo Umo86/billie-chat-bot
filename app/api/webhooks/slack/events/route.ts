@@ -49,11 +49,12 @@ export async function POST(request: Request) {
   if (!signed) return new Response("Bad signature", { status: 401 });
 
   const e = payload.event;
-  // Only people's replies in a thread: not Billie's own posts, edits, files or joins.
+  // Only people's replies in a thread (also those sent to the channel too): not Billie's
+  // own posts, edits, files or joins.
   if (
     payload.type === "event_callback" &&
     e?.type === "message" &&
-    !e.subtype &&
+    (!e.subtype || e.subtype === "thread_broadcast") &&
     !e.bot_id &&
     e.user &&
     e.channel &&

@@ -2,7 +2,15 @@ import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { auditLog, botMailboxes, bots, emailThreads, jobs, users } from "@/lib/db/schema";
+import {
+  auditLog,
+  botMailboxes,
+  bots,
+  conversations,
+  emailThreads,
+  jobs,
+  users,
+} from "@/lib/db/schema";
 import {
   botEmailSetup,
   mailboxOverview,
@@ -551,6 +559,10 @@ describe.skipIf(!hasDb)("event mailboxes and Teams (Postgres, stand-in Microsoft
     const { bot } = await makeBot();
     await setTeamsLink(admin, bot.id, TEAMS);
     const { conversation } = await startConversation({ bot, channel: "web" });
+    await db
+      .update(conversations)
+      .set({ status: "ticket", handoverAt: new Date() })
+      .where(eq(conversations.id, conversation.id));
     const ms = fakeMicrosoft({});
     vi.stubGlobal("fetch", ms.fetchMock);
     await notifyHandover(conversation.id, "ticket");

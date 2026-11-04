@@ -6,19 +6,24 @@ import { emailConfigured, whatsappConfigured } from "@/lib/config";
 import { PermanentJobError } from "@/lib/jobs/queue";
 import { sendText, withinReplyWindow } from "@/lib/channels/whatsapp";
 import { sendEmail } from "@/lib/email/send";
+import { slackDelivery } from "@/lib/alerts/slack-chat";
 import type { AnswerMeta, ContactDetails } from "@/lib/types";
 
 /**
  * Sending a staff reply back the way the question came (the
  * "send_staff_reply" job): WhatsApp within its 24-hour window, or email to
  * someone who left their details. When it can't go (no connection, window
- * closed), the message records why, and the Inbox shows it.
+ * closed), the message records why, and the Inbox shows it; a reply written
+ * in Slack gets a line in its thread saying so (or a tick once it's sent).
  */
-async function note(messageId: string, meta: AnswerMeta, error: string) {
+type Msg = typeof messages.$inferSelect;
+
+async function note(msg: Msg, meta: AnswerMeta, error: string) {
   await db
     .update(messages)
     .set({ meta: { ...meta, error } })
-    .where(eq(messages.id, messageId));
+    .where(eq(messages.id, msg.id));
+  await slackDelivery(msg, error);
 }
 
 export async function deliverStaffReply(
@@ -35,26 +40,27 @@ export async function deliverStaffReply(
 
   if (via === "whatsapp") {
     if (!whatsappConfigured() || !conv.waId)
-      return note(messageId, meta, "Not sent: WhatsApp isn't connected.");
+      return note(msg, meta, "Not sent: WhatsApp isn't connected.");
     const contact = await db.query.whatsappContacts.findFirst({
       where: eq(whatsappContacts.waId, conv.waId),
     });
     if (!withinReplyWindow(contact?.lastInboundAt ?? conv.lastVisitorAt)) {
       return note(
-        messageId,
+        msg,
         meta,
         "Not sent: it's over 24 hours since they wrote, so WhatsApp only allows an approved template.",
       );
     }
     await sendText(conv.waId, msg.text);
+    await slackDelivery(msg, null);
     return;
   }
 
   const contact = conv.contact as ContactDetails;
-  if (!contact.email) return note(messageId, meta, "Not sent: they didn't leave an email address.");
+  if (!contact.email) return note(msg, meta, "Not sent: they didn't leave an email address.");
   if (!emailConfigured())
     return note(
-      messageId,
+      msg,
       meta,
       "Not sent: email isn't set up. Copy the reply and send it from Outlook.",
     );
@@ -75,4 +81,5 @@ export async function deliverStaffReply(
       firstQuestion ? `You asked: "${firstQuestion.text.slice(0, 500)}"` : "",
     ].join("\n"),
   });
+  await slackDelivery(msg, null);
 }

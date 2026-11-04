@@ -1,5 +1,5 @@
 import "server-only";
-import type { SlackBlock } from "./slack-rules";
+import { escapeMrkdwn, type SlackBlock } from "./slack-rules";
 
 /**
  * Slack's Web API, with the Billie app's bot token (SLACK_BOT_TOKEN). The
@@ -20,6 +20,31 @@ export class SlackError extends Error {
     this.name = "SlackError";
   }
 }
+
+const PASSING = new Set([
+  "rate_limited",
+  "ratelimited",
+  "internal_error",
+  "fatal_error",
+  "service_unavailable",
+  "request_timeout",
+]);
+
+/**
+ * Worth trying again later? Slack being busy or out of reach, yes; Billie
+ * not in the channel, an archived channel or a revoked token, no: those
+ * need someone to fix them.
+ */
+export function slackRetryable(err: unknown): boolean {
+  if (!(err instanceof SlackError)) return true; // the network, a timeout
+  return PASSING.has(err.code) || /^http_5\d\d$/.test(err.code);
+}
+
+/**
+ * Slack reads a message's `text` (what notifications and previews show) as
+ * its own markup, so it's escaped: nobody's words become a mention or a link.
+ */
+const safeText = (text: string, max = 3000) => escapeMrkdwn(text.slice(0, max));
 
 type Params = Record<string, string | number | boolean | undefined | null | unknown[]>;
 
@@ -67,12 +92,15 @@ export async function postMessage(m: {
   text: string;
   blocks?: SlackBlock[];
   threadTs?: string;
+  /** A reply in a thread that shows in the channel too. */
+  broadcast?: boolean;
 }): Promise<{ channel: string; ts: string }> {
   const r = await call<{ channel: string; ts: string }>("chat.postMessage", {
     channel: m.channel,
-    text: m.text.slice(0, 3000),
+    text: safeText(m.text),
     blocks: m.blocks,
     thread_ts: m.threadTs,
+    reply_broadcast: m.threadTs && m.broadcast ? true : undefined,
     // Nothing anyone wrote turns into a preview of a page.
     unfurl_links: false,
     unfurl_media: false,
@@ -89,7 +117,7 @@ export async function updateMessage(m: {
   await call("chat.update", {
     channel: m.channel,
     ts: m.ts,
-    text: m.text.slice(0, 3000),
+    text: safeText(m.text),
     blocks: m.blocks,
   });
 }
@@ -104,7 +132,7 @@ export async function postEphemeral(m: {
   await call("chat.postEphemeral", {
     channel: m.channel,
     user: m.user,
-    text: m.text,
+    text: safeText(m.text),
     thread_ts: m.threadTs,
   });
 }
@@ -116,15 +144,25 @@ export async function addReaction(channel: string, ts: string, name: string): Pr
   });
 }
 
-type SlackUser = { id: string; email: string; name: string; bot: boolean };
+type SlackUser = {
+  id: string;
+  email: string;
+  name: string;
+  bot: boolean;
+  /** Their workspace: someone in a channel shared with another company has that company's. */
+  team: string;
+  enterprise: string;
+};
 const users = new Map<string, { user: SlackUser | null; at: number }>();
 const byEmail = new Map<string, { id: string | null; at: number }>();
+let workspace: { value: Workspace; at: number } | null = null;
 const TTL_MS = 10 * 60_000;
 
 /** Forget the people looked up (tests; and a person's Slack email can change). */
 export function clearSlackCache(): void {
   users.clear();
   byEmail.clear();
+  workspace = null;
 }
 
 /** A Slack user's email and name (Billie matches people by email). */
@@ -136,10 +174,12 @@ export async function slackUser(id: string): Promise<SlackUser | null> {
     const r = await call<{
       user: {
         id: string;
+        team_id?: string;
         deleted?: boolean;
         is_bot?: boolean;
         real_name?: string;
         profile?: { email?: string; display_name?: string; real_name?: string };
+        enterprise_user?: { enterprise_id?: string };
       };
     }>("users.info", { user: id }, "form");
     user = r.user.deleted
@@ -153,6 +193,8 @@ export async function slackUser(id: string): Promise<SlackUser | null> {
             r.user.real_name ||
             "Someone",
           bot: Boolean(r.user.is_bot),
+          team: r.user.team_id ?? "",
+          enterprise: r.user.enterprise_user?.enterprise_id ?? "",
         };
   } catch (err) {
     if (!(err instanceof SlackError && err.code === "user_not_found")) throw err;
@@ -212,8 +254,33 @@ export async function billieChannels(): Promise<SlackChannel[]> {
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** Which workspace the token is for, and Billie's own user there. */
-export async function slackWorkspace(): Promise<{ team: string; botUserId: string }> {
-  const r = await call<{ team: string; user_id: string }>("auth.test", {}, "form");
-  return { team: r.team, botUserId: r.user_id };
+type Workspace = { team: string; teamId: string; enterpriseId: string; botUserId: string };
+
+/** Which workspace the token is for (its name and id), and Billie's own user there. */
+export async function slackWorkspace(): Promise<Workspace> {
+  if (workspace && Date.now() - workspace.at < TTL_MS) return workspace.value;
+  const r = await call<{ team: string; team_id?: string; enterprise_id?: string; user_id: string }>(
+    "auth.test",
+    {},
+    "form",
+  );
+  const value = {
+    team: r.team,
+    teamId: r.team_id ?? "",
+    enterpriseId: r.enterprise_id ?? "",
+    botUserId: r.user_id,
+  };
+  workspace = { value, at: Date.now() };
+  return value;
+}
+
+/**
+ * Is this Slack user one of Media10's own (its workspace, or its organisation
+ * on Enterprise Grid)? Not someone from another company in a shared channel,
+ * whose email that company controls.
+ */
+export async function inOurWorkspace(u: SlackUser): Promise<boolean> {
+  const ws = await slackWorkspace();
+  if (!ws.teamId) return false;
+  return u.team === ws.teamId || Boolean(ws.enterpriseId && u.enterprise === ws.enterpriseId);
 }

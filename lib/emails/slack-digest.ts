@@ -36,7 +36,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 /** The "slack_email_digest" job. */
 export async function postEmailDigest(botId: string, now = new Date()): Promise<void> {
-  const channel = await slackChannelFor(botId);
+  const channel = await slackChannelFor(botId, { ownOnly: true });
   if (!channel) return;
   const [box] = await db
     .select({ address: botMailboxes.address, managerEmail: users.email, botName: bots.name })

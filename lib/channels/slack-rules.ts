@@ -51,10 +51,51 @@ export function slackToPlain(text: string): string {
     .trim();
 }
 
-/** A message in the thread just for the team: "note: …" (or "// …"). */
+/**
+ * A message in the thread just for the team: "note: …" (or "// …"), also
+ * written bold, in italics or as a quote ("*Note:* …", "> note: …"). Checked
+ * on the text as the visitor would get it, so a mention before it counts too.
+ */
 export function isTeamNote(text: string): boolean {
-  return /^\s*(?:note\s*:|\/\/)/i.test(text);
+  return /^(?:note\s*:|\/\/)/i.test(text.replace(/^[\s*_~>`]+/, ""));
 }
+
+/**
+ * Does a Slack message @mention someone (a person, a group, @here)? Then it's
+ * said to the team ("@Sam can you take this?"), never to the visitor.
+ */
+export function mentionsSomeone(raw: string): boolean {
+  return /<@[UW][A-Z0-9]+|<!(?:here|channel|everyone)\b|<!subteam\^/.test(raw);
+}
+
+/** How Billie keeps a reply written in Slack: its message there, so a retry never sends it twice. */
+export function slackExternalId(channel: string, ts: string): string {
+  return `slack:${channel}:${ts}`;
+}
+
+/** The Slack message a reply was written in (from slackExternalId), if it was. */
+export function slackMessageOf(externalId: string | null | undefined): {
+  channel: string;
+  ts: string;
+} | null {
+  const m = /^slack:([CGD][A-Z0-9]{6,20}):(\d{1,12}\.\d{1,8})$/.exec(externalId ?? "");
+  return m ? { channel: m[1], ts: m[2] } : null;
+}
+
+/** What a reply in a ticket's thread does, for the post and Billie's notes in the thread. */
+export function ticketReplyLine(
+  chat: { channel: string; email?: string | null },
+  emailOn: boolean,
+) {
+  if (chat.channel === "whatsapp") return "Reply in this thread: it goes to them on WhatsApp.";
+  if (!chat.email) return "They didn't leave an email address, so Billie can't send them a reply.";
+  return emailOn
+    ? "Reply in this thread: it goes to them by email."
+    : "Billie can't email them a reply yet (email sending isn't set up), so contact them yourself.";
+}
+
+/** The rule for the team, on every chat posted for them to answer. */
+export const TEAM_ONLY_LINE = "Messages that start “note:” or @mention someone stay with the team.";
 
 /** Text Slack shows exactly as written: no formatting, links or mentions. */
 export function plain(text: string, max = 3000) {

@@ -5,7 +5,7 @@
   "description": "Billie: AI chatbots, live handover and an email assistant for Media10 shows.",
   "packageManager": "pnpm@10.28.0",
   "engines": {
-    "node": ">=22"
+    "node": "24.x"
   },
   "scripts": {
     "dev": "next dev",

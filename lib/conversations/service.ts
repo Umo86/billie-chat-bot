@@ -10,6 +10,7 @@ import { recordUnhelpful, withdrawUnhelpful } from "@/lib/knowledge/unhelpful";
 import { answerQuestion, aiFailureLine } from "@/lib/ai/answer";
 import { answerBotFor, botById, type BotRow } from "@/lib/bots/load";
 import { slackConfigured } from "@/lib/channels/slack";
+import { ticketReplyLine } from "@/lib/channels/slack-rules";
 import { recordGap } from "@/lib/knowledge/gap-store";
 import { hashToken, newToken } from "@/lib/chat/token";
 import type { Actor } from "@/lib/authz";
@@ -731,23 +732,50 @@ export async function requestOffered(conversationId: string, typeId: string): Pr
 
 /* ------------------------------------------------------------- staff side */
 
+/**
+ * A reply from the team. `via` says how it reaches them: in the chat now, or
+ * by WhatsApp or email (a job). With `externalId` (a reply written in Slack)
+ * the same reply is only ever taken once, however often its job runs.
+ */
 export async function staffReply(
   actor: Actor,
   conversationId: string,
   text: string,
-  opts: { fromSlack?: boolean } = {},
-): Promise<MessageRow> {
+  opts: { fromSlack?: boolean; externalId?: string } = {},
+): Promise<{ message: MessageRow; via: "chat" | "whatsapp" | "email" }> {
   const body = text.trim();
   if (!body) throw new ChatError("invalid", "Write a reply first.");
   if (body.length > 4000) throw new ChatError("invalid", "Keep replies under 4,000 characters.");
-  const { row, followUp } = await db.transaction(async (tx) => {
+  const { row, followUp, via } = await db.transaction(async (tx) => {
     const c = await lock(tx, conversationId);
+    const viaOf = (status: ConversationStatus): "chat" | "whatsapp" | "email" => {
+      if (c.channel === "whatsapp") return "whatsapp";
+      const contact = c.contact as ContactDetails;
+      return (c.channel === "web" || c.channel === "hosted") &&
+        Boolean(contact.email) &&
+        ["ticket", "replied"].includes(status)
+        ? "email"
+        : "chat";
+    };
+    if (opts.externalId) {
+      const [taken] = await tx
+        .select()
+        .from(messages)
+        .where(eq(messages.externalId, opts.externalId))
+        .limit(1);
+      if (taken) return { row: taken, followUp: false, via: viaOf(c.status) };
+    }
     const before = c.status;
     const status = await move(tx, c, "staff_replied");
     if (status === before && !["live", "replied"].includes(before)) {
       throw new ChatError("closed", "This chat is closed, so it can't take a reply.");
     }
-    const row = await insertMessage(tx, c.id, { role: "agent", text: body, authorId: actor.id });
+    const row = await insertMessage(tx, c.id, {
+      role: "agent",
+      text: body,
+      authorId: actor.id,
+      externalId: opts.externalId ?? null,
+    });
     await tx
       .update(conversations)
       .set({ assignedTo: c.assignedTo ?? actor.id, staffReadAt: new Date() })
@@ -760,12 +788,8 @@ export async function staffReply(
       summary: "Replied in a chat",
     });
     // Replies go back the way the question came: WhatsApp, or email when the person left details.
-    const contact = c.contact as ContactDetails;
-    const byEmail =
-      (c.channel === "web" || c.channel === "hosted") &&
-      Boolean(contact.email) &&
-      ["ticket", "replied"].includes(status);
-    const followUp = c.channel === "whatsapp" || byEmail;
+    const via = viaOf(status);
+    const followUp = via !== "chat";
     // Written in Billie's Inbox: the chat's Slack thread shows it too.
     if (!opts.fromSlack && slackConfigured())
       await enqueue(
@@ -780,10 +804,10 @@ export async function staffReply(
         { tx, dedupeKey: `reply:${row.id}` },
       );
     }
-    return { row, followUp };
+    return { row, followUp, via };
   });
   if (followUp) await kickJobs();
-  return row;
+  return { message: row, via };
 }
 
 export async function handBack(actor: Actor, conversationId: string): Promise<void> {
@@ -860,6 +884,13 @@ export async function expireWaiting(now = new Date()): Promise<number> {
         "Sorry, nobody from the team is free right now.",
       );
       if (!ticket) await insertMessage(tx, c.id, { role: "system", text: WAITED_LINE });
+      // WhatsApp only hears what's sent to it: the chat page and widget show the line themselves.
+      if (ticket && c.channel === "whatsapp")
+        await enqueue(
+          "send_staff_reply",
+          { messageId: ticket.line.id, via: "whatsapp" },
+          { tx, dedupeKey: `reply:${ticket.line.id}` },
+        );
       await writeAudit(tx, {
         actorType: "system",
         entityType: "conversation",
@@ -873,7 +904,10 @@ export async function expireWaiting(now = new Date()): Promise<number> {
           {
             conversationId: c.id,
             text: ticket
-              ? `Nobody answered within ${WAIT_MINUTES} minutes, so Billie made it a ticket. Reply here and it goes to them by email.`
+              ? `Nobody answered within ${WAIT_MINUTES} minutes, so Billie made it a ticket. ${ticketReplyLine(
+                  { channel: c.channel, email: (c.contact as ContactDetails).email },
+                  emailConfigured(),
+                )}`
               : `Nobody answered within ${WAIT_MINUTES} minutes, so Billie is asking for their details.`,
           },
           { tx, dedupeKey: `slack-waited:${c.id}:${c.handoverAt.getTime()}` },

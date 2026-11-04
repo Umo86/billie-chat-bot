@@ -19,7 +19,7 @@ Billie posts everything for the team there instead of Teams.
 
   An exhibitor signed in from BluePrint isn't asked: Billie already knows
   them. The ticket is posted in the channel, and a reply in its thread goes
-  to them by email.
+  to them by email (or on WhatsApp, if that's where they wrote).
 
 - **Email replies to check.** When Billie has drafted replies in the event
   mailbox, it posts "I've prepared these replies, please review and send",
@@ -31,18 +31,28 @@ Billie posts everything for the team there instead of Teams.
   ready, budget alerts) are Slack direct messages from Billie.
 
 Each bot has its own channel, chosen on its Email step. A company-wide
-channel (Settings → Connections) takes chats from bots without one.
+channel (Settings → Connections) gets a short alert about chats from bots
+without one: what they asked and who they are, but not how to reach them
+or the chat, since everyone in that channel sees it. Those are answered in
+Billie. Email replies to check and requests only go to a bot's own channel.
 
 ## Answering in a thread
 
 - Reply in the thread: it goes to the visitor. Slack formatting is taken
-  out, and links are written out in full.
-- Start a message with `note:` (or `//`) to keep it to the team.
+  out, and links are written out in full. A reply also sent to the channel
+  counts too.
+- Start a message with `note:` (or `//`) to keep it to the team. A message
+  that @mentions someone ("@Sam can you take this?") stays with the team
+  too.
+- A reply gets a tick once it reached them: straight away in the chat, or
+  once it's sent by WhatsApp or email. If it can't go (say, it's over 24
+  hours since they wrote on WhatsApp), Billie says why in the thread.
 - **Hand back to Billie** gives the chat back to Billie. **Close the chat**
   closes it. The post then says who did it.
 - Only people on Billie who work on that bot can answer, matched by their
   Slack email. Anyone else gets a private note saying so, and nothing
-  reaches the visitor.
+  reaches the visitor. People from other companies in a shared channel
+  can't answer.
 - Editing or deleting a message in Slack doesn't change what the visitor
   got. Files can't be sent to visitors.
 - Replies written in Billie's Inbox are copied into the thread too, so the

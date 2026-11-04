@@ -9,6 +9,7 @@ import { mayOnBot } from "@/lib/auth/bots";
 import type { ContactDetails } from "@/lib/types";
 import {
   addReaction,
+  inOurWorkspace,
   openDirect,
   postEphemeral,
   postMessage,
@@ -20,11 +21,17 @@ import {
 import {
   block,
   isTeamNote,
+  mentionsSomeone,
+  slackExternalId,
   slackFromCard,
+  slackMessageOf,
   slackToPlain,
+  TEAM_ONLY_LINE,
+  ticketReplyLine,
   type SlackBlock,
 } from "@/lib/channels/slack-rules";
 import { postToTeams } from "@/lib/channels/teams";
+import { enqueue } from "@/lib/jobs/queue";
 
 /**
  * Slack for the team (docs/slack.md). Once Slack is connected, a chat that
@@ -32,15 +39,18 @@ import { postToTeams } from "@/lib/channels/teams";
  * so far, and the team answers in that post's thread: each reply goes to
  * the visitor (in the chat, on WhatsApp, or by email for a ticket), and what
  * the visitor writes comes into the thread. Only people on Billie who work
- * on the bot can answer (matched by their Slack email); anything starting
- * "note:" stays with the team. Billie's other posts for a bot (email
- * replies to check, the weekly post, show-day posts, requests) go to the
- * same channel, and messages to one person become Slack direct messages.
+ * on the bot can answer (matched by their Slack email, in Media10's own
+ * workspace); anything starting "note:", or that @mentions someone, stays
+ * with the team. Billie's other posts for a bot (email replies to check,
+ * the weekly post, show-day posts, requests) go to the same channel, and
+ * messages to one person become Slack direct messages. The company-wide
+ * channel only gets a short alert about chats from bots without a channel.
  */
 
 /**
- * The bot's Slack channel, or else the company-wide one (not for a bot's own
- * posts, like its weekly post, with `ownOnly`); none until Slack is connected.
+ * The bot's Slack channel, or else the company-wide one (not with `ownOnly`:
+ * anything with an event's details or people's contact details goes only to
+ * the bot's own); none until Slack is connected.
  */
 export async function slackChannelFor(
   botId: string | null,
@@ -149,13 +159,13 @@ async function chatSoFar(conversationId: string): Promise<string> {
   return lines.join("\n");
 }
 
-function whoLine(contact: ContactDetails): string {
+/** Who they are; their email and phone only in the bot's own channel. */
+function whoLine(contact: ContactDetails, opts: { reach?: boolean } = { reach: true }): string {
   return [
     contact.name,
     contact.company,
     contact.stand && `stand ${contact.stand}`,
-    contact.email,
-    contact.phone,
+    ...(opts.reach ? [contact.email, contact.phone] : []),
   ]
     .filter(Boolean)
     .join(", ");
@@ -164,6 +174,8 @@ function whoLine(contact: ContactDetails): string {
 export type SlackHandover = {
   kind: "live" | "ticket";
   botName: string;
+  /** Their first question (for the short alert in the company-wide channel). */
+  question: string;
   reason: string;
   contact: ContactDetails;
   routed?: { topic: string; name: string; email: string } | null;
@@ -174,18 +186,19 @@ export type SlackHandover = {
 
 const ACTIONS = { handBack: "billie_hand_back", close: "billie_close" } as const;
 
+const titleOf = (h: SlackHandover) =>
+  h.kind === "live"
+    ? `${h.botName}: someone is waiting for a person`
+    : `${h.botName}: a question needs a reply`;
+
 function handoverBlocks(
   h: SlackHandover,
   conversationId: string,
-  so: string,
+  chat: { channel: string; so: string },
   mentionIds: string[],
 ): { text: string; blocks: SlackBlock[] } {
-  const title =
-    h.kind === "live"
-      ? `${h.botName}: someone is waiting for a person`
-      : `${h.botName}: a question needs a reply`;
+  const title = titleOf(h);
   const who = whoLine(h.contact);
-  const canEmail = emailConfigured() && Boolean(h.contact.email);
   const blocks: SlackBlock[] = [block.header(title)];
   if (mentionIds.length)
     blocks.push(block.mention(mentionIds, h.kind === "live" ? "can you take this?" : ""));
@@ -198,14 +211,12 @@ function handoverBlocks(
       ].join("\n"),
     ),
   );
-  if (so) blocks.push(block.line(`The chat so far:\n${so}`));
+  if (chat.so) blocks.push(block.line(`The chat so far:\n${chat.so}`));
   blocks.push(
     block.note(
       h.kind === "live"
-        ? "Reply in this thread to answer them: they see your first name. Start a message with “note:” to keep it to the team."
-        : canEmail
-          ? "Reply in this thread: it goes to them by email. Start a message with “note:” to keep it to the team."
-          : "Billie can't email them a reply yet (email sending isn't set up), so contact them yourself.",
+        ? `Reply in this thread to answer them: they see your first name. ${TEAM_ONLY_LINE}`
+        : `${ticketReplyLine({ channel: chat.channel, email: h.contact.email }, emailConfigured())} ${TEAM_ONLY_LINE}`,
     ),
   );
   blocks.push(
@@ -226,26 +237,71 @@ function handoverBlocks(
 }
 
 /**
+ * The company-wide channel's short alert, for a bot without a channel of its
+ * own: what they asked and who they are, as the Teams alert had, but not how
+ * to reach them or the chat, since anyone in that channel sees it, whichever
+ * bots they work on. It's answered in Billie, not in its thread.
+ */
+function alertBlocks(
+  h: SlackHandover,
+  mentionIds: string[],
+): { text: string; blocks: SlackBlock[] } {
+  const title = titleOf(h);
+  const who = whoLine(h.contact, { reach: false });
+  return {
+    text: title,
+    blocks: [
+      block.header(title),
+      ...(mentionIds.length ? [block.mention(mentionIds)] : []),
+      block.line(
+        [
+          `Question: ${h.question || "(not given)"}`,
+          `Why: ${h.reason}`,
+          ...(who ? [`From: ${who}`] : []),
+          ...(h.routed ? [`About: ${h.routed.topic}, which ${h.routed.name} handles`] : []),
+        ].join("\n"),
+      ),
+      block.note(
+        "This bot has no Slack channel of its own, so answer it in Billie. To answer chats in Slack, choose the bot's channel on its Email step.",
+      ),
+      block.buttons([{ text: "Open in Billie", url: h.link }]),
+    ],
+  };
+}
+
+/**
  * Posts a chat that needs a person in the bot's Slack channel and remembers
  * its thread. A ticket for a chat that was already posted live (nobody
- * answered in time) goes in the same thread, shown in the channel too.
- * False when the bot has no Slack channel (Teams is used instead).
+ * answered in time) goes in the same thread, shown in the channel too. A bot
+ * without a channel of its own gets a short alert in the company-wide one
+ * instead, with no thread to answer in. False when there's neither (Teams
+ * is used instead).
  */
 export async function postHandoverToSlack(
   conversationId: string,
   botId: string,
   h: SlackHandover,
 ): Promise<boolean> {
-  const channel = await slackChannelFor(botId);
-  if (!channel) return false;
+  // Who to @mention: whoever handles the topic; for a live chat, else everyone here now.
+  const mentions = async () => {
+    const people = await slackIds([...(h.routed ? [h.routed.email] : []), ...(h.alsoEmails ?? [])]);
+    return people.length ? people : h.kind === "live" ? ["here"] : [];
+  };
+  const channel = await slackChannelFor(botId, { ownOnly: true });
+  if (!channel) {
+    const wide = await slackChannelFor(null);
+    if (!wide) return false;
+    const { text, blocks } = alertBlocks(h, await mentions());
+    await postMessage({ channel: wide, text, blocks });
+    return true;
+  }
   const conv = await db.query.conversations.findFirst({
     where: eq(conversations.id, conversationId),
-    columns: { handoverAt: true },
+    columns: { handoverAt: true, channel: true },
   });
   const so = await chatSoFar(conversationId);
-  // Who to @mention: whoever handles the topic; for a live chat, else everyone here now.
-  const people = await slackIds([...(h.routed ? [h.routed.email] : []), ...(h.alsoEmails ?? [])]);
-  const mentionIds = people.length ? people : h.kind === "live" ? ["here"] : [];
+  const mentionIds = await mentions();
+  const chat = { channel: conv?.channel ?? "web" };
 
   if (h.kind === "ticket" && conv?.handoverAt) {
     const [live] = await db
@@ -261,8 +317,8 @@ export async function postHandoverToSlack(
       .orderBy(desc(slackThreads.createdAt))
       .limit(1);
     if (live) {
-      const { text, blocks } = handoverBlocks(h, conversationId, "", mentionIds);
-      await postMessage({ channel, text, blocks, threadTs: live.ts });
+      const { text, blocks } = handoverBlocks(h, conversationId, { ...chat, so: "" }, mentionIds);
+      await postMessage({ channel, text, blocks, threadTs: live.ts, broadcast: true });
       await db
         .update(slackThreads)
         .set({ kind: "ticket" })
@@ -270,7 +326,7 @@ export async function postHandoverToSlack(
       return true;
     }
   }
-  const { text, blocks } = handoverBlocks(h, conversationId, so, mentionIds);
+  const { text, blocks } = handoverBlocks(h, conversationId, { ...chat, so }, mentionIds);
   const posted = await postMessage({ channel, text, blocks });
   await db
     .insert(slackThreads)
@@ -329,10 +385,13 @@ export async function noteInSlack(conversationId: string, text: string): Promise
   });
 }
 
-/** The person on Billie behind a Slack user (same email), if they can still sign in. */
+/**
+ * The person on Billie behind a Slack user (same email), if they can still
+ * sign in, and only for someone in Media10's own workspace.
+ */
 async function actorFor(slackUserId: string): Promise<Actor | null> {
   const u = await slackUser(slackUserId);
-  if (!u?.email || u.bot) return null;
+  if (!u?.email || u.bot || !(await inOurWorkspace(u))) return null;
   const row = await db.query.users.findFirst({
     where: and(eq(users.email, u.email), eq(users.status, "active")),
   });
@@ -359,9 +418,10 @@ export async function handleThreadReply(e: ThreadReply): Promise<void> {
     .select()
     .from(slackThreads)
     .where(and(eq(slackThreads.channel, e.channel), eq(slackThreads.ts, e.threadTs)));
-  if (!thread || isTeamNote(e.text)) return;
+  if (!thread) return;
+  // For the team, not the visitor: a note, or a message to someone in the team.
   const text = slackToPlain(e.text);
-  if (!text) return;
+  if (!text || isTeamNote(text) || mentionsSomeone(e.text)) return;
   const conv = await db.query.conversations.findFirst({
     where: eq(conversations.id, thread.conversationId),
     columns: { id: true, botId: true },
@@ -378,8 +438,13 @@ export async function handleThreadReply(e: ThreadReply): Promise<void> {
     return;
   }
   const { staffReply, ChatError } = await import("@/lib/conversations/service");
+  let via: "chat" | "whatsapp" | "email";
   try {
-    await staffReply(actor, conv.id, text, { fromSlack: true });
+    // Kept under its Slack message, so the job running again never sends it twice.
+    ({ via } = await staffReply(actor, conv.id, text, {
+      fromSlack: true,
+      externalId: slackExternalId(e.channel, e.ts),
+    }));
   } catch (err) {
     if (err instanceof ChatError) {
       await postEphemeral({
@@ -392,8 +457,33 @@ export async function handleThreadReply(e: ThreadReply): Promise<void> {
     }
     throw err;
   }
-  // A tick: it reached them.
-  await addReaction(e.channel, e.ts, "white_check_mark").catch(() => undefined);
+  // A tick once it reached them: now in the chat; by WhatsApp or email once it's sent.
+  if (via === "chat") await addReaction(e.channel, e.ts, "white_check_mark").catch(() => undefined);
+}
+
+/**
+ * After a reply written in Slack went by WhatsApp or email (lib/conversations/
+ * delivery.ts): a tick on it once sent, or a line in the thread saying why it
+ * couldn't go, so whoever wrote it knows.
+ */
+export async function slackDelivery(
+  message: { id: string; conversationId: string; externalId: string | null },
+  problem: string | null,
+): Promise<void> {
+  const from = slackMessageOf(message.externalId);
+  if (!from || !slackConfigured()) return;
+  if (!problem) {
+    await addReaction(from.channel, from.ts, "white_check_mark").catch(() => undefined);
+    return;
+  }
+  await enqueue(
+    "slack_note",
+    {
+      conversationId: message.conversationId,
+      text: `That reply didn't reach them. ${problem}`,
+    },
+    { dedupeKey: `slack-not-sent:${message.id}`, once: true },
+  );
 }
 
 export type SlackAction = {
@@ -401,18 +491,22 @@ export type SlackAction = {
   conversationId: string;
   user: string;
   channel: string;
+  /** The message the button is on. */
   ts: string;
+  /** Its thread, for a button on a reply (a ticket posted in a live chat's thread). */
+  threadTs?: string;
 };
 
 /** The "slack_action" job: "Hand back to Billie" or "Close the chat" on a chat's post. */
 export async function handleSlackAction(a: SlackAction): Promise<void> {
   if (!slackConfigured()) return;
   if (a.action !== ACTIONS.handBack && a.action !== ACTIONS.close) return;
-  // Only the chat this post is about.
+  // Only the chat this post (or the post this reply is in the thread of) is about.
+  const root = a.threadTs && a.threadTs !== a.ts ? a.threadTs : a.ts;
   const [thread] = await db
     .select()
     .from(slackThreads)
-    .where(and(eq(slackThreads.channel, a.channel), eq(slackThreads.ts, a.ts)));
+    .where(and(eq(slackThreads.channel, a.channel), eq(slackThreads.ts, root)));
   if (!thread || thread.conversationId !== a.conversationId) return;
   const conv = await db.query.conversations.findFirst({
     where: eq(conversations.id, a.conversationId),
@@ -421,7 +515,7 @@ export async function handleSlackAction(a: SlackAction): Promise<void> {
   if (!conv) return;
   const actor = await actorFor(a.user);
   if (!actor || !can(actor, "inbox.reply") || !(await mayOnBot(actor, "inbox.reply", conv.botId))) {
-    await postEphemeral({ channel: a.channel, user: a.user, text: NOT_ON_BILLIE, threadTs: a.ts });
+    await postEphemeral({ channel: a.channel, user: a.user, text: NOT_ON_BILLIE, threadTs: root });
     return;
   }
   const { handBack, closeConversation, ChatError } = await import("@/lib/conversations/service");
@@ -430,26 +524,31 @@ export async function handleSlackAction(a: SlackAction): Promise<void> {
     else await closeConversation(actor, conv.id);
   } catch (err) {
     if (err instanceof ChatError) {
-      await postEphemeral({ channel: a.channel, user: a.user, text: err.message, threadTs: a.ts });
+      await postEphemeral({ channel: a.channel, user: a.user, text: err.message, threadTs: root });
       return;
     }
     throw err;
   }
-  await markThreadDone(
-    a.channel,
-    a.ts,
+  const what =
     a.action === ACTIONS.handBack
       ? `${actor.name || actor.email} handed this back to Billie.`
-      : `${actor.name || actor.email} closed this chat.`,
-  );
+      : `${actor.name || actor.email} closed this chat.`;
+  await markThreadDone(a.channel, root, what);
+  // The ticket in its thread had the buttons too.
+  if (root !== a.ts) await markThreadDone(a.channel, root, what, a.ts);
 }
 
-/** The post, with its buttons swapped for what happened. */
-async function markThreadDone(channel: string, ts: string, what: string): Promise<void> {
+/** The post (or, with `ts`, the ticket in its thread), with its buttons swapped for what happened. */
+async function markThreadDone(
+  channel: string,
+  root: string,
+  what: string,
+  ts = root,
+): Promise<void> {
   const [thread] = await db
     .select()
     .from(slackThreads)
-    .where(and(eq(slackThreads.channel, channel), eq(slackThreads.ts, ts)));
+    .where(and(eq(slackThreads.channel, channel), eq(slackThreads.ts, root)));
   if (!thread) return;
   const conv = await db.query.conversations.findFirst({
     where: eq(conversations.id, thread.conversationId),

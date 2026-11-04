@@ -6,6 +6,7 @@ import { EVERY_BOT_ROLES } from "@/lib/authz";
 import { worksOnBotSql } from "@/lib/auth/bots";
 import { appUrl } from "@/lib/config";
 import { getSettings } from "@/lib/settings";
+import { slackConfigured } from "@/lib/channels/slack";
 import { workingMinutes } from "@/lib/conversations/hours";
 import { formatDateTime } from "@/lib/time";
 import type { ContactDetails } from "@/lib/types";
@@ -54,13 +55,14 @@ function who(contact: ContactDetails, waId: string | null): string {
   return name || (waId ? `+${waId}` : "A visitor");
 }
 
-/** The "nudge_waiting" job. Returns how many Teams messages it queued. */
+/** The "nudge_waiting" job. Returns how many messages (Slack or Teams) it queued. */
 export async function runNudges(now = new Date()): Promise<number> {
   const s = await getSettings();
   const first = Math.max(0, s.nudgeAfterHours) * 60;
   const second = Math.max(0, s.escalateAfterHours) * 60;
   if (!first && !second) return 0;
-  if (!(await directLink())) return 0;
+  // Slack direct messages once Slack is connected, else Teams ones (once they're set up).
+  if (!slackConfigured() && !(await directLink())) return 0;
   const cap = Math.max(first, second);
   const since = new Date(now.getTime() - 21 * 86_400_000);
   const admins = second

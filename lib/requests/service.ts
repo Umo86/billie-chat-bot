@@ -8,6 +8,7 @@ import { kickJobs } from "@/lib/jobs/kick";
 import { appUrl, emailConfigured } from "@/lib/config";
 import { UserError } from "@/lib/errors";
 import { postToTeam } from "@/lib/alerts/slack-chat";
+import { SlackError, slackRetryable } from "@/lib/channels/slack";
 import { adaptiveMessage, plainLine } from "@/lib/alerts/card";
 import { cardOf, eventManager, queueDirect } from "@/lib/alerts/direct";
 import { inView, worksOnBotSql, type BotView } from "@/lib/auth/bots";
@@ -368,14 +369,24 @@ export async function notifyRequest(requestId: string): Promise<void> {
       })
     : null;
   const people = assignee ? [assignee] : await eventManager(bot.id);
-  // Slack, once it's connected: the event's channel, naming them. Otherwise Teams.
-  const posted = await postToTeam({
-    botId: bot.id,
-    teamsLink: bot.teamsWebhookUrl,
-    message: card,
-    mention: people.map((p) => p.email),
-  });
+  // Slack, once it's connected: the bot's own channel (never the company-wide one: it has
+  // their details), naming them. Otherwise its Teams channel. Either failing, the people
+  // still get their messages (queued once), and Teams or a busy Slack is tried again.
+  let posted: "slack" | "teams" | null = null;
+  let failed: unknown = null;
+  try {
+    posted = await postToTeam({
+      botId: bot.id,
+      teamsLink: bot.teamsWebhookUrl,
+      message: card,
+      mention: people.map((p) => p.email),
+      ownOnly: true,
+    });
+  } catch (err) {
+    failed = err;
+  }
   if (posted !== "slack") await queueDirect(people, `request:${r.id}`, cardOf(card));
+  if (failed && (!(failed instanceof SlackError) || slackRetryable(failed))) throw failed;
 }
 
 /**

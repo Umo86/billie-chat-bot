@@ -5,10 +5,15 @@ import { describe, expect, it } from "vitest";
 import {
   block,
   isTeamNote,
+  mentionsSomeone,
+  slackExternalId,
   slackFromCard,
+  slackMessageOf,
   slackToPlain,
+  ticketReplyLine,
   verifySlackSignature,
 } from "@/lib/channels/slack-rules";
+import { SlackError, slackRetryable } from "@/lib/channels/slack";
 import { slackManifest } from "@/lib/channels/slack-manifest";
 import { adaptiveMessage, plainLine } from "@/lib/alerts/card";
 import { contactComplete } from "@/lib/conversations/handover";
@@ -57,11 +62,58 @@ describe("the team's Slack replies, as the visitor sees them", () => {
     expect(slackToPlain("<@U123ABC>")).toBe("");
   });
 
-  it("keeps notes to the team in the thread", () => {
+  it("keeps notes to the team in the thread, however they're written", () => {
     expect(isTeamNote("note: checking with electrics")).toBe(true);
     expect(isTeamNote("Note : not for them")).toBe(true);
     expect(isTeamNote("// internal")).toBe(true);
+    expect(isTeamNote("*Note:* he still owes £5k")).toBe(true);
+    expect(isTeamNote("_note:_ in italics")).toBe(true);
+    expect(isTeamNote("> note: quoted")).toBe(true);
+    // As the visitor would get it: a mention in front is taken out first.
+    expect(isTeamNote(slackToPlain("<@U123ABC> note: can you check?"))).toBe(true);
     expect(isTeamNote("Your note has been received")).toBe(false);
+    expect(isTeamNote("Notes are due on Friday")).toBe(false);
+  });
+
+  it("keeps anything said to someone in the team out of the visitor's chat", () => {
+    expect(mentionsSomeone("<@U123ABC> can you take this?")).toBe(true);
+    expect(mentionsSomeone("Thanks <@W0GRID01>")).toBe(true);
+    expect(mentionsSomeone("<!here> anyone free?")).toBe(true);
+    expect(mentionsSomeone("<!subteam^S0123ABC|@ops> help")).toBe(true);
+    expect(mentionsSomeone("See <#C0123ABCD|ukcw-ops> or <https://manual.test|the manual>")).toBe(
+      false,
+    );
+    expect(mentionsSomeone("Email ops@media10.test")).toBe(false);
+  });
+
+  it("knows a reply written in Slack by its message there", () => {
+    const id = slackExternalId("C0EVENT001", "1793782476.000100");
+    expect(slackMessageOf(id)).toEqual({ channel: "C0EVENT001", ts: "1793782476.000100" });
+    expect(slackMessageOf("wamid.HBgLNDQ3NzAwOTAwMTIzFQIAEhgg")).toBeNull();
+    expect(slackMessageOf(null)).toBeNull();
+  });
+
+  it("says where a reply to a ticket goes", () => {
+    expect(ticketReplyLine({ channel: "whatsapp" }, false)).toBe(
+      "Reply in this thread: it goes to them on WhatsApp.",
+    );
+    expect(ticketReplyLine({ channel: "web", email: "sam@acme.test" }, true)).toBe(
+      "Reply in this thread: it goes to them by email.",
+    );
+    expect(ticketReplyLine({ channel: "web", email: "sam@acme.test" }, false)).toMatch(
+      /email sending isn't set up/,
+    );
+    expect(ticketReplyLine({ channel: "web" }, true)).toMatch(/didn't leave an email address/);
+  });
+});
+
+describe("Slack failures", () => {
+  it("tries again when Slack is busy, not when Billie was taken out of the channel", () => {
+    for (const code of ["rate_limited", "internal_error", "http_502", "service_unavailable"])
+      expect(slackRetryable(new SlackError(code))).toBe(true);
+    for (const code of ["not_in_channel", "channel_not_found", "is_archived", "invalid_auth"])
+      expect(slackRetryable(new SlackError(code))).toBe(false);
+    expect(slackRetryable(new TypeError("fetch failed"))).toBe(true);
   });
 });
 

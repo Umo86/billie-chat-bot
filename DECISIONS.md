@@ -132,8 +132,14 @@ because everyone on the team then sees that mailbox's emails in Billie.
 Media10's team lives in Slack, so once Slack is connected (docs/slack.md),
 everything Billie tells the team goes there, and Teams stops: chats that
 need a person, tickets, email replies to check, the bots' weekly and
-show-day posts and requests in each event's channel (the company-wide one
-for bots without), and messages to one person as Slack direct messages.
+show-day posts and requests in each event's channel, and messages to one
+person as Slack direct messages. The company-wide channel only gets a short
+alert about chats from bots without a channel of their own (what they
+asked and who they are, as the Teams alert had; not their email or phone,
+the chat, or what they write next), answered in Billie: anyone in that
+channel would see it, whichever bots they work on, while Billie shows each
+person only their bots' chats. Email replies to check and requests never
+go there.
 The Teams code stays, for anyone without Slack, and its settings are
 hidden once Slack is on. Billie's existing Teams cards are turned into
 Slack blocks rather than written twice; everything anyone wrote goes in as
@@ -148,8 +154,20 @@ visitor's messages, and replies written in the Inbox, are posted into the
 thread. Two-way chat needs an app, not a webhook; Slack's is a manifest
 an admin pastes in, about ten minutes, against a week and IT approval for
 a Teams app. Who may answer is Billie's own rule, not channel membership:
-the Slack user's email must be a Billie user who works on that bot, or they
-get a private note and nothing goes. "note:" keeps a message to the team.
+the Slack user's email must be a Billie user who works on that bot, and
+the Slack user must be in Media10's own workspace (not someone from another
+company in a shared channel, whose email that company controls), or they
+get a private note and nothing goes. "note:" (also bold or quoted) keeps a
+message to the team, and so does any message that @mentions someone:
+"@Sam can you take this?" is said to the team, never to the visitor.
+Visitors' words go in Slack's plain-text blocks, and the `text` beside them
+(what notifications show) is escaped, so they can't make a mention or a
+link. Each reply is kept under its Slack message's id, so a job that runs
+again never sends it twice; one by WhatsApp or email gets its tick once
+it's sent, or a line in the thread saying why it couldn't go. A channel
+post that fails never stops the rest: the people still get their direct
+messages and the alert email (its own job, sent once), and Slack is tried
+again only when it was busy, not when Billie was taken out of the channel.
 Every request from Slack is signed (HMAC of the timestamp and body with
 the signing secret, at most five minutes old) and checked before it's
 read, except the one-off address check Slack makes while the app is being

@@ -52,7 +52,8 @@ export function SlackChannelPicker({
           </>
         ) : fallback ? (
           <>
-            <Chip>Company-wide</Chip> No channel of its own: posts go to #{fallback}.
+            <Chip>Company-wide</Chip> No channel of its own: #{fallback} gets a short alert about
+            its chats, to answer in Billie. Choose a channel to answer them in Slack.
           </>
         ) : (
           <>
@@ -152,8 +153,10 @@ export function SlackSetup({
             </p>
             <div>
               <h3 className="text-[0.95rem] font-semibold">Company-wide channel</h3>
-              <p className="mb-2 text-sm text-muted-foreground">
-                For chats from bots without a channel of their own.
+              <p className="mb-2 max-w-[68ch] text-sm text-muted-foreground">
+                A short alert about chats from bots without a channel of their own: what they asked
+                and who they are, but not how to reach them or the chat. Those are answered in
+                Billie.
               </p>
               <SlackChannelPicker botId={null} slack={slack} channelId={channelId} canManage />
             </div>

@@ -102,8 +102,10 @@ export async function deliverEmailDraft(
       .set({ routedTo: routed.userId })
       .where(eq(emailThreads.id, email.id));
   // Slack, once it's connected: one "replies to check" post for the emails of the next
-  // two minutes, in the event's channel (lib/emails/slack-digest.ts), instead of Teams.
-  if (await slackChannelFor(box.botId)) return void (await queueEmailDigest(box.botId));
+  // two minutes, in the event's own channel (lib/emails/slack-digest.ts), instead of Teams.
+  // Never the company-wide one, which every event would fill.
+  if (await slackChannelFor(box.botId, { ownOnly: true }))
+    return void (await queueEmailDigest(box.botId));
   // The manager, if they still work on the bot (a link they couldn't open is no use).
   const assignee = routed
     ? { fullName: routed.name, email: routed.email }

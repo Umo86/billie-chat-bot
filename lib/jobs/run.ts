@@ -26,6 +26,11 @@ const handlers: Handlers = {
       String(p.conversationId),
       p.kind === "ticket" ? "ticket" : "live",
     ),
+  alert_email: async (p) =>
+    (await import("@/lib/alerts/notify")).sendAlertEmail(
+      String(p.conversationId),
+      p.kind === "ticket" ? "ticket" : "live",
+    ),
   teams_direct: async (p) => (await import("@/lib/alerts/direct")).sendDirect(String(p.to), p.card),
   slack_direct: async (p) =>
     (await import("@/lib/alerts/slack-chat")).sendSlackDirect(String(p.to), p.card),
@@ -48,6 +53,7 @@ const handlers: Handlers = {
       user: String(p.user),
       channel: String(p.channel),
       ts: String(p.ts),
+      threadTs: typeof p.threadTs === "string" ? p.threadTs : undefined,
     }),
   slack_email_digest: async (p) =>
     (await import("@/lib/emails/slack-digest")).postEmailDigest(String(p.botId)),

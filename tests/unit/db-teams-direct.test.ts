@@ -30,6 +30,10 @@ import {
 } from "../helpers/db";
 import { DIRECT, fakeMicrosoft, message, TEAMS } from "../helpers/microsoft";
 
+/** A chat as a handover leaves it: the alert only goes while it's still waiting. */
+const handedOver = (id: string, status: "waiting" | "ticket") =>
+  db.update(conversations).set({ status, handoverAt: new Date() }).where(eq(conversations.id, id));
+
 const uid = () => randomUUID().slice(0, 8);
 
 async function directJobs(prefix: string) {
@@ -172,6 +176,7 @@ describe.skipIf(!hasDb)("Teams messages to people (Postgres, stand-in Teams)", (
     await clearPresence();
     await setAvailableAgent(onDuty.id, true);
     const { conversation: live } = await startConversation({ bot, channel: "web" });
+    await handedOver(live.id, "waiting");
     await notifyHandover(live.id, "live");
     await notifyHandover(live.id, "live"); // a retry
     const toLive = await directJobs(`dm:chat:${live.id}:`);
@@ -180,6 +185,7 @@ describe.skipIf(!hasDb)("Teams messages to people (Postgres, stand-in Teams)", (
 
     await clearPresence();
     const { conversation: ticket } = await startConversation({ bot, channel: "web" });
+    await handedOver(ticket.id, "ticket");
     await notifyHandover(ticket.id, "ticket");
     const toTicket = await directJobs(`dm:chat:${ticket.id}:`);
     expect(toTicket.map((j) => (j.payload as { to: string }).to)).toEqual([manager.email]);
@@ -215,6 +221,7 @@ describe.skipIf(!hasDb)("Teams messages to people (Postgres, stand-in Teams)", (
     await clearPresence();
     await setAvailableAgent(onDuty.id, true);
     const live = await chatAbout("Can we get extra electrics on our stand?");
+    await handedOver(live.id, "waiting");
     await notifyHandover(live.id, "live");
     expect(await to(live.id)).toEqual([onDuty.email, sparky.email].sort());
     const job = (await directJobs(`dm:chat:${live.id}:`)).find(
@@ -227,12 +234,14 @@ describe.skipIf(!hasDb)("Teams messages to people (Postgres, stand-in Teams)", (
     // When they're available themselves, only them.
     await setAvailableAgent(sparky.id, true);
     const again = await chatAbout("Is there power at the back of the hall?");
+    await handedOver(again.id, "waiting");
     await notifyHandover(again.id, "live");
     expect(await to(again.id)).toEqual([sparky.email]);
 
     // Anything else goes as before: here the event's manager, for a ticket.
     await clearPresence();
     const parking = await chatAbout("Where do we park?");
+    await handedOver(parking.id, "ticket");
     await notifyHandover(parking.id, "ticket");
     expect(await to(parking.id)).toEqual([manager.email]);
 

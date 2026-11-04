@@ -17,9 +17,9 @@ type Payload = {
   type?: string;
   trigger_id?: string;
   user?: { id?: string };
-  container?: { channel_id?: string; message_ts?: string };
+  container?: { channel_id?: string; message_ts?: string; thread_ts?: string };
   channel?: { id?: string };
-  message?: { ts?: string };
+  message?: { ts?: string; thread_ts?: string };
   actions?: { action_id?: string; value?: string; action_ts?: string }[];
 };
 
@@ -45,6 +45,9 @@ export async function POST(request: Request) {
   const action = p.actions?.[0];
   const channel = p.container?.channel_id ?? p.channel?.id;
   const ts = p.container?.message_ts ?? p.message?.ts;
+  // A button on a reply (a ticket posted in a live chat's thread): its thread says which chat.
+  const thread = p.container?.thread_ts ?? p.message?.thread_ts;
+  const threadTs = thread && /^\d{1,12}\.\d{1,8}$/.test(thread) ? thread : undefined;
   if (
     p.type === "block_actions" &&
     action?.action_id &&
@@ -62,6 +65,7 @@ export async function POST(request: Request) {
         user: p.user.id,
         channel,
         ts,
+        ...(threadTs ? { threadTs } : {}),
       },
       {
         dedupeKey:
