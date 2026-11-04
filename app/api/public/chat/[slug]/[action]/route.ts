@@ -22,13 +22,15 @@ import {
   rateMessage,
   requestOffered,
   startConversation,
+  startTask,
   submitDetails,
   submitRequest,
   visitorMessage,
   visitorUpdates,
 } from "@/lib/conversations/service";
 import type { HandoverReason } from "@/lib/conversations/handover";
-import { cleanAnswers, REQUEST_CONTACT } from "@/lib/requests/rules";
+import { cleanAnswers, cleanOrder, orderAnswers, REQUEST_CONTACT } from "@/lib/requests/rules";
+import { taskExhibitor, typesFor } from "@/lib/requests/tasks";
 import {
   dropEmptyConversation,
   requestCode,
@@ -143,7 +145,10 @@ const requestBody = z.object({
   typeId: z.string().min(1).max(20),
   answers: z.record(z.string(), z.unknown()),
   contact: z.record(z.string(), z.unknown()),
+  /** How many of each item, for a request with things to order. */
+  items: z.record(z.string(), z.unknown()).optional(),
 });
+const taskBody = z.object({ typeId: z.string().min(1).max(20) });
 const signInBody = z.object({ email: z.email().max(200) });
 const badEmail = () =>
   problem(400, "That email address doesn't look right.", {
@@ -165,6 +170,7 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
       "cancel",
       "rating",
       "request",
+      "task",
       "sign-in",
       "verify",
       "sign-in-token",
@@ -345,16 +351,28 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
       const fresh = await callerConversation(request, bot);
       return json(await visitorUpdates(bot, fresh ?? conversation, null));
     }
+    if (action === "task") {
+      const parsed = taskBody.safeParse(body);
+      if (!parsed.success || channel === "whatsapp") return problem(400, "Bad request.");
+      return json(await startTask(bot, conversation.id, parsed.data.typeId));
+    }
     if (action === "request") {
       const parsed = requestBody.safeParse(body);
       if (!parsed.success) return problem(400, "Check the form.");
-      // Only this bot's own requests, and only one Billie offered in this chat (not WhatsApp).
+      // Only this bot's own requests, only those for this chat's exhibitor (some are for some
+      // stands only), and only one Billie offered in this chat (not WhatsApp).
+      const exhibitor = channel === "whatsapp" ? null : await taskExhibitor(conversation);
       const type =
-        channel === "whatsapp" ? null : bot.requestTypes.find((t) => t.id === parsed.data.typeId);
+        channel === "whatsapp"
+          ? null
+          : typesFor(bot, exhibitor).find((t) => t.id === parsed.data.typeId);
       if (!type || !(await requestOffered(conversation.id, type.id)))
         return problem(404, "That request isn't available any more. Ask again.");
       const { answers, errors } = cleanAnswers(type, parsed.data.answers);
       const { contact, errors: contactErrors } = cleanContact(REQUEST_CONTACT, parsed.data.contact);
+      // The order is worked out here, at the prices the team set: never the page's own sums.
+      const { order, error: orderError } = cleanOrder(type, parsed.data.items ?? {});
+      if (orderError) errors.items = orderError;
       if (Object.keys(errors).length || Object.keys(contactErrors).length)
         return problem(400, "Check the form.", { fieldErrors: { ...errors, ...contactErrors } });
       // Counted once the form is complete. Per chat, and generously per address: a whole
@@ -364,7 +382,16 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
         !(await allow(`chat:request:${ip}`, LIMITS.chatRequest))
       )
         return problem(429, "You've sent a lot of requests. Wait a while, or email the team.");
-      return json(await submitRequest(bot, conversation.id, type, answers, contact));
+      return json(
+        await submitRequest(
+          bot,
+          conversation.id,
+          type,
+          order ? [...answers, ...orderAnswers(order)] : answers,
+          contact,
+          { order, exhibitorId: exhibitor?.id ?? null },
+        ),
+      );
     }
     if (action === "details") {
       const parsed = detailsBody.safeParse(body);

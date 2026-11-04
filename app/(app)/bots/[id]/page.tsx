@@ -21,6 +21,7 @@ import { LiveStep } from "@/components/bots/live-step";
 import { ExhibitorsStep } from "@/components/bots/exhibitors-step";
 import { BlueprintPanel } from "@/components/bots/blueprint-panel";
 import { listSummary } from "@/lib/exhibitors/service";
+import { taskChoices } from "@/lib/requests/tasks";
 import { blueprintStatus } from "@/lib/exhibitors/blueprint";
 import { slackStatus } from "@/lib/alerts/slack-settings";
 import { DeadlinesPanel } from "@/components/bots/deadlines-panel";
@@ -248,6 +249,7 @@ export default async function BotPage({
           }))}
           canEdit={canEdit}
           exhibitors={bot.audience === "exhibitors"}
+          {...(bot.audience === "exhibitors" ? await taskChoices(bot.id) : {})}
         />
       </div>
     );

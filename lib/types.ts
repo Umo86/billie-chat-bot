@@ -102,7 +102,31 @@ export type RequestType = {
   fields: RequestField[];
   /** Who handles it; null means whoever manages the bot's event mailbox. */
   handlerId: string | null;
+  /**
+   * A task from the exhibitor manual (exhibitor bots): Billie lists it for
+   * signed-in exhibitors who haven't done it yet, as a button in the chat.
+   */
+  task?: boolean;
+  /** Only for exhibitors whose list column is one of these (e.g. Stand type: Space only). */
+  forColumn?: string | null;
+  forValues?: string[];
+  /** Things to order, with prices: the chat asks how many of each and shows the total. */
+  items?: RequestItem[];
+  /** Its deadline (Exhibitors step): its due date, and who has done it, come from there. */
+  deadlineId?: string | null;
 };
+
+/** Something to order through a request, e.g. a 16A socket, at its price in pounds. */
+export type RequestItem = { id: string; name: string; price: number };
+
+/** What was ordered: each item, how many, at what price, and the total (pounds). */
+export type RequestOrder = {
+  lines: { name: string; quantity: number; price: number }[];
+  total: number;
+};
+
+/** A task a signed-in exhibitor still has to do, shown as a button in the chat. */
+export type ChatTask = { typeId: string; name: string; due: string | null };
 
 /** What the person filled in, with the labels as they were then. */
 export type RequestAnswer = { label: string; value: string };
@@ -113,6 +137,10 @@ export type RequestOffer = {
   name: string;
   fields: RequestField[];
   contact: ContactField[];
+  /** Things to order, with prices (pounds). */
+  items?: RequestItem[];
+  /** What the exhibitor signed in to the chat already gave (prefilled). */
+  known?: Partial<Record<ContactField, string>>;
 };
 
 export type RequestStatus = "new" | "in_progress" | "done" | "declined";

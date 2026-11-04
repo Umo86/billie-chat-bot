@@ -20,7 +20,7 @@ import { assertOnBot } from "@/lib/auth/bots";
 import { setBotPeople } from "@/lib/bots/people";
 import { setSlackPeople } from "@/lib/bots/slack-people";
 import { copyBot, markDatesChecked } from "@/lib/bots/copy";
-import { MAX_REQUEST_FIELDS, MAX_REQUEST_TYPES } from "@/lib/requests/rules";
+import { MAX_REQUEST_FIELDS, MAX_REQUEST_ITEMS, MAX_REQUEST_TYPES } from "@/lib/requests/rules";
 import { showDaysProblem } from "@/lib/bots/show-days";
 import { MAX_ROUTES, wordList } from "@/lib/conversations/routes";
 import { saveRoutes } from "@/lib/conversations/routing";
@@ -131,6 +131,24 @@ const patch = z.object({
             }),
           )
           .max(MAX_REQUEST_FIELDS),
+        task: z.boolean().optional(),
+        forColumn: z.string().trim().max(80).nullable().optional(),
+        forValues: z.array(z.string().trim().min(1).max(80)).max(20).optional(),
+        items: z
+          .array(
+            z.object({
+              id: z.string().regex(/^[a-z0-9]{4,20}$/),
+              name: z.string().trim().min(1, "Name the item.").max(80),
+              price: z
+                .number("Give the item a price.")
+                .min(0, "A price can't be below £0.")
+                .max(100_000, "Check the price.")
+                .transform((p) => Math.round(p * 100) / 100),
+            }),
+          )
+          .max(MAX_REQUEST_ITEMS, `Up to ${MAX_REQUEST_ITEMS} items.`)
+          .optional(),
+        deadlineId: z.uuid().nullable().optional(),
       }),
     )
     .max(MAX_REQUEST_TYPES, `A bot can take up to ${MAX_REQUEST_TYPES} requests.`)

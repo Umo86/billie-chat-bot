@@ -8,11 +8,12 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import type { ContactDetails, RequestAnswer } from "@/lib/types";
+import type { ContactDetails, RequestAnswer, RequestOrder } from "@/lib/types";
 import { requestStatus } from "./enums";
 import { bots } from "./bots";
 import { conversations } from "./conversations";
 import { users } from "./users";
+import { exhibitors } from "./exhibitors";
 
 /**
  * A request someone made through a chat (extra build-up hours, a vehicle on
@@ -38,6 +39,10 @@ export const chatRequests = pgTable(
     answers: jsonb("answers").$type<RequestAnswer[]>().notNull().default([]),
     contact: jsonb("contact").$type<ContactDetails>().notNull().default({}),
     assignedTo: uuid("assigned_to").references(() => users.id, { onDelete: "set null" }),
+    /** The exhibitor signed in to the chat when it was made (their list row), for BluePrint. */
+    exhibitorId: uuid("exhibitor_id").references(() => exhibitors.id, { onDelete: "set null" }),
+    /** What was ordered, at the prices then (a request with items to order). */
+    order: jsonb("order").$type<RequestOrder>(),
     /** The team's latest message to the person, shown on their page. */
     note: text("note").notNull().default(""),
     /** The person's link to their request's page. */
@@ -56,5 +61,6 @@ export const chatRequests = pgTable(
     index("chat_requests_bot_idx").on(t.botId),
     index("chat_requests_conversation_idx").on(t.conversationId),
     index("chat_requests_assigned_idx").on(t.assignedTo),
+    index("chat_requests_exhibitor_idx").on(t.exhibitorId, t.typeId),
   ],
 );

@@ -711,6 +711,24 @@ Each try is bounded (100 seconds, no SDK retries, one try on the fallback
 model) and a job has three tries, so a check can't keep costing money; one
 still open after 15 minutes shows as not finished and can be run again.
 
+## Manual tasks are requests, aimed by the exhibitor list
+
+A task from BluePrint (the electrics order, the nameboard) is a request
+type with three more things: who it's for (a column of the exhibitor list
+and its answers, e.g. Stand type: Space only), an optional deadline, and
+optional items with prices. Building on requests keeps one form, one
+Requests page, one status the person follows and one set of notifications.
+Who it's for needs to know the stand, so only signed-in exhibitors get a
+task for some stands; it's left out of what Claude may offer anyone else,
+and checked again when the form is sent. The buttons for what's still to
+do come from the database, never a Claude call. Done is "sent through the
+chat and not declined", or the deadline's column says so, which BluePrint
+keeps up to date. An order's total is worked out on the server at the
+prices the team set, never taken from the page, and Billie never takes
+payment: BluePrint collects the tasks with the show's key (oldest first,
+by request number, so it never misses one) and posts back how each is
+going, which the person hears about like any change from the team.
+
 ## Requests from chat are forms, not free text
 
 A bot can take the requests the team handles by email today (extra

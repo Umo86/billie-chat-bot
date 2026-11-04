@@ -10,12 +10,16 @@ import type {
   RequestAnswer,
   RequestField,
   RequestOffer,
+  RequestOrder,
   RequestStatus,
   RequestType,
 } from "@/lib/types";
 
 export const MAX_REQUEST_TYPES = 10;
 export const MAX_REQUEST_FIELDS = 8;
+export const MAX_REQUEST_ITEMS = 30;
+/** The most of one item an order can have, so a slip of the keyboard can't order 10,000. */
+export const MAX_QUANTITY = 99;
 
 /** Always asked with a request: who it's from and how to reach them. Name and email are required. */
 export const REQUEST_CONTACT: ContactField[] = ["name", "company", "stand", "email", "phone"];
@@ -49,6 +53,27 @@ type Template = Omit<RequestType, "id" | "handlerId" | "fields"> & {
 
 /** Ready-made requests for exhibitor bots, from the requests ops teams take by email today. */
 export const REQUEST_TEMPLATES: Template[] = [
+  {
+    name: "Electrics order",
+    when: "They want to order electrics (power sockets, lighting) for their space only stand.",
+    task: true,
+    forColumn: "Stand type",
+    forValues: ["Space only"],
+    items: [],
+    fields: [
+      { label: "Where on the stand, and anything else to know", kind: "long", required: false },
+    ],
+  },
+  {
+    name: "Nameboard",
+    when: "They want to give or change the name on their shell scheme stand's nameboard.",
+    task: true,
+    forColumn: "Stand type",
+    forValues: ["Shell scheme"],
+    fields: [
+      { label: "Name on the nameboard, exactly as it should read", kind: "short", required: true },
+    ],
+  },
   {
     name: "Extra build-up or breakdown hours",
     when: "They need to work outside the published build-up or breakdown hours.",
@@ -94,19 +119,88 @@ export const REQUEST_TEMPLATES: Template[] = [
 
 export function fromTemplate(t: Template): RequestType {
   return {
+    ...t,
     id: newRequestId(),
-    name: t.name,
-    when: t.when,
     handlerId: null,
     fields: t.fields.map((f) => ({ ...f, id: newRequestId() })),
+    items: t.items?.map((i) => ({ ...i, id: newRequestId() })),
   };
 }
 
 /** The form to show for a request type the bot offered, or null if it no longer exists. */
-export function offerFor(types: RequestType[], typeId: string | null): RequestOffer | null {
+export function offerFor(
+  types: RequestType[],
+  typeId: string | null,
+  known?: RequestOffer["known"],
+): RequestOffer | null {
   const t = typeId ? types.find((x) => x.id === typeId) : null;
   if (!t) return null;
-  return { typeId: t.id, name: t.name, fields: t.fields, contact: REQUEST_CONTACT };
+  return {
+    typeId: t.id,
+    name: t.name,
+    fields: t.fields,
+    contact: REQUEST_CONTACT,
+    ...(t.items?.length ? { items: t.items } : {}),
+    ...(known ? { known } : {}),
+  };
+}
+
+/** The exhibitor signed in to a chat, as far as tasks need: their list row. */
+export type TaskExhibitor = { fields: Record<string, string>; stand: string; company: string };
+
+const norm = (v: string) => v.trim().toLowerCase();
+
+/**
+ * Who a request is for. One for some stands only (e.g. Stand type: Space
+ * only) needs the exhibitor signed in, and their row to say so; anything
+ * else is open to everyone.
+ */
+export function openTo(type: RequestType, ex: TaskExhibitor | null): "yes" | "sign_in" | "no" {
+  const column = type.forColumn?.trim();
+  const values = (type.forValues ?? []).map(norm).filter(Boolean);
+  if (!column || !values.length) return "yes";
+  if (!ex) return "sign_in";
+  const own =
+    Object.entries(ex.fields).find(([k]) => norm(k) === norm(column))?.[1] ??
+    (norm(column) === "stand" ? ex.stand : norm(column) === "company" ? ex.company : "");
+  return values.includes(norm(own ?? "")) ? "yes" : "no";
+}
+
+/** Pounds, as the chat shows them: £1,234.50. */
+export function money(pounds: number): string {
+  return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(pounds);
+}
+
+/** An order as filled in (how many of each item), checked against the type's items and prices. */
+export function cleanOrder(
+  type: RequestType,
+  input: Record<string, unknown>,
+): { order: RequestOrder | null; error: string | null } {
+  const items = type.items ?? [];
+  if (!items.length) return { order: null, error: null };
+  const lines: RequestOrder["lines"] = [];
+  for (const item of items) {
+    const raw = input[item.id];
+    if (raw === undefined || raw === null || raw === "" || Number(raw) === 0) continue;
+    const quantity = Number(raw);
+    if (!Number.isInteger(quantity) || quantity < 0 || quantity > MAX_QUANTITY)
+      return { order: null, error: `Order between 0 and ${MAX_QUANTITY} of each.` };
+    lines.push({ name: item.name, quantity, price: item.price });
+  }
+  if (!lines.length) return { order: null, error: "Choose how many of at least one item." };
+  const pence = lines.reduce((sum, l) => sum + Math.round(l.price * 100) * l.quantity, 0);
+  return { order: { lines, total: pence / 100 }, error: null };
+}
+
+/** An order as lines of the request, for the team, the person's page and emails. */
+export function orderAnswers(order: RequestOrder): RequestAnswer[] {
+  return [
+    ...order.lines.map((l) => ({
+      label: l.name,
+      value: `${l.quantity} × ${money(l.price)} = ${money(l.price * l.quantity)}`,
+    })),
+    { label: "Total", value: `${money(order.total)} (invoiced through BluePrint)` },
+  ];
 }
 
 const MAX_VALUE = { short: 200, long: 2000, date: 40 } as const;

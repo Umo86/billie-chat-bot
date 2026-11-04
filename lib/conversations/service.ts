@@ -16,11 +16,13 @@ import { hashToken, newToken } from "@/lib/chat/token";
 import type { Actor } from "@/lib/authz";
 import type {
   AnswerMeta,
+  ChatTask,
   ContactDetails,
   ContactField,
   MessageSource,
   RequestAnswer,
   RequestOffer,
+  RequestOrder,
   RequestType,
 } from "@/lib/types";
 import { appUrl, emailConfigured } from "@/lib/config";
@@ -39,6 +41,7 @@ import {
 import { withinHours } from "./hours";
 import { botPaused, nextStatus, type ConversationEvent, type ConversationStatus } from "./status";
 import { queueSuggestion } from "./suggest";
+import { knownFor, outstandingTasks, taskExhibitor, typesFor } from "@/lib/requests/tasks";
 import { recordFor, signedInAs } from "@/lib/exhibitors/service";
 
 /**
@@ -76,6 +79,8 @@ export type Turn = {
   request: RequestOffer | null;
   /** The exhibitor signed in to this chat, if any (lib/exhibitors/sign-in.ts). */
   signedIn?: { name: string; company: string; stand: string } | null;
+  /** Tasks the signed-in exhibitor still has to do, as buttons (lib/requests/tasks.ts). */
+  tasks?: ChatTask[];
 };
 
 export class ChatError extends Error {
@@ -277,6 +282,12 @@ export async function visitorMessage(input: {
 
   // 2. Billie answers.
   let answer;
+  // Requests for some stands only (a task for space only stands) are only offered to them.
+  const chatRow = await db.query.conversations.findFirst({
+    where: eq(conversations.id, convId),
+    columns: { exhibitorId: true, signedInAt: true, signedInEmail: true },
+  });
+  const exhibitor = chatRow && input.channel !== "whatsapp" ? await taskExhibitor(chatRow) : null;
   try {
     const answerBot = await answerBotFor(input.bot);
     const person =
@@ -286,7 +297,7 @@ export async function visitorMessage(input: {
       bot:
         input.channel === "whatsapp"
           ? { ...answerBot, requestTypes: [], personal: false }
-          : answerBot,
+          : { ...answerBot, requestTypes: typesFor(input.bot, exhibitor) },
       history,
       question: text,
       from: input.channel === "try" ? "staff" : "visitor",
@@ -308,7 +319,11 @@ export async function visitorMessage(input: {
     return out;
   }
 
-  const offered = offerFor(input.bot.requestTypes, answer.request);
+  const offered = offerFor(
+    typesFor(input.bot, exhibitor),
+    answer.request,
+    knownFor(exhibitor, chatRow?.signedInEmail ?? null),
+  );
   const botRow = await db.transaction((tx) =>
     insertMessage(tx, convId, {
       role: "bot",
@@ -540,6 +555,7 @@ export async function submitRequest(
   type: RequestType,
   answers: RequestAnswer[],
   contact: ContactDetails,
+  extra: { order?: RequestOrder | null; exhibitorId?: string | null } = {},
 ): Promise<Turn> {
   const rows = await db.transaction(async (tx) => {
     const c = await lock(tx, conversationId);
@@ -576,6 +592,8 @@ export async function submitRequest(
         contact,
         assignedTo: await requestHandler(tx, bot.id, type),
         trackToken,
+        exhibitorId: extra.exhibitorId ?? null,
+        order: extra.order ?? null,
       })
       .returning({ id: chatRequests.id, ref: chatRequests.ref });
     await tx
@@ -609,6 +627,9 @@ export async function submitRequest(
   });
   await kickJobs();
   const c = await db.query.conversations.findFirst({ where: eq(conversations.id, conversationId) });
+  // A task done: the rest of the exhibitor's tasks, still to do.
+  const tasks =
+    c && type.task && c.status === "bot" ? await outstandingTasks(bot, await taskExhibitor(c)) : [];
   return {
     conversationId,
     status: c?.status ?? "bot",
@@ -616,6 +637,7 @@ export async function submitRequest(
     offer: null,
     form: null,
     request: null,
+    ...(tasks.length ? { tasks } : {}),
   };
 }
 
@@ -687,13 +709,24 @@ export async function visitorUpdates(
   // Opening the chat again (a reload, or the next page of the website): a form Billie
   // offered in its last message, with nothing said since, is shown again.
   const last = rows.at(-1);
+  const exhibitor =
+    !after && conversation.channel !== "whatsapp" ? await taskExhibitor(conversation) : null;
   const pending =
     !after &&
     last?.role === "bot" &&
     conversation.status === "bot" &&
     conversation.channel !== "whatsapp"
-      ? offerFor(bot.requestTypes, (last.meta as AnswerMeta).request ?? null)
+      ? offerFor(
+          typesFor(bot, exhibitor),
+          (last.meta as AnswerMeta).request ?? null,
+          knownFor(exhibitor, conversation.signedInEmail),
+        )
       : null;
+  // Signed in, with nothing else on screen: what's still to do for their stand.
+  const tasks =
+    !after && !pending && conversation.status === "bot"
+      ? await outstandingTasks(bot, exhibitor)
+      : [];
   return {
     conversationId: conversation.id,
     status: conversation.status,
@@ -702,6 +735,45 @@ export async function visitorUpdates(
     form: conversation.status === "collecting" ? formFor(bot) : null,
     request: pending,
     signedIn: after ? undefined : await signedInAs(conversation),
+    ...(tasks.length ? { tasks } : {}),
+  };
+}
+
+/**
+ * A signed-in exhibitor pressed one of their tasks: its form, with what
+ * Billie already knows filled in. No Claude call. Only a task that's for
+ * their stand; kept with a line from Billie, so the form can be sent.
+ */
+export async function startTask(
+  bot: BotRow,
+  conversationId: string,
+  typeId: string,
+): Promise<Turn> {
+  const c = await db.query.conversations.findFirst({ where: eq(conversations.id, conversationId) });
+  if (!c || c.status === "closed")
+    throw new ChatError("closed", "This chat has ended. Start a new one.");
+  if (c.status !== "bot")
+    throw new ChatError("invalid", "The team has this chat now: ask them here instead.");
+  const exhibitor = await taskExhibitor(c);
+  const type = typesFor(bot, exhibitor).find((t) => t.id === typeId && t.task);
+  if (!type || !exhibitor)
+    throw new ChatError("not_found", "That task isn't available any more. Ask Billie instead.");
+  const row = await db.transaction((tx) =>
+    insertMessage(tx, c.id, {
+      role: "bot",
+      text: type.items?.length
+        ? `Here's the ${type.name} form. Choose how many of each, then send it: the total shows as you go.`
+        : `Here's the ${type.name} form. Fill it in, then send it.`,
+      meta: { request: type.id } as AnswerMeta,
+    }),
+  );
+  return {
+    conversationId: c.id,
+    status: c.status,
+    messages: await view([row]),
+    offer: null,
+    form: null,
+    request: offerFor([type], type.id, knownFor(exhibitor, c.signedInEmail)),
   };
 }
 

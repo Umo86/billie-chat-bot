@@ -12,6 +12,11 @@ With BluePrint connected to an exhibitor bot:
 - **The exhibitor list stays up to date.** BluePrint sends the whole list
   whenever it changes. The deadline chasers then see what each exhibitor
   has sent, without anyone uploading a spreadsheet.
+- **Manual tasks are done in the chat.** The electrics order for a space
+  only stand, the nameboard for a shell scheme one, or any other task the
+  team sets up: a signed-in exhibitor gets a button for each one still to
+  do for their stand, fills it in (with quantities and a total for orders),
+  and BluePrint collects it to record and invoice (section 3).
 
 The examples use Billie's live address, `https://billie-teal.vercel.app`.
 
@@ -222,6 +227,98 @@ curl -s https://billie-teal.vercel.app/api/public/blueprint/exhibitors \
 ```
 
 The second one replaces the bot's whole list, so try it on a test bot.
+
+## 3. Tasks done in the chat
+
+### Setting a task up (in Billie)
+
+On the bot's **Rules** step, under **Requests it can take**, add one
+(**Electrics order** and **Nameboard** are ready-made), then:
+
+- Tick **A task from the exhibitor manual**.
+- **Who it's for**: a column of the exhibitor list, and the answers in it,
+  e.g. Stand type: `Space only`. Only signed-in exhibitors with one of those
+  get it, as a button and in Billie's answers.
+- **Its deadline** (optional): a deadline from the Exhibitors step. Its due
+  date shows on the button, and anyone the deadline counts as done (from
+  the list BluePrint sends) doesn't get it.
+- **Things to order, with prices** (optional): each item and its price in
+  pounds. The chat asks how many of each and shows the total. Billie works
+  the total out itself, at these prices, and never takes payment.
+
+A task is done, for that exhibitor, once they've sent it (unless it's
+declined), or once its deadline's column says so.
+
+### Collecting them (BluePrint)
+
+```
+GET https://billie-teal.vercel.app/api/public/blueprint/tasks?after=1041
+Authorization: Bearer <the show's key>
+```
+
+Everything sent through that bot's chat after request 1041, oldest first,
+up to 100 at a time. Keep `next` and ask with `after=<next>` next time
+(every minute or so is plenty); `more` is `true` when there are more now.
+
+```json
+{
+  "tasks": [
+    {
+      "ref": "R-1042",
+      "number": 1042,
+      "type": "Electrics order",
+      "typeId": "k3x9w2m4",
+      "status": "new",
+      "exhibitorId": "ex-1042",
+      "exhibitor": {
+        "name": "Sam Patel",
+        "company": "Acme Displays Ltd",
+        "stand": "B12",
+        "email": "sam@acme-displays.co.uk",
+        "phone": ""
+      },
+      "answers": [
+        { "label": "16A single socket", "value": "2 × £120.00 = £240.00" },
+        { "label": "Total", "value": "£240.00 (invoiced through BluePrint)" }
+      ],
+      "order": {
+        "lines": [{ "name": "16A single socket", "quantity": 2, "price": 120 }],
+        "total": 240
+      },
+      "note": "",
+      "createdAt": "2027-02-10T10:15:00.000Z",
+      "updatedAt": "2027-02-10T10:15:00.000Z"
+    }
+  ],
+  "next": 1042,
+  "more": false
+}
+```
+
+`exhibitorId` is BluePrint's own id for the exhibitor (the `id` it sends
+with the list), when they were signed in; otherwise `null`, and the
+`exhibitor` details are what they typed. `order` is `null` for a task with
+nothing to order. Prices are in pounds, as set in Billie.
+
+### Saying how it's going (BluePrint)
+
+```
+POST https://billie-teal.vercel.app/api/public/blueprint/tasks
+Authorization: Bearer <the show's key>
+Content-Type: application/json
+
+{ "ref": 1042, "status": "done", "note": "Ordered. Your invoice is in BluePrint." }
+```
+
+`status` is `in_progress`, `done` or `declined`; `note` (optional) is shown
+to the exhibitor. They get an email about it (when email is set up), as when
+the team changes it, and it's on the Requests page in Billie. `ref` can be
+`1042` or `"R-1042"`. A key only ever sees and changes its own bot's tasks.
+
+```sh
+curl -s "https://billie-teal.vercel.app/api/public/blueprint/tasks?after=0" \
+  -H "Authorization: Bearer $BILLIE_KEY"
+```
 
 ## Privacy
 

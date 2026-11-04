@@ -98,6 +98,12 @@ Chatbots, live handover and an email assistant for Media10 shows.
 - **Copy a bot for the next show**: the look, personality, rules, requests,
   test questions, people and all the knowledge come across to a draft, with
   every date in it listed to check.
+- **Manual tasks in the chat** (exhibitor chatbots): the electrics order
+  for space only stands, the nameboard for shell scheme ones, and any other
+  task the team sets up (Rules step), aimed at stands by a column of the
+  exhibitor list. A signed-in exhibitor gets a button for each one still to
+  do; orders show quantities and a total at the team's prices. BluePrint
+  collects them and says how they're going (`docs/blueprint.md`).
 - **Answers about their own stand**: an exhibitor bot can have the
   exhibitor list (a spreadsheet uploaded on its Exhibitors step). Exhibitors
   tap "Your stand" in the chat, get a six-digit code at the email they

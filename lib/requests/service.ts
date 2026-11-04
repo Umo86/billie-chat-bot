@@ -196,6 +196,34 @@ export async function updateRequest(
   patch: RequestPatch,
   base?: string,
 ): Promise<void> {
+  await changeRequest({ actorUserId: actor.id }, id, patch, base);
+}
+
+/**
+ * BluePrint, the exhibitor manual, says how a task done in the chat is going
+ * (it has the order and invoices it): the same change the team makes, from
+ * BluePrint, and the person hears about it the same way. Only this bot's.
+ */
+export async function updateRequestFromBlueprint(
+  botId: string,
+  ref: number,
+  patch: { status: RequestStatus; note?: string },
+): Promise<boolean> {
+  const [r] = await db
+    .select({ id: chatRequests.id })
+    .from(chatRequests)
+    .where(and(eq(chatRequests.botId, botId), eq(chatRequests.ref, ref)));
+  if (!r) return false;
+  await changeRequest({ system: "BluePrint" }, r.id, patch);
+  return true;
+}
+
+async function changeRequest(
+  by: { actorUserId: string } | { system: string },
+  id: string,
+  patch: RequestPatch,
+  base?: string,
+): Promise<void> {
   const emailed = await db.transaction(async (tx) => {
     const [r] = await tx.select().from(chatRequests).where(eq(chatRequests.id, id)).for("update");
     if (!r) throw new UserError("That request no longer exists.");
@@ -244,9 +272,9 @@ export async function updateRequest(
       .update(chatRequests)
       .set({ ...changes, updatedAt: at })
       .where(eq(chatRequests.id, r.id));
-    const summary = said.join(", ");
+    const summary = "system" in by ? `${by.system} ${said.join(", ")}` : said.join(", ");
     await writeAudit(tx, {
-      actorUserId: actor.id,
+      ...("system" in by ? { actorType: "system" as const } : { actorUserId: by.actorUserId }),
       entityType: "request",
       entityId: r.id,
       action: changes.status ? "status_change" : "update",

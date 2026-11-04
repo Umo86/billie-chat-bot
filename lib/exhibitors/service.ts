@@ -247,7 +247,7 @@ export function exhibitorRecord(
 /** A sign-in lasts a show day: on a shared stand laptop or show-floor iPad, the next person isn't them. */
 export const SIGN_IN_HOURS = 12;
 
-type SignedInChat = {
+export type SignedInChat = {
   exhibitorId: string | null;
   signedInAt: Date | null;
   /** The address they signed in with: it must still be on their row. */
@@ -272,6 +272,11 @@ async function signedInRow(c: SignedInChat, now: Date) {
   const ex = id ? await exhibitorById(id) : null;
   if (!ex || (c.signedInEmail && !ex.emails.includes(c.signedInEmail))) return null;
   return ex;
+}
+
+/** The exhibitor signed in to a chat: their list row (none if nobody is, or it's lapsed). */
+export async function signedInExhibitor(c: SignedInChat, now = new Date()) {
+  return signedInRow(c, now);
 }
 
 /** What Billie reads about the exhibitor signed in to a chat (none if nobody is). */

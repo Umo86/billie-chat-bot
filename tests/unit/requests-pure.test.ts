@@ -67,8 +67,9 @@ describe("requests from chat", () => {
   });
 
   it("makes ready-made requests with their own ids", () => {
-    const a = fromTemplate(REQUEST_TEMPLATES[0]);
-    const b = fromTemplate(REQUEST_TEMPLATES[0]);
+    const hours = REQUEST_TEMPLATES.find((t) => t.name === "Extra build-up or breakdown hours")!;
+    const a = fromTemplate(hours);
+    const b = fromTemplate(hours);
     expect(a.id).not.toBe(b.id);
     expect(a.fields[0].id).toMatch(/^[a-z0-9]{8}$/);
     expect(a).toMatchObject({ name: "Extra build-up or breakdown hours", handlerId: null });

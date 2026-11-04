@@ -5,6 +5,7 @@ import { Send, ThumbsDown, ThumbsUp, UserRound, X } from "lucide-react";
 import { BotAvatar } from "@/components/bots/bot-avatar";
 import { textOn } from "@/lib/bots/slug";
 import { FIELD_LABEL } from "@/lib/bots/defaults";
+import { MAX_QUANTITY, money } from "@/lib/requests/rules";
 import type { PublicBot } from "@/lib/chat/public";
 import type { ContactField } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -33,7 +34,12 @@ type RequestOffer = {
   name: string;
   fields: { id: string; label: string; kind: "short" | "long" | "date"; required: boolean }[];
   contact: ContactField[];
+  /** Things to order, at their prices (pounds). */
+  items?: { id: string; name: string; price: number }[];
+  /** Filled in already, for an exhibitor who's signed in. */
+  known?: Partial<Record<ContactField, string>>;
 };
+type ChatTask = { typeId: string; name: string; due: string | null };
 type Turn = {
   conversationId: string;
   status: Status;
@@ -45,7 +51,22 @@ type Turn = {
   signedIn?: SignedIn | null;
   /** Why signing in from the exhibitor manual didn't work. */
   signInNote?: string;
+  /** What the signed-in exhibitor still has to do for their stand. */
+  tasks?: ChatTask[];
 };
+
+/** "2027-02-14" as "Sun 14 Feb". */
+function dueDay(day: string): string {
+  const d = new Date(`${day}T12:00:00Z`);
+  return Number.isNaN(d.getTime())
+    ? day
+    : new Intl.DateTimeFormat("en-GB", {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        timeZone: "Europe/London",
+      }).format(d);
+}
 type SignedIn = { name: string; company: string; stand: string };
 
 const POLL_MS = 3000;
@@ -134,6 +155,9 @@ export function ChatApp({
   const [offer, setOffer] = useState<Turn["offer"]>(null);
   const [form, setForm] = useState<Turn["form"]>(null);
   const [request, setRequest] = useState<RequestOffer | null>(null);
+  const [tasks, setTasks] = useState<ChatTask[]>([]);
+  // How many of each item, in a form with things to order.
+  const [qty, setQty] = useState<Record<string, number>>({});
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -188,6 +212,8 @@ export function ChatApp({
       if (replaceOffer) {
         setOffer(turn.offer);
         setRequest(turn.request ?? null);
+        setTasks(turn.tasks ?? []);
+        if (turn.request) setQty({});
       }
     },
     [key],
@@ -203,6 +229,7 @@ export function ChatApp({
     setOffer(null);
     setForm(null);
     setRequest(null);
+    setTasks([]);
     setSignedIn(null);
   }, [key]);
 
@@ -393,7 +420,19 @@ export function ChatApp({
       if (k.startsWith("a:")) answers[k.slice(2)] = String(v);
       if (k.startsWith("c:")) contact[k.slice(2)] = String(v);
     }
-    const turn = await post("request", { typeId: request.typeId, answers, contact });
+    const turn = await post("request", {
+      typeId: request.typeId,
+      answers,
+      contact,
+      ...(request.items?.length ? { items: qty } : {}),
+    });
+    if (turn) absorb(turn as Turn);
+  }
+
+  /** One of their tasks: its form, from Billie (no question needed). */
+  async function startTask(typeId: string) {
+    setFieldErrors({});
+    const turn = await post("task", { typeId });
     if (turn) absorb(turn as Turn);
   }
 
@@ -706,6 +745,31 @@ export function ChatApp({
             <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground" />
           </li>
         ) : null}
+        {tasks.length && status === "bot" && !request && !form ? (
+          <li className="flex flex-col gap-2 rounded-[14px] border border-border p-3">
+            <p className="text-[0.92rem] font-semibold">Still to do for your stand</p>
+            <div className="flex flex-wrap gap-2">
+              {tasks.map((t) => (
+                <button
+                  key={t.typeId}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void startTask(t.typeId)}
+                  className="cursor-pointer rounded-full border px-3.5 py-1.5 text-left text-[0.88rem] font-semibold disabled:opacity-60"
+                  style={{ borderColor: bot.color }}
+                >
+                  {t.name}
+                  {t.due ? (
+                    <span className="font-normal text-muted-foreground">
+                      {" "}
+                      · due {dueDay(t.due)}
+                    </span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          </li>
+        ) : null}
         {offer && status === "bot" ? (
           <li className="flex flex-col gap-2 rounded-[14px] border border-border p-3">
             <p className="text-[0.92rem] font-semibold">
@@ -742,6 +806,61 @@ export function ChatApp({
                 Fill this in and the team will take it from there. You&apos;ll get a reference to
                 follow it.
               </p>
+              {request.items?.length ? (
+                <fieldset className="flex flex-col gap-1.5" aria-describedby="order-total">
+                  <legend className="mb-1 text-[0.85rem] font-semibold">How many of each</legend>
+                  {request.items.map((it) => (
+                    <label
+                      key={it.id}
+                      className="flex items-center justify-between gap-3 text-[0.88rem]"
+                    >
+                      <span className="min-w-0">
+                        {it.name}{" "}
+                        <span className="text-muted-foreground">({money(it.price)} each)</span>
+                      </span>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        max={MAX_QUANTITY}
+                        step={1}
+                        value={qty[it.id] ?? 0}
+                        onChange={(e) =>
+                          setQty((q) => ({
+                            ...q,
+                            [it.id]: Math.max(
+                              0,
+                              Math.min(MAX_QUANTITY, Math.floor(Number(e.target.value) || 0)),
+                            ),
+                          }))
+                        }
+                        aria-label={`How many: ${it.name}`}
+                        className="w-16 shrink-0 rounded-[9px] border border-input bg-card px-2 py-1.5 text-right text-[0.94rem]"
+                      />
+                    </label>
+                  ))}
+                  <p
+                    id="order-total"
+                    className="mt-1 text-[0.9rem] font-semibold"
+                    aria-live="polite"
+                  >
+                    Total{" "}
+                    {money(
+                      request.items.reduce(
+                        (sum, it) => sum + Math.round(it.price * 100) * (qty[it.id] ?? 0),
+                        0,
+                      ) / 100,
+                    )}
+                    <span className="font-normal text-muted-foreground">
+                      {" "}
+                      · invoiced through BluePrint
+                    </span>
+                  </p>
+                  {fieldErrors.items ? (
+                    <span className="text-[0.8rem] text-bad">{fieldErrors.items}</span>
+                  ) : null}
+                </fieldset>
+              ) : null}
               {request.fields.map((f) => (
                 <label key={f.id} className="flex flex-col gap-1 text-[0.85rem] font-semibold">
                   {f.label}
@@ -777,6 +896,7 @@ export function ChatApp({
                   {f === "name" || f === "email" ? "" : " (optional)"}
                   <input
                     name={`c:${f}`}
+                    defaultValue={request.known?.[f] ?? ""}
                     type={f === "email" ? "email" : f === "phone" ? "tel" : "text"}
                     autoComplete={
                       f === "name"

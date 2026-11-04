@@ -35,6 +35,8 @@ export const LIMITS = {
   /** BluePrint's list updates: per address before the key is checked, then per key. */
   blueprintIp: { window: 900, max: 60 },
   blueprintSync: { window: 3600, max: 60 },
+  /** BluePrint collecting tasks done in the chat, and saying how they're going. */
+  blueprintTasks: { window: 3600, max: 600 },
   /** WhatsApp, per sender. */
   whatsappSender: { window: 3600, max: 40 },
   whatsappSenderDaily: { window: 86_400, max: 200 },

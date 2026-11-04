@@ -206,6 +206,19 @@ test("build a bot with its own knowledge, test it and put it live", async ({ pag
   for (const day of ["Mon", "Tue", "Wed", "Thu", "Fri"])
     await days.getByRole("button", { name: day }).click();
   await expect(days.getByRole("button", { pressed: true })).toHaveCount(0);
+  // A task from the exhibitor manual: the nameboard, for shell scheme stands only.
+  const tasksPanel = page.getByTestId("requests-panel");
+  await expect(
+    tasksPanel.getByRole("heading", { name: /Requests and manual tasks/ }),
+  ).toBeVisible();
+  await tasksPanel.getByLabel("Add a ready-made request").selectOption({ label: "Nameboard" });
+  await expect(tasksPanel.getByLabel("Who it's for")).toHaveValue("Stand type");
+  await expect(tasksPanel.getByLabel("Whose Stand type is")).toHaveValue("Shell scheme");
+  await expect(
+    tasksPanel.getByRole("checkbox", { name: /A task from the exhibitor manual/ }),
+  ).toBeChecked();
+  await tasksPanel.getByRole("button", { name: "Save requests" }).click();
+  await expect(page.getByText("Saved.").first()).toBeVisible();
   await shot(page, "bot-rules");
   await page.getByRole("button", { name: "Save and continue" }).click();
 
@@ -447,6 +460,18 @@ test("a visitor chats on the chat page: answer, rating, then the team", async ({
     page.getByText(/Signed in from the exhibitor manual as Sam Patel, Acme Displays Ltd/),
   ).toBeVisible();
   await shot(page, "chat-signed-in-from-manual");
+  // A shell scheme stand: the nameboard is still to do, a button away, with Sam's details in.
+  await expect(page.getByText("Still to do for your stand")).toBeVisible();
+  await page.getByRole("button", { name: "Nameboard" }).click();
+  const nameboard = page.getByRole("form", { name: "Request: Nameboard" });
+  await expect(nameboard.getByLabel("Name", { exact: true })).toHaveValue("Sam Patel");
+  await expect(nameboard.getByLabel(/Stand number/)).toHaveValue("B12");
+  await nameboard.getByLabel(/Name on the nameboard/).fill("ACME DISPLAYS");
+  await shot(page, "chat-task-nameboard");
+  await nameboard.getByRole("button", { name: "Send the request" }).click();
+  await expect(page.getByText(/Your request R-\d+ \(Nameboard\) is with the team/)).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("Still to do for your stand")).toHaveCount(0);
   // Next on the same laptop, someone the manual vouches for but who isn't on the list yet:
   // told why, and never shown Sam's chat.
   await page.goto("about:blank");
@@ -458,6 +483,8 @@ test("a visitor chats on the chat page: answer, rating, then the team", async ({
   await page.goto("about:blank");
   await page.goto(signIn("jo@bolt-co.test"));
   await expect(page.getByRole("button", { name: "Stand C4" })).toBeVisible();
+  // Space only: the nameboard isn't for Jo's stand.
+  await expect(page.getByText("Still to do for your stand")).toHaveCount(0);
   await expect(page.getByText(/Stand plan approved/)).toHaveCount(0);
   await visitor.close();
 });

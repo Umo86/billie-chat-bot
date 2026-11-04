@@ -16,11 +16,12 @@ test("a request from chat, handled by the team and followed by the exhibitor", a
   await page.getByRole("link", { name: "Edit", exact: true }).first().click(); // Exhibitor Help, the first bot
   await page.getByRole("link", { name: "5 Rules" }).click(); // after Exhibitors, on exhibitor bots
   const panel = page.getByTestId("requests-panel");
-  await expect(panel).toContainText("This bot doesn't take any requests yet.");
+  // The nameboard task bots.spec.ts added is there; this adds a request for everyone.
+  await expect(panel.getByLabel("Request", { exact: true }).first()).toHaveValue("Nameboard");
   await panel
     .getByLabel("Add a ready-made request")
     .selectOption({ label: "Extra build-up or breakdown hours" });
-  await expect(panel.getByLabel("Request", { exact: true })).toHaveValue(
+  await expect(panel.getByLabel("Request", { exact: true }).last()).toHaveValue(
     "Extra build-up or breakdown hours",
   );
   await shot(page, "bot-requests");
