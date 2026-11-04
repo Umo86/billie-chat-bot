@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Chip, Note, Panel } from "@/components/ui/bits";
 import { Input, Label } from "@/components/ui/form";
 import { useRunner } from "@/components/ui/use-runner";
-import { saveRoutesAction, setBotPeopleAction } from "@/app/actions/bots";
+import { saveRoutesAction, setBotPeopleAction, setSlackPeopleAction } from "@/app/actions/bots";
 import { MAX_ROUTES } from "@/lib/conversations/routes";
 
 type Person = {
@@ -39,6 +39,7 @@ export function PeopleStep({
   canManage,
   routes,
   canRoute,
+  slack,
 }: {
   botId: string;
   botName: string;
@@ -47,6 +48,8 @@ export function PeopleStep({
   /** Who handles what: a topic, its words, and the person it goes to first. */
   routes: { id: string; topic: string; words: string[]; userId: string }[];
   canRoute: boolean;
+  /** Who's told in Slack, once Slack is connected; whether each person was found there. */
+  slack: { chosen: string[]; found: Record<string, "found" | "missing" | "unknown"> } | null;
 }) {
   const router = useRouter();
   const [on, setOn] = useState<string[]>(
@@ -131,6 +134,13 @@ export function PeopleStep({
           </div>
         ) : null}
       </Panel>
+      <SlackPeople
+        botId={botId}
+        botName={botName}
+        people={people.filter((p) => p.status === "active" && (p.everyBot || p.onBot))}
+        slack={slack}
+        canManage={canManage}
+      />
       <Routes
         botId={botId}
         initial={routes}
@@ -281,6 +291,107 @@ function Routes({
         </div>
       ) : (
         <Note>Only people who can change the bot set who handles what.</Note>
+      )}
+    </Panel>
+  );
+}
+
+const FOUND = {
+  found: { tone: "good", text: "In Slack" },
+  missing: { tone: "warn", text: "Not found in Slack under this email" },
+  unknown: { tone: "neutral", text: "Couldn't check Slack" },
+} as const;
+
+/**
+ * Who's told in Slack about this bot: its show's team. Billie @mentions them
+ * on its chats that need a person, tickets, email replies to check and
+ * requests, in the bot's channel (instead of @here). They're found in Slack
+ * by their Billie email, which is also how their replies there are matched.
+ */
+function SlackPeople({
+  botId,
+  botName,
+  people,
+  slack,
+  canManage,
+}: {
+  botId: string;
+  botName: string;
+  people: Person[];
+  slack: { chosen: string[]; found: Record<string, "found" | "missing" | "unknown"> } | null;
+  canManage: boolean;
+}) {
+  const router = useRouter();
+  const [chosen, setChosen] = useState<string[]>(slack?.chosen ?? []);
+  const { pending, run } = useRunner();
+  return (
+    <Panel className="flex flex-col gap-3" data-testid="slack-people">
+      <div>
+        <h2 className="text-[1.05rem]">Who&apos;s told in Slack</h2>
+        <p className="mt-1 max-w-[68ch] text-sm text-muted-foreground">
+          {botName}&apos;s team for this show. Billie @mentions them in the bot&apos;s Slack channel
+          when a chat needs a person, for tickets, email replies to check and requests. With nobody
+          chosen, live chats go to @here. A topic with its own person (below) goes to them first.
+        </p>
+      </div>
+      {!slack ? (
+        <Note>Once Slack is connected (Settings → Connections), choose them here.</Note>
+      ) : (
+        <>
+          <ul className="flex flex-col gap-2" aria-label="Told in Slack">
+            {people.map((p) => {
+              const ticked = chosen.includes(p.id);
+              const f = FOUND[slack.found[p.email] ?? "unknown"];
+              return (
+                <li key={p.id}>
+                  <label className="flex cursor-pointer items-start gap-3 rounded-[12px] border border-border px-3.5 py-3 has-[:checked]:border-primary has-[:checked]:bg-accent">
+                    <input
+                      type="checkbox"
+                      className="mt-1 size-4 accent-[var(--color-primary)]"
+                      checked={ticked}
+                      disabled={!canManage}
+                      aria-label={`Tell ${p.name || p.email} in Slack`}
+                      onChange={() =>
+                        setChosen((l) => (ticked ? l.filter((x) => x !== p.id) : [...l, p.id]))
+                      }
+                    />
+                    <span className="flex min-w-0 flex-wrap items-center gap-2">
+                      <span className="font-semibold">{p.name || p.email}</span>
+                      <Chip tone={f.tone}>{f.text}</Chip>
+                      <span className="w-full text-sm break-words text-muted-foreground">
+                        {p.email}
+                      </span>
+                    </span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+          {people.some((p) => slack.found[p.email] === "missing") ? (
+            <Note tone="warn">
+              Billie finds people in Slack by their email. For anyone not found, make their email in
+              Billie (Settings → Team) the same as their Slack account&apos;s, or they won&apos;t be
+              @mentioned or able to answer in Slack.
+            </Note>
+          ) : null}
+          {canManage ? (
+            <div>
+              <Button
+                variant="primary"
+                disabled={pending}
+                onClick={() =>
+                  run(() => setSlackPeopleAction({ botId, userIds: chosen }), {
+                    done: () => router.refresh(),
+                  })
+                }
+              >
+                Save who&apos;s told in Slack
+              </Button>
+            </div>
+          ) : (
+            <Note>Only admins choose who&apos;s told in Slack.</Note>
+          )}
+        </>
       )}
     </Panel>
   );

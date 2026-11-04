@@ -77,6 +77,11 @@ export const bots = pgTable(
      * bot's own posts go there once Slack is connected. Set by admins only.
      */
     slackChannelId: text("slack_channel_id"),
+    /**
+     * The people Billie @mentions in Slack for this bot (People step): its
+     * show's team. Billie users, matched to Slack by email; empty is @here.
+     */
+    slackPeople: uuid("slack_people").array().notNull().default([]),
     quality: quality("quality").notNull().default("fast"),
     status: botStatus("status").notNull().default("draft"),
     /** Websites allowed to show the chat (hostnames, e.g. "ukconstructionweek.com"). */

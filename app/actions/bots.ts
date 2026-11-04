@@ -18,6 +18,7 @@ import { validTime } from "@/lib/conversations/hours";
 import { UserError } from "@/lib/errors";
 import { assertOnBot } from "@/lib/auth/bots";
 import { setBotPeople } from "@/lib/bots/people";
+import { setSlackPeople } from "@/lib/bots/slack-people";
 import { copyBot, markDatesChecked } from "@/lib/bots/copy";
 import { MAX_REQUEST_FIELDS, MAX_REQUEST_TYPES } from "@/lib/requests/rules";
 import { showDaysProblem } from "@/lib/bots/show-days";
@@ -250,6 +251,20 @@ export async function setBotPeopleAction(input: unknown) {
       await setBotPeople(actor, d.botId, d.userIds);
       refresh(d.botId);
       revalidatePath("/settings");
+    },
+    "Saved.",
+  );
+}
+
+/** Who's told in Slack about this bot's chats (its show's team), instead of @here. */
+export async function setSlackPeopleAction(input: unknown) {
+  return runAction(
+    "team.manage",
+    z.object({ botId: z.uuid(), userIds: z.array(z.uuid()).max(100) }),
+    input,
+    async (actor, d) => {
+      await setSlackPeople(actor, d.botId, d.userIds);
+      refresh(d.botId);
     },
     "Saved.",
   );

@@ -4,6 +4,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
   botMailboxes,
+  botMembers,
   bots,
   chatRequests,
   conversations,
@@ -25,6 +26,7 @@ import {
 } from "@/lib/conversations/service";
 import { notifyHandover } from "@/lib/alerts/notify";
 import { runNudges } from "@/lib/alerts/nudge";
+import { setSlackPeople, slackMatches, slackPeopleFor } from "@/lib/bots/slack-people";
 import { deliverStaffReply } from "@/lib/conversations/delivery";
 import { notifyRequest } from "@/lib/requests/service";
 import {
@@ -625,6 +627,46 @@ describe.skipIf(!hasDb)("Slack and WhatsApp, and nudges", () => {
       .filter((j) => String(j.dedupeKey).startsWith(`dm:nudge:chat:${chat.id}:`))
       .map((j) => (j.payload as { to: string }).to);
     expect(to).toContain(manager.email);
+  });
+});
+
+describe.skipIf(!hasDb)("each show's own Slack people", () => {
+  it("@mentions the bot's chosen people instead of @here, and only people on the bot", async () => {
+    const admin = await makeUser("admin");
+    const sam = await makeUser("agent");
+    const jo = await makeUser("agent");
+    const other = await makeUser("agent"); // works on another show
+    const slack = fakeSlack({
+      people: {
+        USAM: { email: sam.email, name: "Sam" },
+        UJO: { email: jo.email, name: "Jo" },
+      },
+    });
+    vi.stubGlobal("fetch", slack.fetchMock);
+    const bot = await slackBot();
+    await putOnBot(bot.id, sam.id, jo.id);
+    await expect(setSlackPeople(admin, bot.id, [sam.id, other.id])).rejects.toThrow(
+      /Only people who work on this bot/,
+    );
+    await setSlackPeople(admin, bot.id, [sam.id, jo.id]);
+    expect((await slackPeopleFor(bot.id)).sort()).toEqual([jo.email, sam.email].sort());
+    // Who Billie can find in Slack, by their Billie email.
+    expect(await slackMatches([sam.email, other.email])).toEqual({
+      [sam.email]: "found",
+      [other.email]: "missing",
+    });
+
+    const { conversation } = await startConversation({ bot, channel: "web" });
+    await handover(bot, conversation.id, "asked_for_person");
+    await notifyHandover(conversation.id, "live");
+    const text = slack.textOf(slack.sent("chat.postMessage")[0]);
+    expect(text).toContain("<@USAM>");
+    expect(text).toContain("<@UJO>");
+    expect(text).not.toContain("<!here>");
+
+    // Taken off the bot: no longer told.
+    await db.delete(botMembers).where(eq(botMembers.userId, sam.id));
+    expect(await slackPeopleFor(bot.id)).toEqual([jo.email]);
   });
 });
 

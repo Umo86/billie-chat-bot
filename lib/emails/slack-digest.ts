@@ -7,6 +7,7 @@ import { enqueue } from "@/lib/jobs/queue";
 import { postMessage, slackUserIdFor } from "@/lib/channels/slack";
 import { block, type SlackBlock } from "@/lib/channels/slack-rules";
 import { slackChannelFor } from "@/lib/alerts/slack-chat";
+import { slackPeopleFor } from "@/lib/bots/slack-people";
 
 /**
  * Email replies to check, in the event's Slack channel, once Slack is
@@ -91,7 +92,9 @@ export async function postEmailDigest(botId: string, now = new Date()): Promise<
       .join(" ");
     const blocks: SlackBlock[] = [block.header(title), block.line(opening)];
     const ids: string[] = [];
-    for (const email of [box.managerEmail, ...rows.map((r) => r.routedEmail)]) {
+    // The mailbox's manager, whoever handles an email's topic, and the show's Slack people.
+    const team = await slackPeopleFor(botId);
+    for (const email of [box.managerEmail, ...rows.map((r) => r.routedEmail), ...team]) {
       if (!email) continue;
       const id = await slackUserIdFor(email).catch(() => null);
       if (id && !ids.includes(id)) ids.push(id);

@@ -188,6 +188,13 @@ or an exhibitor signed in from BluePrint) isn't asked: it's a ticket
 straight away. "Available" remains only to choose who gets a Teams message
 while Teams is used.
 
+Each show's bot has its own Slack people (its People step), Billie users on
+that bot found in Slack by email: they're @mentioned on its posts instead of
+@here, so the UKCW team hears about UKCW and the Ideal Home Show team about
+theirs, in one workspace. It's a list on the bot, not a Slack user group,
+so Billie needs no extra Slack permission and nobody has to keep a group in
+step with Billie.
+
 Email replies to check are one post for about two minutes of emails, not
 one per email: each email goes in one post only (claimed and marked in the
 same transaction as the post, so a failed post is tried again rather than

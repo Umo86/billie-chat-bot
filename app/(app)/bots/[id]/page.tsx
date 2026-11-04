@@ -37,6 +37,8 @@ import { historyState } from "@/lib/emails/history";
 import { DatesToCheck } from "@/components/bots/dates-to-check";
 import { mayOnBot } from "@/lib/auth/bots";
 import { botPeople } from "@/lib/bots/people";
+import { slackMatches } from "@/lib/bots/slack-people";
+import { slackConfigured } from "@/lib/channels/slack";
 import { PeopleStep } from "@/components/bots/people-step";
 import { can } from "@/lib/authz";
 import { botById } from "@/lib/bots/load";
@@ -250,14 +252,22 @@ export default async function BotPage({
       </div>
     );
   } else if (step === "people") {
+    const people = await botPeople(bot.id);
+    // Once Slack is connected: whether each person on the bot is in Slack under their email.
+    const found = slackConfigured()
+      ? await slackMatches(
+          people.filter((p) => p.status === "active" && p.onBot).map((p) => p.email),
+        )
+      : null;
     body = (
       <PeopleStep
         botId={bot.id}
         botName={bot.name}
-        people={await botPeople(bot.id)}
+        people={people}
         canManage={can(actor, "team.manage")}
         routes={bot.routes}
         canRoute={canEdit}
+        slack={found ? { chosen: bot.slackPeople, found } : null}
       />
     );
   } else if (step === "email") {

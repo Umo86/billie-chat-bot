@@ -1,0 +1,1 @@
+ALTER TABLE "bots" ADD COLUMN "slack_people" uuid[] DEFAULT '{}' NOT NULL;

@@ -6,7 +6,8 @@ Billie posts everything for the team there instead of Teams.
 ## What happens
 
 - **A chat needs a person, during the bot's working hours.** Billie posts it
-  in the event's Slack channel with what was said so far and @here. The team
+  in the event's Slack channel with what was said so far, and @mentions that
+  show's people (or @here, if none are chosen). The team
   answers in the post's thread. Each reply goes to the visitor straight
   away, with the person's first name, and gets a tick when it's delivered.
   What the visitor writes next comes into the same thread.
@@ -30,7 +31,12 @@ Billie posts everything for the team there instead of Teams.
   to the bot's channel. Messages meant for one person (nudges, reminders
   ready, budget alerts) are Slack direct messages from Billie.
 
-Each bot has its own channel, chosen on its Email step. A company-wide
+Each show has its own bot, and each bot its own channel (its Email step)
+and its own people in Slack (its People step, "Who's told in Slack"):
+Billie @mentions them on its chats, tickets, email replies to check and
+requests. A topic with its own person (People step, "Who handles what")
+goes to that person first. The People step shows whether each person was
+found in Slack, by their Billie email. A company-wide
 channel (Settings → Connections) gets a short alert about chats from bots
 without one: what they asked and who they are, but not how to reach them
 or the chat, since everyone in that channel sees it. Those are answered in
@@ -81,7 +87,7 @@ Billie. Email replies to check and requests only go to a bot's own channel.
    test post**.
 7. Make sure everyone who answers is on Billie, with the same email as
    their Slack account, and on the bots they answer for (each bot's People
-   step).
+   step). On the same step, tick **Who's told in Slack** for that show.
 
 ```yaml
 display_information:

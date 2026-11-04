@@ -15,6 +15,7 @@ import { adaptiveMessage, plainLine } from "./card";
 import { availablePeople, cardOf, eventManager, queueDirect } from "./direct";
 import { assignByRoute, routeFor, visitorWords } from "@/lib/conversations/routing";
 import { postHandoverToSlack } from "./slack-chat";
+import { slackPeopleFor } from "@/lib/bots/slack-people";
 
 /**
  * Telling the team a chat needs them: once Slack is connected, a post in the
@@ -151,6 +152,7 @@ export async function notifyHandover(
         routed: routed && { topic: routed.topic, name: routed.name, email: routed.email },
         alsoEmails:
           kind === "ticket" && !routed ? (await eventManager(conv.botId)).map((p) => p.email) : [],
+        team: await slackPeopleFor(conv.botId),
         link: alert.link,
       });
     } catch (err) {

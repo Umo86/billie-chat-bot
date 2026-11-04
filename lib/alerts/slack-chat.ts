@@ -181,6 +181,8 @@ export type SlackHandover = {
   routed?: { topic: string; name: string; email: string } | null;
   /** Who else should hear about a ticket (the event mailbox's manager). */
   alsoEmails?: string[];
+  /** The show's Slack people (People step): @mentioned unless the topic has its own person. */
+  team?: string[];
   link: string;
 };
 
@@ -282,9 +284,13 @@ export async function postHandoverToSlack(
   botId: string,
   h: SlackHandover,
 ): Promise<boolean> {
-  // Who to @mention: whoever handles the topic; for a live chat, else everyone here now.
+  // Who to @mention: whoever handles the topic, else the show's Slack people; for a live
+  // chat with neither, everyone here now.
   const mentions = async () => {
-    const people = await slackIds([...(h.routed ? [h.routed.email] : []), ...(h.alsoEmails ?? [])]);
+    const people = await slackIds([
+      ...(h.routed ? [h.routed.email] : (h.team ?? [])),
+      ...(h.alsoEmails ?? []),
+    ]);
     return people.length ? people : h.kind === "live" ? ["here"] : [];
   };
   const channel = await slackChannelFor(botId, { ownOnly: true });

@@ -8,6 +8,7 @@ import { kickJobs } from "@/lib/jobs/kick";
 import { appUrl, emailConfigured } from "@/lib/config";
 import { UserError } from "@/lib/errors";
 import { postToTeam } from "@/lib/alerts/slack-chat";
+import { slackPeopleFor } from "@/lib/bots/slack-people";
 import { SlackError, slackRetryable } from "@/lib/channels/slack";
 import { adaptiveMessage, plainLine } from "@/lib/alerts/card";
 import { cardOf, eventManager, queueDirect } from "@/lib/alerts/direct";
@@ -379,7 +380,10 @@ export async function notifyRequest(requestId: string): Promise<void> {
       botId: bot.id,
       teamsLink: bot.teamsWebhookUrl,
       message: card,
-      mention: people.map((p) => p.email),
+      // Whoever handles it; with nobody yet, the show's Slack people and the mailbox's manager.
+      mention: assignee
+        ? [assignee.email]
+        : [...new Set([...(await slackPeopleFor(bot.id)), ...people.map((p) => p.email)])],
       ownOnly: true,
     });
   } catch (err) {
