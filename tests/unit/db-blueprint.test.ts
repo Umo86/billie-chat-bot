@@ -363,6 +363,57 @@ describe.skipIf(!hasDb)("signing in from the exhibitor manual", () => {
       .set({ contact: { name: "Kim", email: "Kim@Elsewhere.test" } })
       .where(eq(conversations.id, left.id));
     expect((await signInFromManual(bot, left.id, sam)).result).toBe("other");
+    // Nor one where they left only a name and phone.
+    const { conversation: phoned } = await startConversation({ bot, channel: "web" });
+    await db
+      .update(conversations)
+      .set({ contact: { name: "Kim", phone: "07700 900123" } })
+      .where(eq(conversations.id, phoned.id));
+    expect((await signInFromManual(bot, phoned.id, sam)).result).toBe("other");
+    // But one where Sam left their own email is Sam's.
+    const { conversation: own } = await startConversation({ bot, channel: "web" });
+    await db
+      .update(conversations)
+      .set({ contact: { name: "Sam", email: e.sam.toUpperCase() } })
+      .where(eq(conversations.id, own.id));
+    expect((await signInFromManual(bot, own.id, sam)).result).toBe("signed_in");
+  });
+
+  it("signs out an address BluePrint takes off a row, and nobody else on it", async () => {
+    const { bot, e } = await connected();
+    const key = await keyFor(bot.id);
+    const jo = await readManualSignIn(bot, signToken(key, e.jo));
+    const ops = await readManualSignIn(bot, signToken(key, e.ops));
+    if (!jo.ok || !ops.ok) throw new Error("not listed");
+    const { conversation: joChat } = await startConversation({ bot, channel: "web" });
+    const { conversation: opsChat } = await startConversation({ bot, channel: "web" });
+    await signInFromManual(bot, joChat.id, jo);
+    await signInFromManual(bot, opsChat.id, ops);
+    // Jo leaves Bolt & Co: BluePrint sends the row with only the ops address.
+    const next = sent(e);
+    next.rows[1].emails = [e.ops];
+    expect(await syncFromBlueprint(bot.id, next)).toMatchObject({ updated: 1, removed: 0 });
+    const chat = (id: string) =>
+      db.query.conversations.findFirst({ where: eq(conversations.id, id) });
+    expect((await visitorUpdates(bot, (await chat(joChat.id))!, null)).signedIn).toBeNull();
+    expect((await chat(joChat.id))?.exhibitorId).toBeNull();
+    expect((await visitorUpdates(bot, (await chat(opsChat.id))!, null)).signedIn).toMatchObject({
+      company: "Bolt & Co",
+    });
+    // Even linked to the row again, a chat isn't signed in with an address no longer on it.
+    await db
+      .update(conversations)
+      .set({ exhibitorId: (await chat(opsChat.id))!.exhibitorId })
+      .where(eq(conversations.id, joChat.id));
+    expect((await visitorUpdates(bot, (await chat(joChat.id))!, null)).signedIn).toBeNull();
+    // And Billie doesn't answer Jo from the row.
+    const turn = await visitorMessage({
+      bot,
+      conversation: (await chat(joChat.id))!,
+      channel: "web",
+      text: "Has our stand plan been approved?",
+    });
+    expect(turn.messages.at(-1)?.text).not.toContain("Stand plan approved");
   });
 
   it("refuses tokens it can't trust, and says why", async () => {

@@ -249,14 +249,15 @@ export function ChatApp({
       const saved = readToken(key);
       if (saved) tokenRef.current = saved;
       // From the manual: whose chat it is is checked before any of it is shown.
+      // If that can't be checked (the sign-in ran out, or isn't on the list
+      // yet), this browser's chat may be someone else's: it isn't shown.
       if (manualToken.current) {
         const outcome = await manualSignIn();
         if (cancelled) return;
-        if (outcome !== "failed") {
-          if (tokenRef.current) setToken(tokenRef.current);
-          setRestored(true);
-          return;
-        }
+        if (outcome === "failed" && tokenRef.current) forget();
+        if (tokenRef.current) setToken(tokenRef.current);
+        setRestored(true);
+        return;
       }
       if (saved && tokenRef.current) {
         try {

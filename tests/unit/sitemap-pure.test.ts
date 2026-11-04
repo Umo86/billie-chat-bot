@@ -47,6 +47,35 @@ describe("finding a website's pages", () => {
     expect(robotsAllow(robots.rules, "/admin/help")).toBe(true);
   });
 
+  it("stays quick and bounded on a hostile sitemap, robots.txt or page", () => {
+    const t0 = Date.now();
+    // Thousands of tags that never close: once, these took seconds to minutes.
+    expect(parseSitemap("<url>".repeat(400_000))).toEqual({ pages: [], sitemaps: [] });
+    expect(parseSitemap("<url><loc>".repeat(200_000)).pages).toEqual([]);
+    // A real HTML parser reads that as one tag, with one link.
+    expect(linksIn("<a href=x ".repeat(200_000), "https://www.show.test/")).toEqual([
+      "https://www.show.test/x",
+    ]);
+    expect(Date.now() - t0).toBeLessThan(3000);
+    // At most 2,000 addresses from one sitemap, none absurdly long.
+    const many = Array.from(
+      { length: 2500 },
+      (_, i) => `<url><loc>https://s.test/p${i}</loc></url>`,
+    );
+    many.push(`<url><loc>https://s.test/${"x".repeat(3000)}</loc></url>`);
+    const read = parseSitemap(`<urlset>${many.join("")}</urlset>`);
+    expect(read.pages).toHaveLength(2000);
+    expect(read.pages.every((p) => p.url.length < 100)).toBe(true);
+    // <urlset> and <sitemapindex> aren't mistaken for <url> and <sitemap>; mixed case is fine.
+    expect(
+      parseSitemap("<URLSET><URL><LOC>https://s.test/a</LOC></URL><url/></URLSET>").pages,
+    ).toEqual([{ url: "https://s.test/a", lastmod: null }]);
+    const rules = Array.from({ length: 1500 }, (_, i) => `Disallow: /p${i}`);
+    expect(readRobots(["User-agent: *", ...rules].join("\n")).rules).toHaveLength(1000);
+    const links = Array.from({ length: 2500 }, (_, i) => `<a href="/p${i}">p</a>`).join("");
+    expect(linksIn(links, "https://s.test/")).toHaveLength(2000);
+  });
+
   it("finds links on a page", () => {
     expect(
       linksIn(

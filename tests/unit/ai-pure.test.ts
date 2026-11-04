@@ -106,6 +106,11 @@ describe("prompts", () => {
     expect(u).toContain("You: hello");
     expect(u.match(/<\/untrusted>/g)).toHaveLength(2); // only ours
     expect(quoteUntrusted("<untrusted attr>x</untrusted>")).toBe("x");
+    // Taking one out can't join the pieces of another.
+    expect(quoteUntrusted("a<</untrusted>/untrusted>b")).toBe("ab");
+    expect(quoteUntrusted("<<<</untrusted>/untrusted>/untrusted>/untrusted> end")).toBe(" end");
+    const deep = `${"<".repeat(60)}${"/untrusted>".repeat(60)}`.replace(/^</, "</");
+    expect(quoteUntrusted(deep)).not.toMatch(/<\/?untrusted/i);
   });
 
   it("tells Billie today's date in the UK with each message, outside the cached part", () => {

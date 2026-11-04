@@ -218,9 +218,12 @@ export async function signInFromManual(
       .where(eq(conversations.id, conversationId))
       .for("update");
     if (!c) return "other" as const;
-    const theirs =
-      c.signedInEmail ?? (c.contact as ContactDetails | null)?.email?.trim().toLowerCase() ?? null;
-    if (theirs && theirs !== who.email) return "other" as const;
+    // Whose chat it is: whoever it was signed in as; or, if never, whoever left
+    // their details in it (any of them: a name and phone are someone too).
+    const contact = (c.contact as ContactDetails | null) ?? {};
+    const left = Object.values(contact).some((v) => typeof v === "string" && v.trim());
+    const theirs = c.signedInEmail ?? (left ? (contact.email?.trim().toLowerCase() ?? "") : null);
+    if (theirs !== null && theirs !== who.email) return "other" as const;
     if (activeExhibitorId(c, now) === who.exhibitor.id) return "already" as const;
     // Not signed in yet, or their own sign-in has run out (or their row changed): sign in again.
     await signInChat(tx, bot, conversationId, who.exhibitor, who.email, now, "manual");
@@ -327,6 +330,13 @@ export async function syncFromBlueprint(
         FROM (VALUES ${sql.join(values, sql`, `)}) AS v(id, company, stand, name, emails, fields)
         WHERE e.id = v.id AND e.bot_id = ${botId}`);
     }
+    // An address taken off a row: whoever signed in with it is signed out.
+    if (changed.length)
+      await tx.execute(sql`
+        UPDATE conversations AS c SET exhibitor_id = NULL
+        FROM exhibitors AS e
+        WHERE c.exhibitor_id = e.id AND e.bot_id = ${botId}
+          AND c.signed_in_email IS NOT NULL AND NOT (c.signed_in_email = ANY(e.emails))`);
 
     const before = await tx.query.exhibitorLists.findFirst({
       where: eq(exhibitorLists.botId, botId),

@@ -309,9 +309,11 @@ the frame's address (from the widget's data-exhibitor-token, or a link to
 the chat page), so it never reaches a server log; the chat takes it out of
 the address at once. It only signs in an email on the bot's list, and only
 a chat that isn't someone else's: one signed in as another address (even
-if that sign-in has run out) or where someone left another email gets left
-alone, and the browser starts a new chat, so on a shared laptop nobody
-sees the last person's chat. That's checked before the old chat is shown.
+if that sign-in has run out), or where someone left their details (any of
+them, not just an email), gets left alone, and the browser starts a new
+chat, so on a shared laptop nobody sees the last person's chat. That's
+checked before the old chat is shown, and if the sign-in doesn't work (run
+out, not on the list yet, too many tries) the old chat isn't shown either.
 With no chat yet, nothing is kept until they ask something: the first
 message carries the sign-in again and starts the chat signed in, so empty
 chats never reach the reports. Signing in from the manual needs no email
@@ -323,7 +325,9 @@ the key as a bearer token), not as changes: a missed update can't leave it
 wrong for long, and BluePrint needs no record of what it sent. Exhibitors
 match on BluePrint's own id, so the same exhibitor keeps the same row
 (changed ones are updated in place, a few hundred to a statement) and stay
-signed in; those left out are removed, with their sign-ins. It's checked
+signed in; those left out are removed, with their sign-ins. An address
+taken off a row signs its chats out, and a sign-in only counts while its
+address is still on the row (checked each time the row is read). It's checked
 like a spreadsheet (5,000 exhibitors, 40 fields, 500 characters a value)
 and kept like one: the team's hidden columns carry over, new ones that
 sound internal start hidden, and the retention clock restarts with each
@@ -554,7 +558,12 @@ decides), none whose address contains what the team left out, at most the
 number they set (200 to start, 500 at most). Each page is then an ordinary
 web page source, read through the same safe fetcher (no private addresses,
 every redirect checked, 5 MB and 15 seconds a page) and spread out a second
-and a half apart so the show's website isn't hit all at once.
+and a half apart so the show's website isn't hit all at once. A sitemap is
+read in one pass that never goes back (a hostile one, thousands of tags that
+never close, can't stall the job queue), taking at most 2,000 addresses of
+at most 2,048 characters; robots.txt gives at most 1,000 rules; the home
+page's links come from a real HTML parser; and finding the pages has 90
+seconds in all.
 
 The website is looked at again weekly (and on "Read again now"): new pages
 are added, pages no longer listed go to the bin, and pages are read again

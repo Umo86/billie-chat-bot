@@ -159,8 +159,14 @@ export async function removeWebsite(actor: Actor, id: string, now = new Date()):
   });
 }
 
+/** How long finding a website's pages may take, in all (each fetch has its own limit too). */
+const DISCOVER_MS = 90_000;
+
+class SlowWebsiteError extends Error {}
+
 /** Finding the pages: sitemaps first, the home page's links if there are none. */
 async function discover(site: { url: string; host: string }) {
+  const deadline = Date.now() + DISCOVER_MS;
   const start = new URL(site.url);
   const origin = start.origin;
   const robots = await fetchPage(`${origin}/robots.txt`, { kind: "robots" })
@@ -180,7 +186,12 @@ async function discover(site: { url: string; host: string }) {
       : [`${origin}/sitemap.xml`, `${origin}/sitemap_index.xml`];
   const pages: FoundPage[] = [];
   const read = new Set<string>();
-  while (queue.length && read.size < MAX_SITEMAPS && pages.length < MAX_PAGES * 4) {
+  while (
+    queue.length &&
+    read.size < MAX_SITEMAPS &&
+    pages.length < MAX_PAGES * 4 &&
+    Date.now() < deadline
+  ) {
     const next = queue.shift()!;
     if (read.has(next) || /\.gz$/i.test(next)) continue;
     read.add(next);
@@ -194,6 +205,8 @@ async function discover(site: { url: string; host: string }) {
     }
   }
   if (pages.length) return { pages, robots, how: "sitemap" as const };
+  if (Date.now() >= deadline)
+    throw new SlowWebsiteError("The website took too long to answer. Try again later.");
   const home = await fetchPage(start.toString());
   const links = linksIn(home.body, home.url).map((url) => ({ url, lastmod: null }));
   return {
@@ -220,6 +233,7 @@ export async function crawlWebsite(websiteId: string, now = new Date()): Promise
   } catch (err) {
     if (err instanceof UnsafeUrlError)
       return void (await fail(`${err.message} Check the address, then read it again.`));
+    if (err instanceof SlowWebsiteError) return void (await fail(err.message));
     throw err; // tried again shortly
   }
   const picked = pickPages(found.pages, {

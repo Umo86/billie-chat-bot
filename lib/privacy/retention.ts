@@ -5,6 +5,7 @@ import {
   bots,
   chatRequests,
   conversations,
+  emailSuggestions,
   emailThreads,
   emailTombstones,
   exhibitorCodes,
@@ -22,7 +23,8 @@ import { pruneReused } from "@/lib/ai/reuse";
 /**
  * UK GDPR housekeeping (daily job): chats and emails older than the
  * retention setting are deleted with their messages, and so are exhibitor
- * lists nobody has uploaded again in that time; anything in the bin for more
+ * lists nobody has uploaded again in that time and answers found in past
+ * emails; anything in the bin for more
  * than 30 days is removed for good, files included. Each run writes one
  * audit row with the counts, never the content.
  */
@@ -73,6 +75,11 @@ export async function runRetention(now = new Date()): Promise<Record<string, num
     .delete(reminderBatches)
     .where(lt(reminderBatches.createdAt, cutoff))
     .returning({ id: reminderBatches.id });
+  // Answers found in past emails: written from the emails, so they go when emails would.
+  const oldSuggestions = await db
+    .delete(emailSuggestions)
+    .where(lt(emailSuggestions.createdAt, cutoff))
+    .returning({ id: emailSuggestions.id });
   // Answers kept to give again are only for their day.
   await pruneReused(now);
   // Sign-in codes last ten minutes; keep a day, for the attempts count.
@@ -122,6 +129,7 @@ export async function runRetention(now = new Date()): Promise<Record<string, num
     requests: requests.length,
     exhibitorLists: oldLists.length,
     reminderRounds: oldReminders.length,
+    emailSuggestions: oldSuggestions.length,
     sources: oldSources.length,
     bots: oldBots.length,
     knowledgeBases: oldKbs.length,

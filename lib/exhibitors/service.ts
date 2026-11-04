@@ -247,18 +247,36 @@ export function exhibitorRecord(
 /** A sign-in lasts a show day: on a shared stand laptop or show-floor iPad, the next person isn't them. */
 export const SIGN_IN_HOURS = 12;
 
-type SignedInChat = { exhibitorId: string | null; signedInAt: Date | null };
+type SignedInChat = {
+  exhibitorId: string | null;
+  signedInAt: Date | null;
+  /** The address they signed in with: it must still be on their row. */
+  signedInEmail: string | null;
+};
 
 /** The exhibitor a chat is signed in as, while the sign-in lasts. */
-export function activeExhibitorId(c: SignedInChat, now = new Date()): string | null {
+export function activeExhibitorId(
+  c: Pick<SignedInChat, "exhibitorId" | "signedInAt">,
+  now = new Date(),
+): string | null {
   if (!c.exhibitorId || !c.signedInAt) return null;
   return now.getTime() - c.signedInAt.getTime() < SIGN_IN_HOURS * 3_600_000 ? c.exhibitorId : null;
 }
 
-/** What Billie reads about the exhibitor signed in to a chat (none if nobody is). */
-export async function recordFor(c: SignedInChat, now = new Date()): Promise<string | null> {
+/**
+ * The row a chat is signed in as, while the sign-in lasts and their address
+ * is still on it (BluePrint can take one off a row it keeps).
+ */
+async function signedInRow(c: SignedInChat, now: Date) {
   const id = activeExhibitorId(c, now);
   const ex = id ? await exhibitorById(id) : null;
+  if (!ex || (c.signedInEmail && !ex.emails.includes(c.signedInEmail))) return null;
+  return ex;
+}
+
+/** What Billie reads about the exhibitor signed in to a chat (none if nobody is). */
+export async function recordFor(c: SignedInChat, now = new Date()): Promise<string | null> {
+  const ex = await signedInRow(c, now);
   if (!ex) return null;
   const list = await db.query.exhibitorLists.findFirst({
     where: eq(exhibitorLists.botId, ex.botId),
@@ -315,7 +333,6 @@ export type SignedIn = { name: string; company: string; stand: string };
 
 /** Who is signed in to a chat, for the chat and the Inbox. */
 export async function signedInAs(c: SignedInChat, now = new Date()): Promise<SignedIn | null> {
-  const id = activeExhibitorId(c, now);
-  const ex = id ? await exhibitorById(id) : null;
+  const ex = await signedInRow(c, now);
   return ex ? { name: ex.name, company: ex.company, stand: ex.stand } : null;
 }

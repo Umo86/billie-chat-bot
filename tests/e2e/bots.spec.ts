@@ -419,15 +419,18 @@ test("a visitor chats on the chat page: answer, rating, then the team", async ({
     page.getByText(/Signed in from the exhibitor manual as Sam Patel, Acme Displays Ltd/),
   ).toBeVisible();
   await shot(page, "chat-signed-in-from-manual");
-  // Jo, next on the same laptop, gets a chat of their own too, never Sam's.
+  // Next on the same laptop, someone the manual vouches for but who isn't on the list yet:
+  // told why, and never shown Sam's chat.
+  await page.goto("about:blank");
+  await page.goto(signIn("stranger@nowhere.test"));
+  await expect(page.getByText(/can't find your email on this show's exhibitor list/)).toBeVisible();
+  await expect(page.getByText(/Stand plan approved/)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Stand B12" })).toHaveCount(0);
+  // Jo, next, gets a chat of their own too.
   await page.goto("about:blank");
   await page.goto(signIn("jo@bolt-co.test"));
   await expect(page.getByRole("button", { name: "Stand C4" })).toBeVisible();
   await expect(page.getByText(/Stand plan approved/)).toHaveCount(0);
-  // Someone the manual vouches for, but who isn't on the list: told why.
-  await page.goto("about:blank");
-  await page.goto(signIn("stranger@nowhere.test"));
-  await expect(page.getByText(/can't find your email on this show's exhibitor list/)).toBeVisible();
   await visitor.close();
 });
 

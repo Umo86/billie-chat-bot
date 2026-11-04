@@ -51,11 +51,22 @@ export function formatPassages(passages: PromptPassage[]): string {
     .join("\n\n");
 }
 
-/** Strips characters that could fake a section boundary; keeps the text readable. */
+const FENCE = /<\/?untrusted[^>]*>/gi;
+
+/**
+ * Strips what could fake a section boundary; keeps the text readable. Again
+ * and again, until none is left: taking one out can join the pieces of
+ * another ("<</untrusted>/untrusted>"). Cut first, so that's always quick.
+ */
 export function quoteUntrusted(text: string, max = 8000): string {
-  return stripInvisible(text)
-    .replace(/<\/?untrusted[^>]*>/gi, "")
-    .slice(0, max);
+  let out = stripInvisible(text.slice(0, max * 2));
+  for (let round = 0; round < 50; round++) {
+    const next = out.replace(FENCE, "");
+    if (next === out) return out.slice(0, max);
+    out = next;
+  }
+  // Still building fences after 50 rounds: no tag can be left at all.
+  return out.replace(/</g, "‹").slice(0, max);
 }
 
 /**

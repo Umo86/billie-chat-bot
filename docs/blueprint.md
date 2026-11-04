@@ -120,7 +120,8 @@ What Billie does with it:
   last one.
 - If it doesn't work, the chat says why in plain words: the sign-in has run
   out (reload the page), or their email isn't on the list yet. They can
-  still ask anything; Billie just can't answer about their own stand.
+  still ask anything; Billie just can't answer about their own stand. The
+  chat starts afresh, so they never see one from before.
 
 ### Keep the exhibitor list up to date
 
@@ -153,7 +154,8 @@ Content-Type: application/json
 ```
 
 - **The whole list, every time.** Exhibitors missing from it are removed
-  from Billie's list, and their sign-ins end.
+  from Billie's list, and their sign-ins end. So do the sign-ins of
+  addresses taken off an exhibitor.
 - **`id`** is BluePrint's own id for the exhibitor (text or a number, up
   to 200 characters), one per exhibitor. The same id keeps the same row in
   Billie, so an exhibitor who's signed in stays signed in.

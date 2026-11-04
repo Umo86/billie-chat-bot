@@ -669,7 +669,7 @@ export async function visitorUpdates(
 async function signedInRecord(conversationId: string): Promise<{ record: string } | null> {
   const c = await db.query.conversations.findFirst({
     where: eq(conversations.id, conversationId),
-    columns: { exhibitorId: true, signedInAt: true },
+    columns: { exhibitorId: true, signedInAt: true, signedInEmail: true },
   });
   const record = c ? await recordFor(c) : null;
   return record ? { record } : null;

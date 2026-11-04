@@ -1,3 +1,5 @@
+import { parseHTML } from "linkedom";
+
 /**
  * Finding a website's pages (pure): from its sitemap (or sitemap index),
  * or else from the links on its home page; keeping only pages on the same
@@ -11,30 +13,85 @@ export const MAX_PAGES = 500;
 /** Most sitemaps read for one website (an index can list many). */
 export const MAX_SITEMAPS = 10;
 
-const decode = (s: string) =>
-  s
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+/** Most addresses taken from one sitemap, and the longest address kept. */
+export const MAX_LOCS = MAX_PAGES * 4;
+const MAX_URL = 2048;
+/** Most robots.txt rules and sitemaps kept, and links taken from a home page. */
+const MAX_RULES = 1000;
+const MAX_ROBOTS_SITEMAPS = 50;
+const MAX_LINKS = MAX_PAGES * 4;
+
+/** Entities and a CDATA wrapper, without regular expressions that can backtrack. */
+function decode(raw: string): string {
+  let s = raw.trim();
+  if (s.startsWith("<![CDATA[") && s.endsWith("]]>")) s = s.slice(9, -3).trim();
+  return s
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .trim();
+    .replace(/&apos;/g, "'");
+}
+
+/** Lower-cases A-Z only, so every position still matches the original text. */
+const asciiLower = (s: string) => s.replace(/[A-Z]+/g, (m) => m.toLowerCase());
+
+/**
+ * What's inside each <tag>…</tag> (with or without attributes, but not a
+ * longer name: <url> isn't <urlset>), in order, at most `max`. One pass with
+ * indexOf, never going back: a hostile sitemap (thousands of tags that never
+ * close) can't make it slow.
+ */
+function inside(text: string, tag: string, max: number, lower = asciiLower(text)): string[] {
+  const out: string[] = [];
+  const open = `<${tag}`;
+  const close = `</${tag}`;
+  let from = 0;
+  while (out.length < max) {
+    const at = lower.indexOf(open, from);
+    if (at < 0) break;
+    const next = lower[at + open.length] ?? "";
+    if (next !== ">" && next !== "/" && !/\s/.test(next)) {
+      from = at + open.length; // a longer name
+      continue;
+    }
+    const gt = lower.indexOf(">", at + open.length);
+    if (gt < 0) break;
+    if (lower[gt - 1] === "/") {
+      from = gt + 1; // <tag/>: nothing inside
+      continue;
+    }
+    const end = lower.indexOf(close, gt + 1);
+    if (end < 0) break;
+    out.push(text.slice(gt + 1, end));
+    from = end + close.length;
+  }
+  return out;
+}
+
+/** The address in a <url> or <sitemap> block, if it has a usable one. */
+function locIn(block: string, lower: string): string | null {
+  const [loc] = inside(block, "loc", 1, lower);
+  if (loc === undefined || loc.length > MAX_URL + 100) return null;
+  const url = decode(loc);
+  return url && url.length <= MAX_URL ? url : null;
+}
 
 /** The pages and child sitemaps in a sitemap or sitemap index. */
 export function parseSitemap(xml: string): { pages: FoundPage[]; sitemaps: string[] } {
-  const pages: FoundPage[] = [];
+  const lower = asciiLower(xml);
   const sitemaps: string[] = [];
-  const block = /<(url|sitemap)\b[^>]*>([\s\S]*?)<\/\1>/gi;
-  for (const m of xml.matchAll(block)) {
-    const loc = /<loc\b[^>]*>([\s\S]*?)<\/loc>/i.exec(m[2])?.[1];
-    if (!loc) continue;
-    const url = decode(loc);
-    if (m[1].toLowerCase() === "sitemap") sitemaps.push(url);
-    else {
-      const lastmod = /<lastmod\b[^>]*>([\s\S]*?)<\/lastmod>/i.exec(m[2])?.[1];
-      pages.push({ url, lastmod: lastmod ? decode(lastmod) : null });
-    }
+  for (const block of inside(xml, "sitemap", MAX_SITEMAPS * 5, lower)) {
+    const url = locIn(block, asciiLower(block));
+    if (url) sitemaps.push(url);
+  }
+  const pages: FoundPage[] = [];
+  for (const block of inside(xml, "url", MAX_LOCS, lower)) {
+    const blockLower = asciiLower(block);
+    const url = locIn(block, blockLower);
+    if (!url) continue;
+    const [lastmod] = inside(block, "lastmod", 1, blockLower);
+    pages.push({ url, lastmod: lastmod ? decode(lastmod).slice(0, 40) : null });
   }
   return { pages, sitemaps };
 }
@@ -55,7 +112,7 @@ export function readRobots(text: string): {
     const key = m[1].toLowerCase();
     const value = m[2].trim();
     if (key === "sitemap") {
-      if (value) sitemaps.push(value);
+      if (value && sitemaps.length < MAX_ROBOTS_SITEMAPS) sitemaps.push(value);
       continue;
     }
     if (key === "user-agent") {
@@ -68,7 +125,8 @@ export function readRobots(text: string): {
     if (key === "allow" || key === "disallow") {
       inRules = true;
       const forUs = agents.some((a) => a === "*" || a.startsWith("billiebot"));
-      if (forUs && value) rules.push({ allow: key === "allow", path: value });
+      if (forUs && value && rules.length < MAX_RULES)
+        rules.push({ allow: key === "allow", path: value.slice(0, MAX_URL) });
     }
   }
   return { sitemaps, rules };
@@ -84,12 +142,16 @@ export function robotsAllow(rules: { allow: boolean; path: string }[], path: str
   return best ? best.allow : true;
 }
 
-/** Links on a page, as full addresses. */
+/** Links on a page, as full addresses (read with a real HTML parser, so it's never slow). */
 export function linksIn(html: string, base: string): string[] {
+  const { document } = parseHTML(`<!doctype html><html><body>${html}</body></html>`);
   const out: string[] = [];
-  for (const m of html.matchAll(/<a\b[^>]*\bhref\s*=\s*(["'])(.*?)\1/gi)) {
+  for (const a of document.querySelectorAll("a[href]")) {
+    if (out.length >= MAX_LINKS) break;
+    const href = (a.getAttribute("href") ?? "").trim();
+    if (!href || href.length > MAX_URL) continue;
     try {
-      out.push(new URL(decode(m[2]), base).toString());
+      out.push(new URL(href, base).toString());
     } catch {
       // not an address
     }
