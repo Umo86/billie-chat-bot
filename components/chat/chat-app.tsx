@@ -13,7 +13,10 @@ import { cn } from "@/lib/utils";
  * The chat people see: in the website widget (mode "widget", inside the
  * /embed frame) and on the chat page (mode "page", /c/…). Talks only to
  * this app's public chat API; the chat is remembered in this browser by its
- * token, so a reload carries on where it left off.
+ * token, so a reload carries on where it left off. An exhibitor signed in to
+ * BluePrint, the exhibitor manual, arrives with a sign-in in the address's
+ * "#exhibitor-token=…" (never sent to a server, so never in a log), and the
+ * chat opens signed in as them.
  */
 type Status = "bot" | "waiting" | "live" | "collecting" | "ticket" | "replied" | "closed";
 type Msg = {
@@ -40,6 +43,8 @@ type Turn = {
   form: { fields: ContactField[]; promise: string } | null;
   request?: RequestOffer | null;
   signedIn?: SignedIn | null;
+  /** Why signing in from the exhibitor manual didn't work. */
+  signInNote?: string;
 };
 type SignedIn = { name: string; company: string; stand: string };
 
@@ -48,6 +53,20 @@ const POLL_IDLE_MS = 15_000;
 /** Stop checking a chat with Billie after 10 quiet minutes. */
 const IDLE_MS = 10 * 60_000;
 let pendingSeq = 0;
+
+/** The sign-in from the exhibitor manual, taken out of the address so it isn't kept or shared. */
+function takeManualToken(): string | null {
+  try {
+    const m = /(?:^#|&)exhibitor-token=([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)/.exec(
+      window.location.hash,
+    );
+    if (!m) return null;
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    return m[1];
+  } catch {
+    return null;
+  }
+}
 
 function storageKey(slug: string, channel: string) {
   return `billie:${slug}:${channel}`;
@@ -126,6 +145,8 @@ export function ChatApp({
   const [codeSent, setCodeSent] = useState<string | null>(null);
   const list = useRef<HTMLOListElement>(null);
   const tokenRef = useRef<string | null>(null);
+  /** Signed in to the exhibitor manual: kept until the chat is signed in (or it didn't work). */
+  const manualToken = useRef<string | null>(null);
   const lastAt = useRef<string | null>(null);
   const on = textOn(bot.color);
 
@@ -185,13 +206,59 @@ export function ChatApp({
     setSignedIn(null);
   }, [key]);
 
+  // From the exhibitor manual: sign this browser's chat in, or, with no chat
+  // yet, show them signed in and sign in the chat their first message starts.
+  // A chat that's someone else's (a shared laptop) or closed is left alone:
+  // they get a new one, and never see the old one.
+  const manualSignIn = useCallback(async (): Promise<"signed" | "pending" | "failed"> => {
+    for (let attempt = 0; attempt < 2 && manualToken.current; attempt++) {
+      try {
+        const { res, body } = await api("sign-in-token", {
+          method: "POST",
+          body: JSON.stringify({ token: manualToken.current }),
+        });
+        if (res.status === 409 && body.reason === "new_chat" && attempt === 0) {
+          forget();
+          continue;
+        }
+        if (!res.ok) {
+          manualToken.current = null;
+          if (res.status !== 404) setError(body.error ?? null);
+          return "failed";
+        }
+        if (body.pending) {
+          setSignedIn(body.signedIn ?? null);
+          return "pending";
+        }
+        manualToken.current = null;
+        absorb(body as Turn);
+        return "signed";
+      } catch {
+        /* offline: they can still ask, or sign in with a code */
+        return "failed";
+      }
+    }
+    return "failed";
+  }, [api, absorb, forget]);
+
   // Carry on a chat this browser already has.
   useEffect(() => {
     let cancelled = false;
+    manualToken.current ??= takeManualToken();
     async function restore() {
       const saved = readToken(key);
-      if (saved) {
-        tokenRef.current = saved;
+      if (saved) tokenRef.current = saved;
+      // From the manual: whose chat it is is checked before any of it is shown.
+      if (manualToken.current) {
+        const outcome = await manualSignIn();
+        if (cancelled) return;
+        if (outcome !== "failed") {
+          if (tokenRef.current) setToken(tokenRef.current);
+          setRestored(true);
+          return;
+        }
+      }
+      if (saved && tokenRef.current) {
         try {
           const { res, body } = await api("messages");
           if (cancelled) return;
@@ -211,7 +278,7 @@ export function ChatApp({
     return () => {
       cancelled = true;
     };
-  }, [key, api, absorb, forget]);
+  }, [key, api, absorb, forget, manualSignIn]);
 
   // Check for the team's replies: often while a person has the chat, now and
   // then for a recent chat with Billie (a team member may step in).
@@ -258,10 +325,12 @@ export function ChatApp({
       createdAt: new Date().toISOString(),
     };
     setMessages((m) => [...m, temp]);
+    // The first message of someone signed in to the manual starts the chat signed in.
+    const signInToken = !tokenRef.current ? (manualToken.current ?? undefined) : undefined;
     try {
       const { res, body } = await api("messages", {
         method: "POST",
-        body: JSON.stringify({ text: q, pageUrl: pageUrl ?? undefined, channel }),
+        body: JSON.stringify({ text: q, pageUrl: pageUrl ?? undefined, channel, signInToken }),
       });
       setMessages((m) => m.filter((x) => x.id !== temp.id));
       if (!res.ok) {
@@ -270,7 +339,9 @@ export function ChatApp({
         if (res.status === 404 && tokenRef.current) forget();
         return;
       }
+      if (signInToken) manualToken.current = null;
       absorb(body as Turn);
+      if ((body as Turn).signInNote) setError((body as Turn).signInNote!);
     } catch {
       setMessages((m) => m.filter((x) => x.id !== temp.id));
       setText(q);
@@ -351,6 +422,13 @@ export function ChatApp({
   }
 
   async function signOutOfStand() {
+    manualToken.current = null;
+    if (!tokenRef.current) {
+      // Signed in from the manual, with no chat yet: nothing to tell the server.
+      setSignedIn(null);
+      setStandOpen(false);
+      return;
+    }
     const turn = await post("sign-out");
     if (turn) absorb(turn as Turn);
     setStandOpen(false);
@@ -398,7 +476,7 @@ export function ChatApp({
         {channel === "try" ? (
           <span className="rounded-md bg-black/20 px-2 py-0.5 text-[0.72rem] font-bold">TEST</span>
         ) : null}
-        {bot.signIn && status !== "closed" ? (
+        {(bot.signIn || signedIn) && status !== "closed" ? (
           <button
             type="button"
             onClick={() => setStandOpen((o) => !o)}

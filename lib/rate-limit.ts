@@ -30,6 +30,11 @@ export const LIMITS = {
   chatSignInEmail: { window: 3600, max: 5 },
   chatSignInEmailDaily: { window: 86_400, max: 10 },
   chatVerify: { window: 900, max: 10 },
+  /** Signing in from the exhibitor manual, per visitor address: a whole hall can share one. */
+  chatManualSignIn: { window: 3600, max: 300 },
+  /** BluePrint's list updates: per address before the key is checked, then per key. */
+  blueprintIp: { window: 900, max: 60 },
+  blueprintSync: { window: 3600, max: 60 },
   /** WhatsApp, per sender. */
   whatsappSender: { window: 3600, max: 40 },
   whatsappSenderDaily: { window: 86_400, max: 200 },

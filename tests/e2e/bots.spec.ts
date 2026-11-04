@@ -1,6 +1,7 @@
 import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { shot, signInAsAdmin } from "./helpers";
+import { signToken } from "../../lib/exhibitors/blueprint-rules";
 
 /**
  * A bot and its own knowledge: the bot's steps (look, personality, its
@@ -8,6 +9,9 @@ import { shot, signInAsAdmin } from "./helpers";
  * through to a passing test run and going live.
  */
 test.describe.configure({ mode: "serial" });
+
+/** The exhibitor bot's BluePrint key, shown once when it's made (first test), as BluePrint keeps it. */
+let blueprintKey = "";
 
 test("build a bot with its own knowledge, test it and put it live", async ({ page }) => {
   await signInAsAdmin(page);
@@ -105,7 +109,22 @@ test("build a bot with its own knowledge, test it and put it live", async ({ pag
   await page.reload();
   await expect(columns.getByRole("checkbox", { name: "Electrics ordered" })).not.toBeChecked();
   await expect(columns.getByRole("checkbox", { name: "Stand type" })).toBeChecked();
+  // BluePrint, the exhibitor manual: an admin connects it, and its key is shown once.
+  const blueprint = page.getByTestId("blueprint");
+  await expect(blueprint).toContainText("For whoever sets up BluePrint");
+  await blueprint.getByRole("button", { name: "Connect BluePrint" }).click();
+  const key = blueprint.locator("#blueprint-key");
+  await expect(key).toHaveText(/^bp_[a-z0-9]{12}_[A-Za-z0-9_-]{43}$/);
+  blueprintKey = (await key.textContent())!.trim();
+  await expect(blueprint.getByTestId("blueprint-status")).toContainText("Connected");
+  await expect(blueprint).toContainText("BluePrint hasn't sent the exhibitor list yet.");
+  // Signed in from the manual, exhibitors need no code: so no email sending either.
+  await expect(personal).toContainText("Exhibitors are signed in from the exhibitor manual.");
   await shot(page, "bot-exhibitors");
+  await blueprint.getByRole("button", { name: "I've copied it" }).click();
+  await expect(key).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByTestId("blueprint")).not.toContainText(blueprintKey.slice(16));
   // Removing the list asks first, on the page.
   await list.getByRole("button", { name: "Remove list" }).click();
   await expect(list.getByText(/Remove the list\?/)).toBeVisible();
@@ -318,6 +337,97 @@ test("a visitor chats on the chat page: answer, rating, then the team", async ({
   await page.reload();
   await expect(page.getByText(/Thanks, Priya\. The team will reply/)).toBeVisible();
   await expect(page.getByText(/Monday 8 March at 8am/).first()).toBeVisible();
+
+  // BluePrint, the exhibitor manual, sends the exhibitor list with the bot's key.
+  const api = "/api/public/blueprint/exhibitors";
+  const list = {
+    exhibitors: [
+      {
+        id: "acme",
+        company: "Acme Displays Ltd",
+        stand: "B12",
+        name: "Sam Patel",
+        emails: ["sam@acme-displays.test"],
+        fields: {
+          "Stand type": "Shell scheme",
+          "Stand plan approved": false,
+          "Electrics ordered": true,
+        },
+      },
+      {
+        id: "bolt",
+        company: "Bolt & Co",
+        stand: "C4",
+        name: "Jo Bloggs",
+        emails: ["jo@bolt-co.test", "ops@bolt-co.test"],
+        fields: {
+          "Stand type": "Space only",
+          "Stand plan approved": true,
+          "Electrics ordered": false,
+        },
+      },
+      {
+        id: "northwind",
+        company: "Northwind Stands",
+        stand: "D7",
+        name: "Alex Kim",
+        emails: ["alex@northwind-stands.test"],
+        fields: { "Stand type": "Space only", "Stand plan approved": false },
+      },
+      { id: "contoso", company: "Contoso Build", stand: "A1", emails: [] },
+    ],
+  };
+  const wrong = await visitor.request.post(api, {
+    headers: { Authorization: `Bearer ${blueprintKey.slice(0, -4)}xxxx` },
+    data: list,
+  });
+  expect(wrong.status()).toBe(401);
+  const sent = await visitor.request.post(api, {
+    headers: { Authorization: `Bearer ${blueprintKey}` },
+    data: list,
+  });
+  expect(await sent.json()).toEqual({
+    exhibitors: 3,
+    added: 3,
+    updated: 0,
+    removed: 3,
+    skipped: 1,
+  });
+  const check = await visitor.request.get(api, {
+    headers: { Authorization: `Bearer ${blueprintKey}` },
+  });
+  expect(await check.json()).toMatchObject({
+    bot: "Exhibitor Help",
+    exhibitors: 3,
+    from: "blueprint",
+  });
+
+  // Sam, signed in to the manual, opens the chat on this laptop: it opens signed in as Sam,
+  // with a chat of their own (Priya's stays hers), and the sign-in leaves the address.
+  const signIn = (email: string) =>
+    `/c/exhibitor-help#exhibitor-token=${signToken(blueprintKey, email)}`;
+  await page.goto("about:blank"); // a new page load, not a jump within this one
+  await page.goto(signIn("sam@acme-displays.test"));
+  await expect(page.getByRole("button", { name: "Stand B12" })).toBeVisible();
+  await expect(page).toHaveURL(/\/c\/exhibitor-help$/);
+  await expect(page.getByText(/Thanks, Priya/)).toHaveCount(0);
+  await page.getByLabel("Your message").fill("Has our stand plan been approved?");
+  await page.getByLabel("Your message").press("Enter");
+  await expect(page.getByText(/Stand plan approved: No/).first()).toBeVisible({ timeout: 20_000 });
+  await page.reload();
+  await expect(
+    page.getByText(/Signed in from the exhibitor manual as Sam Patel, Acme Displays Ltd/),
+  ).toBeVisible();
+  await shot(page, "chat-signed-in-from-manual");
+  // Jo, next on the same laptop, gets a chat of their own too, never Sam's.
+  await page.goto("about:blank");
+  await page.goto(signIn("jo@bolt-co.test"));
+  await expect(page.getByRole("button", { name: "Stand C4" })).toBeVisible();
+  await expect(page.getByText(/Stand plan approved/)).toHaveCount(0);
+  // Someone the manual vouches for, but who isn't on the list: told why.
+  await page.goto("about:blank");
+  await page.goto(signIn("stranger@nowhere.test"));
+  await expect(page.getByText(/can't find your email on this show's exhibitor list/)).toBeVisible();
   await visitor.close();
 });
 
@@ -368,6 +478,24 @@ test("the website widget shows only on the bot's own websites", async ({ browser
   expect(direct.headers()["content-security-policy"]).toContain(
     "frame-ancestors 'self' https://ukconstructionweek.com https://*.ukconstructionweek.com",
   );
+
+  // On the exhibitor manual (a page of the show's own site), the chat opens signed in.
+  await visitor.route("https://manual.ukconstructionweek.com/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "text/html",
+      body: hostPage("").replace(
+        'data-bot="exhibitor-help"',
+        `data-bot="exhibitor-help" data-exhibitor-token="${signToken(blueprintKey, "alex@northwind-stands.test")}"`,
+      ),
+    }),
+  );
+  const manual = await visitor.newPage();
+  await manual.goto("https://manual.ukconstructionweek.com/my-stand");
+  await manual.getByRole("button", { name: "Chat with Exhibitor Help" }).click();
+  const signedIn = manual.frameLocator('iframe[title="Chat with Exhibitor Help"]');
+  await expect(signedIn.getByRole("button", { name: "Stand D7" })).toBeVisible({ timeout: 15_000 });
+  await manual.close();
 
   // Copied onto another website, the button doesn't appear.
   const other = await visitor.newPage();

@@ -37,7 +37,14 @@ import {
   signInOpen,
   signOut,
   verifyCode,
+  type SignedIn,
 } from "@/lib/exhibitors/sign-in";
+import {
+  manualSignInLine,
+  manualSignInOpen,
+  readManualSignIn,
+  signInFromManual,
+} from "@/lib/exhibitors/blueprint";
 
 /**
  * The public chat API, used by the chat frame (/embed/…) and the chat page
@@ -53,6 +60,7 @@ import {
  *   POST request           { typeId, answers, contact } from a request form
  *   POST sign-in           { email } an exhibitor asks for a code to sign in
  *   POST verify            { code } the code from their email
+ *   POST sign-in-token     { token } signed in from BluePrint, the exhibitor manual
  *   POST sign-out          stop using their record in this chat
  *
  * A chat belongs to whoever holds its token (Authorization: Bearer …). No
@@ -126,7 +134,10 @@ const messageBody = z.object({
   text: z.string().max(4000),
   pageUrl: z.string().max(1000).optional(),
   channel: z.enum(["web", "hosted", "try"]).optional(),
+  /** From the exhibitor manual, with the first message of a chat (see "sign-in-token"). */
+  signInToken: z.string().max(2048).optional(),
 });
+const manualBody = z.object({ token: z.string().min(1).max(2048) });
 const detailsBody = z.object({ contact: z.record(z.string(), z.unknown()) });
 const requestBody = z.object({
   typeId: z.string().min(1).max(20),
@@ -156,6 +167,7 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
       "request",
       "sign-in",
       "verify",
+      "sign-in-token",
       "sign-out",
     ].includes(action)
   )
@@ -201,6 +213,42 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
       token = started.token ?? undefined;
     }
 
+    // Signed in to BluePrint, the exhibitor manual: the chat opens signed in,
+    // with no code. Nothing is kept until they ask something: with no chat
+    // yet, the token comes again with the first message, which starts the
+    // chat signed in. A chat signed in as someone else, or closed, is never
+    // signed in as them: the chat starts a new one.
+    if (action === "sign-in-token") {
+      if (channel === "whatsapp" || !(await manualSignInOpen(bot)))
+        return problem(404, "Signing in isn't available in this chat.");
+      const parsed = manualBody.safeParse(body);
+      if (!parsed.success)
+        return problem(400, manualSignInLine("malformed"), { reason: "malformed" });
+      if (!(await allow(`chat:manual:${ip}`, LIMITS.chatManualSignIn)))
+        return problem(429, "Too many sign-ins from here. Wait a few minutes, then try again.");
+      const who = await readManualSignIn(bot, parsed.data.token);
+      if (!who.ok)
+        return problem(who.reason === "not_listed" ? 403 : 401, manualSignInLine(who.reason), {
+          reason: who.reason,
+        });
+      const signedIn: SignedIn = {
+        name: who.exhibitor.name,
+        company: who.exhibitor.company,
+        stand: who.exhibitor.stand,
+      };
+      if (!conversation) return json({ pending: true, signedIn });
+      if (!(await allow(`chat:conv:${conversation.id}`, LIMITS.chatPerConversation)))
+        return problem(429, "Too many requests. Wait a few minutes, then try again.");
+      const done =
+        conversation.status === "closed" ? null : await signInFromManual(bot, conversation.id, who);
+      if (!done || done.result === "other")
+        return problem(409, "This chat can't be signed in as you. Start a new one.", {
+          reason: "new_chat",
+        });
+      const fresh = await callerConversation(request, bot);
+      return json(await visitorUpdates(bot, fresh ?? conversation, null));
+    }
+
     if (action === "messages") {
       const parsed = messageBody.safeParse(body);
       if (!parsed.success) return problem(400, "Type a message first.");
@@ -212,14 +260,40 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
           : await allow(`chat:start:${ip}`, LIMITS.chatStart));
       if (!allowed)
         return problem(429, "You've sent a lot of messages. Wait a few minutes, then try again.");
+      const pageUrl = cleanPageUrl(parsed.data.pageUrl);
+      // The first message from someone signed in to the manual: the chat starts signed in,
+      // so Billie's first answer can already use their record.
+      let manual: { token?: string; signedIn: SignedIn | null; signInNote?: string } | null = null;
+      if (
+        !conversation &&
+        parsed.data.signInToken &&
+        channel !== "whatsapp" &&
+        (await manualSignInOpen(bot))
+      ) {
+        const who = await readManualSignIn(bot, parsed.data.signInToken);
+        if (who.ok) {
+          const started = await startConversation({ bot, channel, pageUrl });
+          conversation = started.conversation;
+          const done = await signInFromManual(bot, conversation.id, who);
+          manual = { token: started.token ?? undefined, signedIn: done.signedIn };
+        } else manual = { signedIn: null, signInNote: manualSignInLine(who.reason) };
+      }
+      const turn = await visitorMessage({
+        bot,
+        conversation,
+        channel,
+        text: parsed.data.text,
+        pageUrl,
+      });
       return json(
-        await visitorMessage({
-          bot,
-          conversation,
-          channel,
-          text: parsed.data.text,
-          pageUrl: cleanPageUrl(parsed.data.pageUrl),
-        }),
+        manual
+          ? {
+              ...turn,
+              ...(manual.token ? { token: manual.token } : {}),
+              signedIn: manual.signedIn,
+              ...(manual.signInNote ? { signInNote: manual.signInNote } : {}),
+            }
+          : turn,
       );
     }
 
@@ -232,15 +306,19 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
       return json(await handover(bot, conversation.id, reason));
     }
     if (action === "cancel") return json(await cancelDetails(conversation.id));
-    if (action === "sign-in" || action === "verify" || action === "sign-out") {
+    if (action === "sign-out") {
+      if (channel === "whatsapp" || !((await signInOpen(bot)) || (await manualSignInOpen(bot))))
+        return problem(404, "Signing in isn't available in this chat.");
+      if (conversation.status === "closed")
+        return problem(409, "This chat has ended. Start a new one.");
+      await signOut(conversation.id);
+      return json(await visitorUpdates(bot, { ...conversation, exhibitorId: null }, null));
+    }
+    if (action === "sign-in" || action === "verify") {
       if (channel === "whatsapp" || !(await signInOpen(bot)))
         return problem(404, "Signing in isn't available in this chat.");
       if (conversation.status === "closed")
         return problem(409, "This chat has ended. Start a new one.");
-      if (action === "sign-out") {
-        await signOut(conversation.id);
-        return json(await visitorUpdates(bot, { ...conversation, exhibitorId: null }, null));
-      }
       if (action === "sign-in") {
         const parsed = signInBody.safeParse(body);
         if (!parsed.success) return badEmail();

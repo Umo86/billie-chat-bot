@@ -33,6 +33,8 @@ export type AnswerBot = {
   requestTypes: RequestType[];
   /** Exhibitors can sign in for answers from their own record (not on WhatsApp). */
   personal: boolean;
+  /** How: the chat's "Your stand" button, or only by opening the chat from the exhibitor manual. */
+  signInBy?: "button" | "manual";
 };
 
 export type AnswerResult = {
@@ -134,6 +136,7 @@ export async function answerQuestion(input: {
       alwaysHuman: bot.rules.alwaysHuman,
       requests: bot.requestTypes.map((r) => ({ id: r.id, name: r.name, when: r.when })),
       personal: bot.personal,
+      signInBy: bot.signInBy,
     }),
     knowledge: knowledgeBlock(found),
     user: answerUser(

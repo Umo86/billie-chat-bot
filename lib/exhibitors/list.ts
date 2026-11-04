@@ -32,9 +32,9 @@ export type ReadList = {
 };
 
 export const MAX_EXHIBITORS = 5000;
-const MAX_FIELDS = 40;
-const MAX_VALUE = 500;
-const MAX_HEADING = 100;
+export const MAX_FIELDS = 40;
+export const MAX_VALUE = 500;
+export const MAX_HEADING = 100;
 /** Columns read from each row: plenty for any list, and a wide sheet can't fill the memory. */
 const MAX_COLUMNS = 200;
 /** Rows read, blank and address-less ones included. */

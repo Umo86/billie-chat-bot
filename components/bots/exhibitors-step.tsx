@@ -34,6 +34,8 @@ type ExhibitorList = {
   hiddenColumns: string[];
   /** "3 h ago, by Sam Patel" */
   uploaded: string;
+  /** A spreadsheet someone uploaded, or the list BluePrint sends. */
+  source: "upload" | "blueprint";
   sample: Listed[];
 };
 
@@ -52,6 +54,7 @@ export function ExhibitorsStep({
   list,
   personalAnswers,
   emailReady,
+  manual,
   canEdit,
   next,
   nextLabel,
@@ -62,6 +65,8 @@ export function ExhibitorsStep({
   list: ExhibitorList | null;
   personalAnswers: boolean;
   emailReady: boolean;
+  /** BluePrint is connected: exhibitors signed in to the manual are signed in to the chat. */
+  manual: boolean;
   canEdit: boolean;
   next: string;
   nextLabel: string;
@@ -98,8 +103,8 @@ export function ExhibitorsStep({
   const extra = list?.columns.slice(0, SAMPLE_COLUMNS) ?? [];
   const waiting = !list
     ? "Upload the exhibitor list first."
-    : !emailReady
-      ? "Signing in needs email sending set up (an admin adds RESEND_API_KEY and EMAIL_FROM)."
+    : !emailReady && !manual
+      ? "Signing in needs email sending set up (an admin adds RESEND_API_KEY and EMAIL_FROM), or BluePrint connected below."
       : null;
 
   return (
@@ -118,8 +123,9 @@ export function ExhibitorsStep({
         {list ? (
           <>
             <p>
-              <strong>{list.fileName}</strong>: {plural(list.rows, "exhibitor", "exhibitors")},
-              uploaded {list.uploaded}.
+              <strong>{list.source === "blueprint" ? "From BluePrint" : list.fileName}</strong>:{" "}
+              {plural(list.rows, "exhibitor", "exhibitors")},{" "}
+              {list.source === "blueprint" ? "updated" : "uploaded"} {list.uploaded}.
               {list.skipped
                 ? ` ${plural(list.skipped, "row", "rows")} without an email address ${list.skipped === 1 ? "was" : "were"} left out.`
                 : ""}
@@ -211,7 +217,9 @@ export function ExhibitorsStep({
         ) : null}
         {list && canEdit && !confirmRemove ? (
           <p className="text-sm text-muted-foreground">
-            A new list replaces this one, and anyone signed in with the old one signs in again.
+            {list.source === "blueprint"
+              ? "BluePrint keeps this list up to date. A spreadsheet you upload replaces it until BluePrint next sends the list."
+              : "A new list replaces this one, and anyone signed in with the old one signs in again."}
           </p>
         ) : null}
         {confirmRemove ? (
@@ -262,7 +270,8 @@ export function ExhibitorsStep({
               Exhibitors tap <strong>Your stand</strong> in the chat and type the email they booked
               with. Billie emails them a six-digit code. Once they type it in, Billie answers from
               their row of the list: their stand, orders and times. It never shows anyone
-              else&apos;s.
+              else&apos;s. With BluePrint connected, exhibitors signed in to the manual skip the
+              code.
             </p>
           </div>
           <Switch
@@ -280,9 +289,16 @@ export function ExhibitorsStep({
           />
         </div>
         <p className="flex flex-wrap items-center gap-2 text-sm">
-          {on && !waiting ? (
+          {on && !waiting && !emailReady ? (
+            <>
+              <Chip tone="good">On</Chip> Exhibitors are signed in from the exhibitor manual.
+              Signing in with a code needs email sending set up (an admin adds RESEND_API_KEY and
+              EMAIL_FROM).
+            </>
+          ) : on && !waiting ? (
             <>
               <Chip tone="good">On</Chip> The chat shows a Your stand button.
+              {manual ? " Exhibitors coming from the manual are signed in already." : ""}
             </>
           ) : on ? (
             <>

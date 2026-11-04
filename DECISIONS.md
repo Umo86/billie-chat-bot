@@ -279,12 +279,59 @@ can't use up the server's memory.
 
 Their row goes to Claude as the last numbered passage, with the message
 rather than in the cached knowledge, and the prompt says to use it only for
-their own stand. Billie only tells people to sign in when the chat really
-shows the button (setting on, list uploaded, email sending set up). The
+their own stand. Billie only tells people to sign in when they really can
+(setting on, list uploaded, and email sending set up or BluePrint
+connected). The
 team's suggested reply gets the row too. Not on WhatsApp: there's no way to
 show a code form there. The list is personal data: only people on the bot
 see it, it's in privacy requests (by email), it goes with the bot, and a
 list nobody has uploaded again within the retention time is deleted.
+
+## BluePrint signs exhibitors in, and sends the whole list
+
+BluePrint, the exhibitor manual, already knows who an exhibitor is: they
+signed in to it. So an exhibitor bot can trust it instead of a code by
+email (docs/blueprint.md is the guide for BluePrint's side). An admin
+connects it on the Exhibitors step: Billie makes one key per bot, shows it
+once, and keeps only its SHA-256 (to check list updates) and a signing key
+made from it (SHA-256 of "billie-sign-in:" and the key, to check
+sign-ins). Someone who reads Billie's database could sign people in to
+chats with what they find (and could read the list anyway), but couldn't
+change the list. The key's first 12 characters say which bot it is, so a
+request needs nothing else. A new key replaces the old one at once.
+
+A sign-in is a JWT, HS256 only (never "none", never a key the token
+names), with the key id in the header, from "blueprint" to "billie", the
+exhibitor's email as the subject, and at most 12 hours between when it was
+made and when it ends (a minute's clock difference allowed). The signature
+is checked before anything it says. It goes to the chat after the "#" of
+the frame's address (from the widget's data-exhibitor-token, or a link to
+the chat page), so it never reaches a server log; the chat takes it out of
+the address at once. It only signs in an email on the bot's list, and only
+a chat that isn't someone else's: one signed in as another address (even
+if that sign-in has run out) or where someone left another email gets left
+alone, and the browser starts a new chat, so on a shared laptop nobody
+sees the last person's chat. That's checked before the old chat is shown.
+With no chat yet, nothing is kept until they ask something: the first
+message carries the sign-in again and starts the chat signed in, so empty
+chats never reach the reports. Signing in from the manual needs no email
+sending; the prompt then tells people to open the chat from the manual
+rather than pointing to a button that isn't there.
+
+The list comes whole each time (POST /api/public/blueprint/exhibitors,
+the key as a bearer token), not as changes: a missed update can't leave it
+wrong for long, and BluePrint needs no record of what it sent. Exhibitors
+match on BluePrint's own id, so the same exhibitor keeps the same row
+(changed ones are updated in place, a few hundred to a statement) and stay
+signed in; those left out are removed, with their sign-ins. It's checked
+like a spreadsheet (5,000 exhibitors, 40 fields, 500 characters a value)
+and kept like one: the team's hidden columns carry over, new ones that
+sound internal start hidden, and the retention clock restarts with each
+update. An empty list is refused as a mistake. One change to a bot's list
+happens at a time (an advisory lock, shared with uploads). Updates are
+limited per address before the key is checked and per key after it, and
+audited only when something changed. A spreadsheet upload still works; it
+lasts until BluePrint next sends the list.
 
 ## Deadline reminders are written once, checked by a person, sent gently
 

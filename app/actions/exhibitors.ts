@@ -6,6 +6,7 @@ import { runAction } from "@/lib/actions/run";
 import { assertOnBot, assertOnBotOf } from "@/lib/auth/bots";
 import { UserError } from "@/lib/errors";
 import { removeList, setHiddenColumns, uploadList } from "@/lib/exhibitors/service";
+import { makeBlueprintKey, removeBlueprintKey } from "@/lib/exhibitors/blueprint";
 import { deleteDeadline, saveDeadline, startReminders } from "@/lib/exhibitors/deadlines";
 import {
   discardReminders,
@@ -74,6 +75,33 @@ export async function removeExhibitorListAction(input: unknown) {
       revalidatePath(`/bots/${d.botId}`);
     },
     "List removed.",
+  );
+}
+
+/**
+ * BluePrint, the exhibitor manual: a key to put in the show's settings there.
+ * Admins only, like the bot's other connections. It's returned once, to show.
+ */
+export async function makeBlueprintKeyAction(input: unknown) {
+  return runAction("settings.manage", z.object({ botId: z.uuid() }), input, async (actor, d) => {
+    await assertOnBot(actor, "settings.manage", d.botId);
+    const key = await makeBlueprintKey(actor, d.botId);
+    revalidatePath(`/bots/${d.botId}`);
+    return { key };
+  });
+}
+
+export async function removeBlueprintKeyAction(input: unknown) {
+  return runAction(
+    "settings.manage",
+    z.object({ botId: z.uuid() }),
+    input,
+    async (actor, d) => {
+      await assertOnBot(actor, "settings.manage", d.botId);
+      await removeBlueprintKey(actor, d.botId);
+      revalidatePath(`/bots/${d.botId}`);
+    },
+    "BluePrint disconnected.",
   );
 }
 

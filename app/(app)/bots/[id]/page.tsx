@@ -18,7 +18,9 @@ import { EmailStep } from "@/components/bots/email-step";
 import { TestStep } from "@/components/bots/test-step";
 import { LiveStep } from "@/components/bots/live-step";
 import { ExhibitorsStep } from "@/components/bots/exhibitors-step";
+import { BlueprintPanel } from "@/components/bots/blueprint-panel";
 import { listSummary } from "@/lib/exhibitors/service";
+import { blueprintStatus } from "@/lib/exhibitors/blueprint";
 import { DeadlinesPanel } from "@/components/bots/deadlines-panel";
 import { deadlineSetup } from "@/lib/exhibitors/deadlines";
 import { dueLabel } from "@/lib/exhibitors/reminders";
@@ -162,7 +164,11 @@ export default async function BotPage({
       );
     }
   } else if (step === "exhibitors") {
-    const [list, setup] = await Promise.all([listSummary(bot.id), deadlineSetup(bot.id)]);
+    const [list, setup, link] = await Promise.all([
+      listSummary(bot.id),
+      deadlineSetup(bot.id),
+      blueprintStatus(bot.id),
+    ]);
     const next = nextStep("exhibitors", bot.audience);
     const today = londonDate();
     body = (
@@ -177,15 +183,31 @@ export default async function BotPage({
             columns: list.columns,
             hiddenColumns: list.hiddenColumns,
             uploaded: `${timeAgo(list.uploadedAt)}${list.uploadedBy ? ` by ${list.uploadedBy}` : ""}`,
+            source: list.source,
             sample: list.sample,
           }
         }
         personalAnswers={bot.personalAnswers}
         emailReady={emailConfigured()}
+        manual={Boolean(link)}
         canEdit={canEdit}
         next={next}
         nextLabel={steps.find((s) => s.key === next)!.label}
       >
+        <BlueprintPanel
+          botId={bot.id}
+          slug={bot.slug}
+          appUrl={appUrl()}
+          linked={
+            link && {
+              made: `${timeAgo(link.createdAt)}${link.createdBy ? ` by ${link.createdBy}` : ""}`,
+              lastSync: link.lastSyncAt ? timeAgo(link.lastSyncAt) : null,
+              lastSignIn: link.lastSignInAt ? timeAgo(link.lastSignInAt) : null,
+            }
+          }
+          canManage={can(actor, "settings.manage")}
+          personalAnswers={bot.personalAnswers}
+        />
         <DeadlinesPanel
           botId={bot.id}
           columns={setup.columns}

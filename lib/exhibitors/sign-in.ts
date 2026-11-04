@@ -1,7 +1,7 @@
 import "server-only";
 import { randomInt } from "node:crypto";
 import { and, desc, eq, gt, notExists, sql } from "drizzle-orm";
-import { db } from "@/lib/db/client";
+import { db, type Tx } from "@/lib/db/client";
 import { conversations, exhibitorCodes, exhibitors, messages } from "@/lib/db/schema";
 import { insertMessage } from "@/lib/conversations/service";
 import { writeAudit } from "@/lib/audit";
@@ -141,34 +141,52 @@ export async function verifyCode(
     // The address the code went to: a row can list several people.
     const address = ex?.emails.find((e) => c.emailHash && emailHash(e) === c.emailHash);
     if (!ex || ex.botId !== bot.id || !address) return { error: CODE_DIDNT_WORK };
-    const conv = await tx.query.conversations.findFirst({
-      where: eq(conversations.id, conversationId),
-    });
-    const contact = { ...((conv?.contact as ContactDetails) ?? {}) };
-    contact.name ||= ex.name || undefined;
-    contact.company ||= ex.company || undefined;
-    contact.stand ||= ex.stand || undefined;
-    contact.email ||= address;
-    await tx
-      .update(conversations)
-      .set({ exhibitorId: ex.id, signedInEmail: address, signedInAt: now, contact })
-      .where(eq(conversations.id, conversationId));
-    const who = [ex.name, ex.company].filter(Boolean).join(", ") || address;
-    await insertMessage(tx, conversationId, {
-      role: "system",
-      text: `Signed in as ${who}${ex.stand ? ` (stand ${ex.stand})` : ""}. Ask about your own stand now.`,
-    });
-    await writeAudit(tx, {
-      actorType: "visitor",
-      entityType: "conversation",
-      entityId: conversationId,
-      action: "login",
-      summary: `An exhibitor signed in to a chat with ${bot.name}`,
-    });
-    return { name: ex.name, company: ex.company, stand: ex.stand };
+    return signInChat(tx, bot, conversationId, ex, address, now, "code");
   });
   if ("error" in outcome) throw new SignInError(outcome.error);
   return outcome;
+}
+
+type ListedRow = { id: string; name: string; company: string; stand: string };
+
+/**
+ * Signs a chat in as this exhibitor (one address on their row): with a code
+ * from their email, or from BluePrint, the exhibitor manual (blueprint.ts).
+ */
+export async function signInChat(
+  tx: Tx,
+  bot: Pick<BotRow, "name">,
+  conversationId: string,
+  ex: ListedRow,
+  address: string,
+  now: Date,
+  via: "code" | "manual",
+): Promise<SignedIn> {
+  const conv = await tx.query.conversations.findFirst({
+    where: eq(conversations.id, conversationId),
+  });
+  const contact = { ...((conv?.contact as ContactDetails) ?? {}) };
+  contact.name ||= ex.name || undefined;
+  contact.company ||= ex.company || undefined;
+  contact.stand ||= ex.stand || undefined;
+  contact.email ||= address;
+  await tx
+    .update(conversations)
+    .set({ exhibitorId: ex.id, signedInEmail: address, signedInAt: now, contact })
+    .where(eq(conversations.id, conversationId));
+  const who = [ex.name, ex.company].filter(Boolean).join(", ") || address;
+  await insertMessage(tx, conversationId, {
+    role: "system",
+    text: `Signed in${via === "manual" ? " from the exhibitor manual" : ""} as ${who}${ex.stand ? ` (stand ${ex.stand})` : ""}. Ask about your own stand now.`,
+  });
+  await writeAudit(tx, {
+    actorType: "visitor",
+    entityType: "conversation",
+    entityId: conversationId,
+    action: "login",
+    summary: `An exhibitor signed in to a chat with ${bot.name}${via === "manual" ? " from BluePrint" : ""}`,
+  });
+  return { name: ex.name, company: ex.company, stand: ex.stand };
 }
 
 /** Removes a chat that signing in started, if nothing happened in it. */

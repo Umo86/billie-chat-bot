@@ -1,4 +1,14 @@
-import { date, index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  date,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { bots } from "./bots";
 import { users } from "./users";
 
@@ -7,7 +17,8 @@ import { users } from "./users";
  * a spreadsheet: one row per exhibitor, with the columns the team chose
  * (stand type, orders, stand plan, build-up time). Signed-in exhibitors get
  * answers from their own row; deadline chasers use it to see who's missing
- * something. A new upload replaces the whole list.
+ * something. A new upload replaces the whole list; BluePrint, the exhibitor
+ * manual, can keep it up to date instead (lib/exhibitors/blueprint.ts).
  */
 export const exhibitors = pgTable(
   "exhibitors",
@@ -24,13 +35,21 @@ export const exhibitors = pgTable(
     emails: text("emails").array().notNull().default([]),
     /** Every other column of the list, by its heading. */
     fields: jsonb("fields").$type<Record<string, string>>().notNull().default({}),
+    /**
+     * BluePrint's own id for the exhibitor, on a list BluePrint keeps up to
+     * date: the same exhibitor keeps the same row, so their sign-ins last.
+     */
+    externalId: text("external_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index("exhibitors_bot_idx").on(t.botId),
     index("exhibitors_emails_idx").using("gin", t.emails),
+    uniqueIndex("exhibitors_bot_external_idx").on(t.botId, t.externalId),
   ],
 );
+
+export type ListSource = "upload" | "blueprint";
 
 /** About the uploaded list: one per bot. */
 export const exhibitorLists = pgTable("exhibitor_lists", {
@@ -45,8 +64,35 @@ export const exhibitorLists = pgTable("exhibitor_lists", {
   rows: integer("rows").notNull().default(0),
   /** Rows left out (no email address). */
   skipped: integer("skipped").notNull().default(0),
+  /** A spreadsheet someone uploaded, or the list BluePrint sends. */
+  source: text("source").$type<ListSource>().notNull().default("upload"),
   uploadedBy: uuid("uploaded_by").references(() => users.id, { onDelete: "set null" }),
   uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * A bot's link to BluePrint, the exhibitor manual (lib/exhibitors/blueprint.ts).
+ * One key per bot, made by an admin and shown once: BluePrint sends it to
+ * update the exhibitor list, and signs exhibitors in to the chat with a key
+ * made from it. Neither the key nor anything that could update the list is
+ * kept: only its hash, and the signing key (which can only sign people in).
+ */
+export const blueprintLinks = pgTable("blueprint_links", {
+  botId: uuid("bot_id")
+    .primaryKey()
+    .references(() => bots.id, { onDelete: "cascade" }),
+  /** The key's public part (bp_<keyId>_…): which bot a request or sign-in is for. */
+  keyId: text("key_id").notNull().unique(),
+  /** SHA-256 of the whole key. */
+  keyHash: text("key_hash").notNull(),
+  /** What BluePrint signs sign-ins with (hex): made from the key, never the key itself. */
+  signingKey: text("signing_key").notNull(),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  /** The last list update BluePrint sent. */
+  lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
+  /** The last exhibitor it signed in to a chat. */
+  lastSignInAt: timestamp("last_sign_in_at", { withTimezone: true }),
 });
 
 /**

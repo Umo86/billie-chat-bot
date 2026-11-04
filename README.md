@@ -92,7 +92,12 @@ Chatbots, live handover and an email assistant for Media10 shows.
   booked with, and Billie then answers from their own row: their stand,
   orders, stand plan and build-up times, never columns the team unticks
   (notes, credit status). A sign-in lasts a show day. The Inbox shows who
-  is signed in. Needs email sending (Resend).
+  is signed in. Needs email sending (Resend), or BluePrint.
+- **BluePrint, the exhibitor manual**: an admin connects it on an exhibitor
+  bot's Exhibitors step (a key, shown once). Exhibitors signed in to the
+  manual are signed in to the chat too, with no code, and BluePrint keeps
+  the exhibitor list up to date. The guide for BluePrint's side is
+  `docs/blueprint.md`.
 - **Deadline chasers**: on the Exhibitors step, each deadline (stand
   plan, nameboard, electrics) is tied to a column of the exhibitor list
   that shows who has done it. A week before (or when asked), Billie writes
@@ -202,6 +207,7 @@ components/     UI (ui/ is the shared kit)
 lib/            everything else: ai, auth, bots, chat, conversations, db,
                 emails, jobs, knowledge, reports, team…
 tests/          unit/ (Vitest), e2e/ (Playwright), fixtures/
+docs/           guides for other systems (blueprint.md: the exhibitor manual)
 prototype/      the original clickable prototype (not part of the app)
 ```
 

@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
-import { db } from "@/lib/db/client";
-import { bots, exhibitorLists, exhibitors, users } from "@/lib/db/schema";
+import { db, type Tx } from "@/lib/db/client";
+import { blueprintLinks, bots, exhibitorLists, exhibitors, users } from "@/lib/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { UserError } from "@/lib/errors";
 import { emailConfigured } from "@/lib/config";
@@ -21,6 +21,11 @@ import {
  * bot, and is only ever shown to people who work on the bot.
  */
 
+/** The bot's exhibitor list: one change at a time (an upload, BluePrint, a removal). */
+export async function lockList(tx: Tx, botId: string): Promise<void> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`exhibitor-list:${botId}`}))`);
+}
+
 export type ListSummary = {
   fileName: string;
   rows: number;
@@ -30,6 +35,8 @@ export type ListSummary = {
   hiddenColumns: string[];
   uploadedAt: string;
   uploadedBy: string | null;
+  /** A spreadsheet someone uploaded, or the list BluePrint sends. */
+  source: "upload" | "blueprint";
   sample: (ListedExhibitor & { id: string })[];
 };
 
@@ -69,6 +76,7 @@ export async function uploadList(
     before?.columns.includes(c) ? before.hiddenColumns.includes(c) : looksInternal(c),
   );
   await db.transaction(async (tx) => {
+    await lockList(tx, botId);
     // Sign-ins with the old list end with it (each chat can sign in again).
     await tx.delete(exhibitors).where(eq(exhibitors.botId, botId));
     for (let i = 0; i < read.exhibitors.length; i += 500)
@@ -84,6 +92,7 @@ export async function uploadList(
         hiddenColumns,
         rows: read.exhibitors.length,
         skipped: read.skipped,
+        source: "upload",
         uploadedBy: actor.id,
         uploadedAt: new Date(),
       })
@@ -95,6 +104,7 @@ export async function uploadList(
           hiddenColumns,
           rows: read.exhibitors.length,
           skipped: read.skipped,
+          source: "upload",
           uploadedBy: actor.id,
           uploadedAt: new Date(),
         },
@@ -145,6 +155,7 @@ export async function setHiddenColumns(
 
 export async function removeList(actor: Actor, botId: string): Promise<void> {
   await db.transaction(async (tx) => {
+    await lockList(tx, botId);
     await tx.delete(exhibitors).where(eq(exhibitors.botId, botId));
     const [gone] = await tx
       .delete(exhibitorLists)
@@ -186,6 +197,7 @@ export async function listSummary(botId: string): Promise<ListSummary | null> {
     hiddenColumns: list.hiddenColumns,
     uploadedAt: list.uploadedAt.toISOString(),
     uploadedBy: by?.fullName ?? null,
+    source: list.source,
     sample: sample.map((s) => ({
       id: s.id,
       company: s.company,
@@ -270,6 +282,24 @@ export async function signInOpen(bot: {
     emailConfigured() &&
     (await hasList(bot.id))
   );
+}
+
+/**
+ * Can exhibitors sign in to this bot's chat from BluePrint, the exhibitor
+ * manual (lib/exhibitors/blueprint.ts)? An exhibitor bot with the setting
+ * on, BluePrint connected and a list. No email needed: BluePrint vouches.
+ */
+export async function manualSignInOpen(bot: {
+  id: string;
+  audience: "visitors" | "exhibitors";
+  personalAnswers: boolean;
+}): Promise<boolean> {
+  if (bot.audience !== "exhibitors" || !bot.personalAnswers) return false;
+  const [link] = await db
+    .select({ botId: blueprintLinks.botId })
+    .from(blueprintLinks)
+    .where(eq(blueprintLinks.botId, bot.id));
+  return Boolean(link) && (await hasList(bot.id));
 }
 
 /** Has the bot a list to sign in against? */

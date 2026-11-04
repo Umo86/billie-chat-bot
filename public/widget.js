@@ -4,6 +4,9 @@
  * Adds a chat button; the chat itself opens in a frame served by Billie, so
  * nothing from the chat touches this page. Styles are set through the DOM
  * (no inline <style>), so it works under strict Content-Security-Policies.
+ * On BluePrint, the exhibitor manual, data-exhibitor-token="<sign-in>" opens
+ * the chat signed in as that exhibitor; it goes to the frame after the "#",
+ * which browsers never send to a server.
  */
 (function () {
   "use strict";
@@ -17,6 +20,9 @@
   if (registry[slug]) return;
   registry[slug] = true;
   var side = script.getAttribute("data-position") === "left" ? "left" : "right";
+  var signIn = script.getAttribute("data-exhibitor-token") || "";
+  if (!/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(signIn) || signIn.length > 2048)
+    signIn = "";
 
   function textOn(hex) {
     var m = /^#?([0-9a-f]{6})$/i.exec(hex || "");
@@ -132,7 +138,8 @@
           slug +
           "?page=" +
           // Address and path only: query strings can hold private tokens.
-          encodeURIComponent((location.origin + location.pathname).slice(0, 900));
+          encodeURIComponent((location.origin + location.pathname).slice(0, 900)) +
+          (signIn ? "#exhibitor-token=" + signIn : "");
       }
       panel.style.setProperty("display", open ? "block" : "none");
       button.setAttribute("aria-expanded", open ? "true" : "false");

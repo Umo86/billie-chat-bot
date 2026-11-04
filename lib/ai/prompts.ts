@@ -27,6 +27,8 @@ export type PromptBot = {
   requests?: { id: string; name: string; when: string }[];
   /** Exhibitors can sign in for answers from their own record (web and the chat page only). */
   personal?: boolean;
+  /** How: the "Your stand" button (the default), or only from the exhibitor manual. */
+  signInBy?: "button" | "manual";
 };
 
 export type Turn = { role: "visitor" | "bot" | "agent" | "system"; text: string };
@@ -119,9 +121,13 @@ export function answerSystem(bot: PromptBot): string {
       ? [
           "",
           "EXHIBITORS' OWN RECORDS",
-          '- Exhibitors can sign in to this chat with the "Your stand" button to get answers about their own stand. When someone is signed in, their own record comes with their message as the last numbered passage.',
+          bot.signInBy === "manual"
+            ? "- Exhibitors who open this chat from the exhibitor manual are signed in, to get answers about their own stand. When someone is signed in, their own record comes with their message as the last numbered passage."
+            : '- Exhibitors can sign in to this chat with the "Your stand" button to get answers about their own stand. When someone is signed in, their own record comes with their message as the last numbered passage.',
           "- Use their record only for questions about their own stand, orders, plans and times, and only for them. Never guess about another exhibitor's stand.",
-          '- If they ask about their own stand, order, plan or times and no record comes with the message, say they can sign in with the "Your stand" button above the chat to get that answer, and set "handover" to "none" with "used" empty.',
+          bot.signInBy === "manual"
+            ? '- If they ask about their own stand, order, plan or times and no record comes with the message, say they can sign in to the exhibitor manual and open this chat from there to get that answer, and set "handover" to "none" with "used" empty.'
+            : '- If they ask about their own stand, order, plan or times and no record comes with the message, say they can sign in with the "Your stand" button above the chat to get that answer, and set "handover" to "none" with "used" empty.',
         ]
       : []),
   ].join("\n");

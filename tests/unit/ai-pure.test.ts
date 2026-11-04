@@ -70,6 +70,16 @@ describe("prompts", () => {
     expect(s).not.toContain("How to come across");
   });
 
+  it("tells people how to sign in for answers about their own stand", () => {
+    expect(answerSystem(bot)).not.toContain("EXHIBITORS' OWN RECORDS");
+    const button = answerSystem({ ...bot, personal: true });
+    expect(button).toContain('sign in with the "Your stand" button above the chat');
+    // Signed in only from the exhibitor manual: no button to point to.
+    const manual = answerSystem({ ...bot, personal: true, signInBy: "manual" });
+    expect(manual).toContain("sign in to the exhibitor manual and open this chat from there");
+    expect(manual).not.toContain('"Your stand" button');
+  });
+
   it("adds the bot's personality as style only, before the rules", () => {
     const s = answerSystem({
       ...bot,
