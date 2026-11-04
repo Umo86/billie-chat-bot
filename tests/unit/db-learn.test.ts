@@ -61,8 +61,13 @@ describe.skipIf(!hasDb)("learning from what the team sends (Postgres, stand-in O
     const same = await outlookEmail(bot.id, `d-same-${randomUUID()}`);
     const changed = await outlookEmail(bot.id, `d-changed-${randomUUID()}`);
     const binned = await outlookEmail(bot.id, `d-gone-${randomUUID()}`);
+    const reworded = await outlookEmail(bot.id, `d-reword-${randomUUID()}`);
     const sent = new Map<string, { isDraft: boolean; text: string } | "gone">([
       [waiting.outlookDraftId!, { isDraft: true, text: DRAFT }],
+      [
+        reworded.outlookDraftId!,
+        { isDraft: false, text: DRAFT.replace("Hi Sam,", "Hello Sam,").replace("Kind", "Best") },
+      ],
       [same.outlookDraftId!, { isDraft: false, text: `${DRAFT}\n\n________________\nFrom: Sam` }],
       [changed.outlookDraftId!, { isDraft: false, text: DRAFT.replace("10:30", "12:00") }],
       [binned.outlookDraftId!, "gone"],
@@ -80,8 +85,15 @@ describe.skipIf(!hasDb)("learning from what the team sends (Postgres, stand-in O
     expect(await row(binned.id)).toMatchObject({ status: "draft_ready", sentOutcome: "discarded" });
     expect(await sentCounts(new Date("2026-11-01T00:00:00Z"), [bot.id])).toEqual({
       unchanged: 1,
-      edited: 1,
+      edited: 2,
     });
+    // Only a greeting and sign-off reworded: no fact to learn, so no Claude call for it.
+    expect(
+      await db
+        .select()
+        .from(jobs)
+        .where(and(eq(jobs.kind, "learn_from_sent"), eq(jobs.dedupeKey, `learn:${reworded.id}`))),
+    ).toHaveLength(0);
 
     // The changed one: Billie works out what the team corrected, on the queue.
     const [learn] = await db

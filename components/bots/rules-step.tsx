@@ -201,9 +201,10 @@ export function RulesStep({
 
       <Panel className="flex flex-col gap-3">
         <div>
-          <h2 className="text-[1.05rem]">When nobody is available</h2>
+          <h2 className="text-[1.05rem]">Outside working hours</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Billie asks for these details so the team can reply later.
+            Billie asks for these details so the team can reply later, and when nobody answers a
+            live chat within 5 minutes.
           </p>
         </div>
         <div className="flex flex-wrap gap-x-5 gap-y-2">

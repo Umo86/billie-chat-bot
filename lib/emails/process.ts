@@ -25,6 +25,7 @@ import { retrieve } from "@/lib/knowledge/search";
 import { recordGap } from "@/lib/knowledge/gap-store";
 import { getSettings } from "@/lib/settings";
 import { enqueue, PermanentJobError } from "@/lib/jobs/queue";
+import { forClaude } from "./mailbox-rules";
 
 /**
  * The email assistant (the "process_email" job). Two checks before any
@@ -61,11 +62,12 @@ export async function processEmail(emailId: string, opts: { redo?: boolean } = {
         : null;
     const alwaysHuman = bot?.rules.alwaysHuman ?? ALWAYS_HUMAN_DEFAULT;
     const show = bot?.showName ?? "";
+    // Its own words in full, and only the start of the quoted thread below them.
     const prompt = {
       fromName: email.fromName,
       fromEmail: email.fromEmail,
       subject: email.subject,
-      body: email.body,
+      body: forClaude(email.body),
     };
 
     const tagged = await structured({
@@ -104,7 +106,7 @@ export async function processEmail(emailId: string, opts: { redo?: boolean } = {
     }
 
     const kbIds = bot ? (await answerBotFor(bot)).knowledgeBaseIds : [];
-    const passages = await retrieve(kbIds, `${email.subject}\n${email.body}`.slice(0, 4000));
+    const passages = await retrieve(kbIds, `${email.subject}\n${prompt.body}`.slice(0, 4000));
     // The bot's own sign-off, else the company's in Settings.
     const signature = (bot?.emailSignOff.trim() || settings.emailSignature).trim();
     const drafted = await structured({

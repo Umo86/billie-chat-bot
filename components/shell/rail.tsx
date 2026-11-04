@@ -10,7 +10,6 @@ import {
   Inbox,
   LogOut,
   Mail,
-  MessagesSquare,
   Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -50,7 +49,6 @@ export function Rail({
     { href: "/inbox", label: "Inbox", icon: Inbox, count: "inbox", show: true },
     { href: "/requests", label: "Requests", icon: ClipboardList, count: "requests", show: true },
     { href: "/emails", label: "Emails", icon: Mail, count: "emails", show: true },
-    { href: "/try", label: "Try a bot", icon: MessagesSquare, show: access.bots },
     { href: "/reports", label: "Reports", icon: BarChart3, show: access.reports },
     { href: "/settings", label: "Settings", icon: Settings, show: access.settings },
   ];

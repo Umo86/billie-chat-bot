@@ -15,7 +15,7 @@ import { aiLimit, LIMIT_LINE, recordUsage } from "@/lib/ai/usage";
 import { knowledgeBaseOf } from "@/lib/knowledge/bases";
 import { addSource } from "@/lib/knowledge/sources";
 import type { SentLearning } from "@/lib/types";
-import { replyPart, sameReply } from "./learn-rules";
+import { replyPart, sameReply, worthLearning } from "./learn-rules";
 
 /**
  * Learning from what the team sends. Billie looks for its Outlook drafts
@@ -94,7 +94,8 @@ export async function checkSentDrafts(now = new Date()): Promise<number> {
           ? "Billie's draft was sent from Outlook unchanged"
           : "Billie's draft was sent from Outlook with changes",
       });
-      if (!unchanged)
+      // Only changes that could hold a fact are worth a Claude call to find it.
+      if (!unchanged && worthLearning(e.draft, sent))
         await enqueue(
           "learn_from_sent",
           { emailId: e.id },

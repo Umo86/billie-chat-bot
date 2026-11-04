@@ -314,7 +314,13 @@ export default async function BotPage({
     );
   } else if (step === "test") {
     body = (
-      <TestStep botId={bot.id} tests={bot.tests} lastRun={bot.lastTestRun} canEdit={canEdit} />
+      <TestStep
+        botId={bot.id}
+        botSlug={bot.slug}
+        tests={bot.tests}
+        lastRun={bot.lastTestRun}
+        canEdit={canEdit}
+      />
     );
   } else {
     const base = appUrl();

@@ -21,7 +21,7 @@ import {
   uploadFileAction,
 } from "@/app/actions/knowledge";
 
-type Tab = "file" | "text" | "qa" | "web" | "site";
+type Tab = "file" | "text" | "qa" | "web";
 
 /** Under this size a file goes through the server action; above it, straight to Blob. */
 const DIRECT_LIMIT = 4 * 1024 * 1024;
@@ -78,15 +78,7 @@ export function AddSource({
               value: "web",
               label: (
                 <span className="inline-flex items-center gap-1.5">
-                  <Globe className="size-4" aria-hidden /> Web page
-                </span>
-              ),
-            },
-            {
-              value: "site",
-              label: (
-                <span className="inline-flex items-center gap-1.5">
-                  <Earth className="size-4" aria-hidden /> Whole website
+                  <Globe className="size-4" aria-hidden /> Website
                 </span>
               ),
             },
@@ -105,10 +97,8 @@ export function AddSource({
         <PasteText kbId={kbId} />
       ) : tab === "qa" ? (
         <TypedAnswer kbId={kbId} />
-      ) : tab === "web" ? (
-        <WebPage kbId={kbId} />
       ) : (
-        <WholeWebsite kbId={kbId} />
+        <Website kbId={kbId} />
       )}
     </Panel>
   );
@@ -393,6 +383,42 @@ function TypedAnswer({ kbId }: { kbId: string }) {
   );
 }
 
+/**
+ * A website: one page (a FAQ or travel page), or the whole site from its
+ * sitemap. Both are read on Billie's own servers, so neither uses Claude.
+ */
+function Website({ kbId }: { kbId: string }) {
+  const [how, setHow] = useState<"page" | "site">("page");
+  return (
+    <div className="flex flex-col gap-3">
+      <Segmented<"page" | "site">
+        label="How much of the website"
+        value={how}
+        onChange={setHow}
+        options={[
+          {
+            value: "page",
+            label: (
+              <span className="inline-flex items-center gap-1.5">
+                <Globe className="size-4" aria-hidden /> One page
+              </span>
+            ),
+          },
+          {
+            value: "site",
+            label: (
+              <span className="inline-flex items-center gap-1.5">
+                <Earth className="size-4" aria-hidden /> The whole site
+              </span>
+            ),
+          },
+        ]}
+      />
+      {how === "page" ? <WebPage kbId={kbId} /> : <WholeWebsite kbId={kbId} />}
+    </div>
+  );
+}
+
 function WebPage({ kbId }: { kbId: string }) {
   const [url, setUrl] = useState("");
   const [weekly, setWeekly] = useState(true);
@@ -410,7 +436,7 @@ function WebPage({ kbId }: { kbId: string }) {
       <Field
         id="web-url"
         label="Page address"
-        hint="A public page, such as the show's FAQ or travel page. Billie reads that one page, not the whole site."
+        hint="A public page, such as the show's FAQ or travel page. Billie reads just that page."
       >
         <Input
           id="web-url"

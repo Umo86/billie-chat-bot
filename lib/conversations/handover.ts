@@ -62,6 +62,17 @@ export function contactComplete(
   );
 }
 
+/**
+ * Is a suggested reply worth a Claude call straight away? Only when Billie
+ * hadn't tried the knowledge already: a topic that always goes to a person,
+ * or someone who asked for one. When it had just found nothing (or its
+ * answers were marked unhelpful, or Claude was down), the same knowledge
+ * would only give a holding reply: the team can still press "Suggest a reply".
+ */
+export function suggestStraightAway(reason: HandoverReason): boolean {
+  return reason === "always_human" || reason === "asked_for_person";
+}
+
 export const REASON_LABEL: Record<HandoverReason, string> = {
   unknown: "Billie didn't have the answer",
   always_human: "Always goes to a person",

@@ -69,7 +69,8 @@ test("a bot's own knowledge: edit it, then find and replace across it", async ({
   await page.keyboard.press("Escape");
 
   // A whole website: its card shows what happened (here no website can be reached), then it goes.
-  await page.getByRole("tab", { name: "Whole website" }).click();
+  await page.getByRole("tab", { name: "Website" }).click();
+  await page.getByRole("tab", { name: "The whole site" }).click();
   await page.getByLabel("Website address").fill("https://www.christmas-show.test");
   await page.getByLabel("Leave out pages whose address contains").fill("/news\n/press");
   await page.getByRole("button", { name: "Read the website" }).click();

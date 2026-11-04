@@ -3,6 +3,7 @@
  * tests/unit/mailbox-rules.test.ts).
  */
 import { EMAIL_PATTERN } from "@/lib/auth/config";
+import { replyPart } from "./learn-rules";
 
 /** The mailbox address as stored: trimmed and lower case; null when it isn't an email address. */
 export function normaliseMailbox(address: string): string | null {
@@ -45,11 +46,12 @@ export function teamsLinkLabel(link: string | null): string | null {
 
 /**
  * Emails Billie leaves alone: auto-replies, bounces, read receipts, meeting
- * replies, and mail the mailbox sent itself. Drafting replies to those would
- * fill Drafts and Teams after every mailshot.
+ * replies, newsletters and system notifications, and mail the mailbox sent
+ * itself. Drafting replies to those would fill Drafts after every mailshot,
+ * and spend two Claude calls on each.
  */
 const AUTO_SENDER =
-  /^(no-?reply|do-?not-?reply|donotreply|mailer-daemon|postmaster|bounces?)([+._-][^@]*)?@/i;
+  /^(no-?reply|do-?not-?reply|donotreply|mailer-daemon|postmaster|bounces?|newsletters?|marketing|mailer|notifications?|notify)([+._-][^@]*)?@/i;
 const AUTO_SUBJECT =
   /^\s*(automatic reply|auto(matic)?[- ]?(reply|response)|auto:|out of (the )?office|undeliverable|undelivered mail|delivery status notification|delivery has failed|mail delivery (failed|failure|system)|returned mail|read:|not read:|accepted:|declined:|tentative:|tentatively accepted:|cancell?ed:|new time proposed:)/i;
 
@@ -158,4 +160,22 @@ export function mailboxProblem(err: unknown): string {
     return "Microsoft 365 asked Billie to slow down. It tries again in a minute.";
   if (err.status >= 500) return "Microsoft 365 had a problem. Billie tries again every minute.";
   return "Microsoft 365 turned the request down. Billie tries again every minute.";
+}
+
+/** The most of the earlier thread that goes with an email to Claude, for context. */
+export const THREAD_CONTEXT = 1500;
+
+/**
+ * An email as Claude reads it: its own new text in full, and only the start
+ * of the quoted thread below it (what it's replying to). Long reply chains
+ * would otherwise send the same old emails, twice, with every reply.
+ */
+export function forClaude(body: string): string {
+  const own = replyPart(body);
+  const clean = body.replace(/\r\n?/g, "\n");
+  const rest = clean.slice(clean.indexOf(own) + own.length).trim();
+  if (!own) return clean.slice(0, THREAD_CONTEXT * 2).trim();
+  if (!rest) return own;
+  const earlier = rest.length > THREAD_CONTEXT ? `${rest.slice(0, THREAD_CONTEXT)}…` : rest;
+  return `${own}\n\n[Earlier in the thread]\n${earlier}`;
 }

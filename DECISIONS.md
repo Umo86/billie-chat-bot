@@ -278,6 +278,21 @@ address and phone number in it is in the passages it came from.
 Each question also sends less: the last three exchanges of the chat (not
 four), each cut at 800 characters.
 
+Elsewhere Claude is only asked when the answer can be worth it:
+
+- A suggested reply is written straight away only when Billie hadn't tried
+  the knowledge (they asked for a person, or the topic always goes to one).
+  After "Billie didn't have the answer" the same knowledge only gives a
+  holding reply, so the team presses "Suggest a reply" if they want one.
+- An email goes with its own words and the first 1,500 characters of the
+  thread it quotes, not up to 8,000 characters of old emails, and that saving
+  counts twice (tagging, then drafting). Newsletters and system
+  notifications are left alone like auto-replies.
+- A sent draft the team changed is only looked at by Claude when the change
+  could hold a fact: a number, date, price, address, link or "not", or more
+  than a few new words. A new greeting isn't a fact.
+- Reading files, web pages and whole websites never uses Claude.
+
 ## Claude's cost is counted per request, and the models are a setting
 
 Each Claude call is costed when it's made, from the price list in

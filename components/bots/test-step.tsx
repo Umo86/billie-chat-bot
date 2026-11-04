@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, ListChecks, Play, Plus, Send, Trash2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -32,11 +33,14 @@ const newId = () => Math.random().toString(36).slice(2, 10);
 
 export function TestStep({
   botId,
+  botSlug,
   tests: initialTests,
   lastRun,
   canEdit,
 }: {
   botId: string;
+  /** For the link to the real chat (Try a bot), as visitors see it. */
+  botSlug: string;
   tests: TestQuestion[];
   lastRun: TestRun | null;
   canEdit: boolean;
@@ -108,7 +112,12 @@ export function TestStep({
         <div>
           <h2 className="text-[1.05rem]">Try it</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Ask what exhibitors or visitors would ask. Nothing here is saved or seen by anyone.
+            Ask what exhibitors or visitors would ask. Nothing here is saved or seen by anyone. To
+            see the real chat as visitors do, with its welcome, starters and handover,{" "}
+            <Link href={`/try?bot=${botSlug}`} className="font-semibold text-primary underline">
+              open the real chat
+            </Link>
+            .
           </p>
         </div>
         <ol className="flex flex-1 flex-col gap-2.5 overflow-y-auto" aria-live="polite">

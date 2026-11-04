@@ -31,6 +31,7 @@ import {
   contactComplete,
   handoverLine,
   handoverRoute,
+  suggestStraightAway,
   WAIT_MINUTES,
   WAITED_LINE,
   type HandoverReason,
@@ -389,7 +390,7 @@ export async function handover(
       );
       if (ticket) {
         status = ticket.status;
-        await queueSuggestion(tx, c.id);
+        if (suggestStraightAway(reason)) await queueSuggestion(tx, c.id);
         return { status, rows: [ticket.line], changed: true };
       }
     }
@@ -411,8 +412,8 @@ export async function handover(
         { tx, dedupeKey: `notify:${c.id}:live` },
       );
     }
-    // A suggested reply from the knowledge, ready for whoever picks it up.
-    await queueSuggestion(tx, c.id);
+    // A suggested reply from the knowledge, ready for whoever picks it up (when it can help).
+    if (suggestStraightAway(reason)) await queueSuggestion(tx, c.id);
     return { status, rows: [line], changed: true };
   });
   if (result.changed) await kickJobs();
