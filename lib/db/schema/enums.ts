@@ -9,6 +9,10 @@ export const botStatus = pgEnum("bot_status", ["draft", "live"]);
 export const tone = pgEnum("tone", ["friendly", "formal", "brief"]);
 /** How long chat answers run (lib/bots/style.ts). */
 export const answerLength = pgEnum("answer_length", ["short", "normal", "detailed"]);
+/** The chat button on the website: a round button, or a bar along the bottom (lib/chat/bar.ts). */
+export const launcherStyle = pgEnum("launcher_style", ["button", "bar"]);
+/** What sits at the left of the bar: an animated robot face, the bot's picture, or nothing. */
+export const barMascot = pgEnum("bar_mascot", ["robot", "picture", "none"]);
 /** fast = Haiku, thorough = Sonnet (lib/ai/models.ts). */
 export const quality = pgEnum("quality", ["fast", "thorough"]);
 

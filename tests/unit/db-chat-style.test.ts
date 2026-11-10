@@ -80,6 +80,34 @@ describe.skipIf(!hasDb)("a bot's chat style and branding (Postgres)", () => {
     });
   });
 
+  it("the chat bar: off by default, then its words, topics and mascot go to the website", async () => {
+    const editor = await makeUser("editor");
+    const { bot } = await makeBot({ status: "live" });
+    expect((await publicBot((await botById(bot.id))!)).launcher).toEqual({ style: "button" });
+    await updateBot(editor, bot.id, {
+      launcherStyle: "bar",
+      barLead: "Ask about",
+      barTopics: ["tickets", "parking"],
+      barMascot: "picture",
+      barMotion: false,
+    });
+    // No picture uploaded: the robot stands in.
+    expect((await publicBot((await botById(bot.id))!)).launcher).toEqual({
+      style: "bar",
+      lead: "Ask about",
+      topics: ["tickets", "parking"],
+      mascot: "robot",
+      motion: false,
+    });
+    await updateBot(editor, bot.id, { barTopics: [], barLead: "" });
+    expect((await publicBot((await botById(bot.id))!)).launcher).toMatchObject({
+      lead: "Ask me about",
+      topics: ["anything"],
+    });
+    const copyId = await copyBot(editor, bot.id, { name: "Bar copy", showName: "Next" });
+    expect(await botById(copyId)).toMatchObject({ launcherStyle: "bar", barMascot: "picture" });
+  });
+
   it("a new style means fresh answers, not ones given again in the old style", async () => {
     const { bot } = await makeBot();
     const editor = await makeUser("editor");

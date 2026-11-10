@@ -24,7 +24,8 @@ Chatbots, live handover and an email assistant for Media10 shows.
   Slack direct messages. Once Slack is connected, Billie stops using Teams.
 - **Each bot has its own** look, personality, knowledge and rules. The
   chat window is branded per show: header and button colours, the show's
-  logo, a picture, and words on the website's chat button. The personality
+  logo, a picture, and the website's chat button: a round button (with
+  optional words) or a bar along the bottom saying what to ask about. The personality
   starts from a ready-made chat style (Friendly, Professional, Calm expert,
   Short and sweet, Upbeat, Christmas as Santa) and can be changed: tone,
   answer length, a description in your own words, emoji, using people's

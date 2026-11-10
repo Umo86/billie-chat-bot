@@ -1,5 +1,5 @@
 import path from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Browser, type Page } from "@playwright/test";
 import { shot, signInAsAdmin } from "./helpers";
 import { signToken } from "../../lib/exhibitors/blueprint-rules";
 
@@ -592,8 +592,88 @@ test("the website widget shows only on the bot's own websites", async ({ browser
   await visitor.close();
 });
 
-test("live handover: the team replies from the Inbox and hands back", async ({ page, browser }) => {
+/**
+ * The chat bar: says what to ask about, opens the chat, and can be tucked away.
+ * Run from a test that's already signed in (sign-ins are rate limited).
+ */
+async function chatBar(page: Page, browser: Browser) {
+  const app = "http://localhost:3100";
+  const look = async () => {
+    await page.goto("/");
+    await page
+      .getByTestId("bot-card")
+      .filter({ hasText: "Exhibitor Help" })
+      .getByRole("link", { name: "Edit" })
+      .click();
+    await page
+      .getByRole("navigation", { name: "Steps" })
+      .getByRole("link", { name: /Look/ })
+      .click();
+  };
+  await look();
+  await page.getByRole("tab", { name: "Bar", exact: true }).click();
+  await expect(page.getByLabel("Opening words")).toHaveValue("Ask me about");
+  await page.getByRole("button", { name: "Suggest topics" }).click();
+  await expect(page.getByLabel("Topic 1", { exact: true })).toHaveValue(
+    "build-up and breakdown times",
+  );
+  await page.getByLabel("Topic 2", { exact: true }).fill("deliveries");
+  await page.getByRole("button", { name: "Remove topic 4" }).click();
+  await shot(page, "bot-look-bar");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByText("Saved").first()).toBeVisible();
+
+  const visitor = await browser.newContext();
+  await visitor.route("https://www.ukconstructionweek.com/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "text/html",
+      body: `<!doctype html><html><head><title>Show</title></head><body><h1>UK Construction Week</h1>
+        <script src="${app}/widget.js" data-bot="exhibitor-help" async></script></body></html>`,
+    }),
+  );
+  const site = await visitor.newPage();
+  await site.goto("https://www.ukconstructionweek.com/exhibit");
+  const bar = site.getByRole("button", {
+    name: "Chat with Exhibitor Help: Ask me about build-up and breakdown times, deliveries or badges and stand passes",
+  });
+  await expect(bar).toBeVisible({ timeout: 15_000 });
+  await expect(bar).toContainText("Ask me about");
+  // The topics come round one after another.
+  await expect(bar).toContainText("deliveries", { timeout: 8_000 });
+  await shot(site, "widget-bar");
+  await bar.click();
+  const chat = site.frameLocator('iframe[title="Chat with Exhibitor Help"]');
+  await expect(chat.getByRole("heading", { name: "Exhibitor Help" })).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(bar).toBeHidden();
+  await chat.getByRole("button", { name: "Close chat" }).click();
+  await expect(bar).toBeVisible();
+  // Tucked away, the round button takes its place, and stays for the visit.
+  await site.getByRole("button", { name: "Hide the chat bar" }).click();
+  await expect(bar).toBeHidden();
+  const round = site.getByRole("button", { name: "Chat with Exhibitor Help", exact: true });
+  await expect(round).toBeVisible();
+  await site.reload();
+  await expect(round).toBeVisible({ timeout: 15_000 });
+  await expect(bar).toBeHidden();
+  await visitor.close();
+
+  // Back to the round button for the tests that follow.
+  await look();
+  await page.getByRole("tab", { name: "Round button" }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByText("Saved").first()).toBeVisible();
+}
+
+test("the chat bar, then live handover: the team replies from the Inbox and hands back", async ({
+  page,
+  browser,
+}) => {
+  test.setTimeout(120_000);
   await signInAsAdmin(page);
+  await chatBar(page, browser);
   // In the team's hours, a chat that needs a person goes to them live: here, every day.
   await page.goto("/");
   await page

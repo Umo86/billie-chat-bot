@@ -15,6 +15,7 @@ import {
 } from "@/lib/bots/service";
 import { CONTACT_FIELDS, PERSONALITY_MAX, SIGN_OFF_MAX } from "@/lib/bots/defaults";
 import { AVOID_MAX, LAUNCHER_LABEL_MAX } from "@/lib/bots/style";
+import { BAR_LEAD_MAX, BAR_TOPIC_MAX, BAR_TOPICS_MAX, cleanTopics } from "@/lib/chat/bar";
 import { validTime } from "@/lib/conversations/hours";
 import { UserError } from "@/lib/errors";
 import { assertOnBot } from "@/lib/auth/bots";
@@ -61,6 +62,21 @@ const look = z.object({
     .trim()
     .max(LAUNCHER_LABEL_MAX, `Keep the button's words under ${LAUNCHER_LABEL_MAX} characters.`)
     .optional(),
+  launcherStyle: z.enum(["button", "bar"]).optional(),
+  barLead: z
+    .string()
+    .trim()
+    .max(BAR_LEAD_MAX, `Keep the opening words under ${BAR_LEAD_MAX} characters.`)
+    .optional(),
+  barTopics: z
+    .array(
+      z.string().trim().max(BAR_TOPIC_MAX, `Keep each topic under ${BAR_TOPIC_MAX} characters.`),
+    )
+    .max(BAR_TOPICS_MAX, `Up to ${BAR_TOPICS_MAX} topics.`)
+    .transform(cleanTopics)
+    .optional(),
+  barMascot: z.enum(["robot", "picture", "none"]).optional(),
+  barMotion: z.boolean().optional(),
   welcome: z.string().trim().max(300),
   starters: z
     .array(z.string().trim().max(80))

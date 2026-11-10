@@ -12,6 +12,18 @@ import { BotAvatar } from "@/components/bots/bot-avatar";
 import { BOT_COLOURS, textOn } from "@/lib/bots/slug";
 import { STARTER_EXAMPLES, suggestedWelcome } from "@/lib/bots/defaults";
 import { LAUNCHER_LABEL_MAX } from "@/lib/bots/style";
+import {
+  BAR_LEAD_MAX,
+  BAR_TOPIC_EXAMPLES,
+  BAR_TOPIC_MAX,
+  BAR_TOPICS_MAX,
+  DEFAULT_BAR_LEAD,
+  type BarMascot,
+  type LauncherStyle,
+} from "@/lib/chat/bar";
+import { BarPreview } from "@/components/bots/bar-preview";
+import { Segmented } from "@/components/ui/segmented";
+import { Switch } from "@/components/ui/switch";
 import { BotTypeChoice } from "@/components/bots/bot-type";
 import { MAX_PAGE_RULES, MAX_STARTERS } from "@/lib/bots/page-starters";
 import { createBotAction, updateBotAction } from "@/app/actions/bots";
@@ -29,6 +41,12 @@ export type Look = {
   logoUrl: string | null;
   /** Words on the website's chat button; empty shows just the icon. */
   launcherLabel: string;
+  /** A round button, or a bar along the bottom of the page (lib/chat/bar.ts). */
+  launcherStyle: LauncherStyle;
+  barLead: string;
+  barTopics: string[];
+  barMascot: BarMascot;
+  barMotion: boolean;
   welcome: string;
   starters: string[];
   /** Different starters on some pages ("the page address contains …"). */
@@ -162,6 +180,11 @@ export function LookForm({
       avatarUrl: null,
       logoUrl: null,
       launcherLabel: "",
+      launcherStyle: "button",
+      barLead: DEFAULT_BAR_LEAD,
+      barTopics: [],
+      barMascot: "robot",
+      barMotion: true,
       welcome: "",
       starters: ["", "", ""],
       pageStarters: [],
@@ -205,7 +228,10 @@ export function LookForm({
     if (botId) {
       run(() => updateBotAction({ id: botId, look: payload }), {
         failed: (r) => !r.ok && setErrors(r.fieldErrors ?? {}),
-        done: () => router.refresh(),
+        done: () => {
+          toast.success("Saved.");
+          router.refresh();
+        },
       });
     } else {
       run(() => createBotAction(payload), {
@@ -377,20 +403,145 @@ export function LookForm({
             </p>
             {err("logoUrl") ? <Note tone="bad">{err("logoUrl")}</Note> : null}
           </div>
-          <Field
-            id="bot-launcher"
-            label="Words on the chat button (optional)"
-            hint="Shown beside the chat icon on the website, e.g. “Ask us” or “Need help?”. Leave it empty for just the icon."
-            error={err("launcherLabel")}
-          >
-            <Input
-              id="bot-launcher"
-              value={look.launcherLabel}
-              maxLength={LAUNCHER_LABEL_MAX}
-              placeholder="Need help?"
-              onChange={(e) => set("launcherLabel", e.target.value)}
+          <div className="flex flex-col gap-2">
+            <span className="text-[0.9rem] font-semibold">Chat button on the website</span>
+            <Segmented<LauncherStyle>
+              className="self-start"
+              label="Chat button on the website"
+              value={look.launcherStyle}
+              onChange={(v) => set("launcherStyle", v)}
+              options={[
+                { value: "button", label: "Round button" },
+                { value: "bar", label: "Bar" },
+              ]}
             />
-          </Field>
+            <p className="text-sm text-muted-foreground">
+              {look.launcherStyle === "bar"
+                ? "A bar along the bottom of the page that says what people can ask about. It stands out more than a button."
+                : "A round button in the corner of the page."}
+            </p>
+          </div>
+          {look.launcherStyle === "button" ? (
+            <Field
+              id="bot-launcher"
+              label="Words on the chat button (optional)"
+              hint="Shown beside the chat icon on the website, e.g. “Ask us” or “Need help?”. Leave it empty for just the icon."
+              error={err("launcherLabel")}
+            >
+              <Input
+                id="bot-launcher"
+                value={look.launcherLabel}
+                maxLength={LAUNCHER_LABEL_MAX}
+                placeholder="Need help?"
+                onChange={(e) => set("launcherLabel", e.target.value)}
+              />
+            </Field>
+          ) : (
+            <>
+              <Field
+                id="bar-lead"
+                label="Opening words"
+                hint="The start of the bar, before each topic."
+                error={err("barLead")}
+              >
+                <Input
+                  id="bar-lead"
+                  value={look.barLead}
+                  maxLength={BAR_LEAD_MAX}
+                  placeholder={DEFAULT_BAR_LEAD}
+                  onChange={(e) => set("barLead", e.target.value)}
+                />
+              </Field>
+              <div className="flex flex-col gap-2">
+                <span className="text-[0.9rem] font-semibold">Topics</span>
+                <p className="text-sm text-muted-foreground">
+                  The bar shows these one after another, e.g. “{look.barLead || DEFAULT_BAR_LEAD}{" "}
+                  {BAR_TOPIC_EXAMPLES[kind][0]}”. Up to {BAR_TOPICS_MAX}. With none, it says
+                  “anything”.
+                </p>
+                {look.barTopics.map((t, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <Input
+                      value={t}
+                      maxLength={BAR_TOPIC_MAX}
+                      aria-label={`Topic ${i + 1}`}
+                      placeholder={BAR_TOPIC_EXAMPLES[kind][i % 4]}
+                      onChange={(e) =>
+                        set(
+                          "barTopics",
+                          look.barTopics.map((x, k) => (k === i ? e.target.value : x)),
+                        )
+                      }
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Remove topic ${i + 1}`}
+                      onClick={() =>
+                        set(
+                          "barTopics",
+                          look.barTopics.filter((_, k) => k !== i),
+                        )
+                      }
+                    >
+                      <Trash2 />
+                    </Button>
+                  </div>
+                ))}
+                <div className="flex flex-wrap gap-2">
+                  {look.barTopics.length < BAR_TOPICS_MAX ? (
+                    <Button size="sm" onClick={() => set("barTopics", [...look.barTopics, ""])}>
+                      <Plus /> Add a topic
+                    </Button>
+                  ) : null}
+                  {!look.barTopics.some((t) => t.trim()) ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => set("barTopics", BAR_TOPIC_EXAMPLES[kind])}
+                    >
+                      <Sparkles /> Suggest topics
+                    </Button>
+                  ) : null}
+                </div>
+                {err("barTopics") ? <Note tone="bad">{err("barTopics")}</Note> : null}
+              </div>
+              <div className="flex flex-col gap-2">
+                <span className="text-[0.9rem] font-semibold">At the start of the bar</span>
+                <Segmented<BarMascot>
+                  className="self-start"
+                  label="At the start of the bar"
+                  value={look.barMascot}
+                  onChange={(v) => set("barMascot", v)}
+                  options={[
+                    { value: "robot", label: "Robot" },
+                    { value: "picture", label: "Bot's picture" },
+                    { value: "none", label: "Nothing" },
+                  ]}
+                />
+                {look.barMascot === "picture" && !look.avatarUrl ? (
+                  <p className="text-sm text-muted-foreground">
+                    Upload a picture below, or the bar shows the robot.
+                  </p>
+                ) : null}
+              </div>
+              <label className="flex items-center gap-3">
+                <Switch
+                  checked={look.barMotion}
+                  onCheckedChange={(x) => set("barMotion", x)}
+                  aria-label="Movement on the bar"
+                />
+                <span>
+                  Movement{" "}
+                  <span className="text-sm text-muted-foreground">
+                    (the robot blinks and its eyes follow the pointer, topics slide in, and it gives
+                    one small nudge after a quiet moment; always off for people who ask their device
+                    for less movement)
+                  </span>
+                </span>
+              </label>
+            </>
+          )}
         </fieldset>
         <div className="flex flex-col gap-2">
           <span className="text-[0.9rem] font-semibold">Picture (optional)</span>
@@ -599,20 +750,33 @@ export function LookForm({
           </div>
         </div>
         <p className="label-caps mt-4 mb-2">Chat button on the website</p>
-        <div className="flex justify-end rounded-[16px] border border-dashed border-border p-4">
-          <span
-            className={cn(
-              "inline-flex items-center gap-2 font-bold shadow-panel",
-              look.launcherLabel.trim()
-                ? "h-12 rounded-full pr-5 pl-4"
-                : "size-14 justify-center rounded-full",
-            )}
-            style={{ background: look.color, color: textOn(look.color) }}
-          >
-            <MessageSquare className="size-6" aria-hidden />
-            {look.launcherLabel.trim() || <span className="sr-only">Chat</span>}
-          </span>
-        </div>
+        {look.launcherStyle === "bar" ? (
+          <div className="rounded-[16px] border border-dashed border-border p-3">
+            <BarPreview
+              color={look.color}
+              lead={look.barLead}
+              topics={look.barTopics}
+              mascot={look.barMascot === "picture" && !look.avatarUrl ? "robot" : look.barMascot}
+              avatarUrl={look.avatarUrl}
+              motion={look.barMotion}
+            />
+          </div>
+        ) : (
+          <div className="flex justify-end rounded-[16px] border border-dashed border-border p-4">
+            <span
+              className={cn(
+                "inline-flex items-center gap-2 font-bold shadow-panel",
+                look.launcherLabel.trim()
+                  ? "h-12 rounded-full pr-5 pl-4"
+                  : "size-14 justify-center rounded-full",
+              )}
+              style={{ background: look.color, color: textOn(look.color) }}
+            >
+              <MessageSquare className="size-6" aria-hidden />
+              {look.launcherLabel.trim() || <span className="sr-only">Chat</span>}
+            </span>
+          </div>
+        )}
       </div>
     </form>
   );

@@ -19,6 +19,8 @@ import type { BotRules, CheckIssue, RequestType, TestQuestion, TestRun } from "@
 import {
   answerLength,
   audience,
+  barMascot,
+  launcherStyle,
   botStatus,
   checkStatus,
   quality,
@@ -68,6 +70,18 @@ export const bots = pgTable(
     logoUrl: text("logo_url"),
     /** Words on the website's chat button, e.g. "Ask Billie"; empty shows just the icon. */
     launcherLabel: text("launcher_label").notNull().default(""),
+    /** A round button, or a bar along the bottom of the page. */
+    launcherStyle: launcherStyle("launcher_style").notNull().default("button"),
+    /** The bar's opening words, e.g. "Ask me about". */
+    barLead: text("bar_lead").notNull().default("Ask me about"),
+    /** Topics the bar cycles through after its opening words. */
+    barTopics: text("bar_topics")
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::text[]`),
+    barMascot: barMascot("bar_mascot").notNull().default("robot"),
+    /** The robot bobs and blinks and the topics slide in; off keeps the bar still. */
+    barMotion: boolean("bar_motion").notNull().default(true),
     welcome: text("welcome").notNull().default(""),
     starters: jsonb("starters").$type<string[]>().notNull().default([]),
     /** Who handles what: chats and emails about a topic go to that person first. */

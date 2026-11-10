@@ -34,6 +34,12 @@ export type BotLook = {
   logoUrl?: string | null;
   /** Words on the website's chat button; empty shows just the icon. */
   launcherLabel?: string;
+  /** A round button, or a bar along the bottom (lib/chat/bar.ts). */
+  launcherStyle?: "button" | "bar";
+  barLead?: string;
+  barTopics?: string[];
+  barMascot?: "robot" | "picture" | "none";
+  barMotion?: boolean;
   welcome: string;
   starters: string[];
   /** Different starters on some pages (lib/bots/page-starters.ts). */

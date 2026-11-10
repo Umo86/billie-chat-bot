@@ -7,6 +7,7 @@ import { signInOpen } from "@/lib/exhibitors/sign-in";
 import { bearer } from "./token";
 import { normaliseDomain } from "./domains";
 import { startersForPage } from "@/lib/bots/page-starters";
+import { barTopics, DEFAULT_BAR_LEAD } from "./bar";
 import {
   conversationForToken,
   type Channel,
@@ -31,6 +32,16 @@ export type PublicBot = {
   logoUrl: string | null;
   /** Words on the website's chat button; empty shows just the icon. */
   launcherLabel: string;
+  /** The chat button on the website: a round button, or the bar (lib/chat/bar.ts). */
+  launcher:
+    | { style: "button" }
+    | {
+        style: "bar";
+        lead: string;
+        topics: string[];
+        mascot: "robot" | "picture" | "none";
+        motion: boolean;
+      };
   welcome: string;
   starters: string[];
   consent: string;
@@ -54,6 +65,17 @@ export async function publicBot(bot: BotRow, pageUrl: string | null = null): Pro
     avatarUrl: bot.avatarUrl,
     logoUrl: bot.logoUrl,
     launcherLabel: bot.launcherLabel,
+    launcher:
+      bot.launcherStyle === "bar"
+        ? {
+            style: "bar",
+            lead: bot.barLead.trim() || DEFAULT_BAR_LEAD,
+            topics: barTopics(bot.barTopics),
+            // A picture only when there is one; otherwise the robot.
+            mascot: bot.barMascot === "picture" && !bot.avatarUrl ? "robot" : bot.barMascot,
+            motion: bot.barMotion,
+          }
+        : { style: "button" },
     welcome: bot.welcome,
     starters: startersForPage(bot.pageStarters, bot.starters, pageUrl),
     consent: s.consentText,

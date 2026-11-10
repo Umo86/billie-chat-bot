@@ -811,3 +811,18 @@ copied embed code doesn't work elsewhere.
 Billie serves one company (Media10). There's no tenant column; settings are
 one row. Adding tenants later means a `company_id` on bots, knowledge and
 users.
+
+## The chat bar: obvious, reacts a little, never nags
+
+A round button in the corner is easy to miss. A bot's website chat can be a
+bar along the bottom instead (Look step): "Ask me about" plus topics that
+come round every three seconds, a small robot (or the bot's picture) and a
+send arrow. It reacts to the visitor without getting in the way: the
+robot's eyes follow the pointer and the way the page scrolls, topics pause
+under the pointer, and after 15 quiet seconds the arrow pulses once, and
+only once. A cross tucks the bar away for the visit (session storage) and
+the round button takes its place. All movement is off when the team turns
+it off or the visitor's device asks for less motion. Like the rest of
+`public/widget.js`, it sets styles through the DOM and animates with the
+Web Animations API, so it works under a strict Content-Security-Policy, and
+every word is set as text. A screen reader hears the whole line at once.
