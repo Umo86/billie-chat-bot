@@ -16,7 +16,7 @@ import { hashToken, newToken } from "@/lib/chat/token";
 import type { Actor } from "@/lib/authz";
 import type {
   AnswerMeta,
-  ChatTask,
+  ChecklistItem,
   ContactDetails,
   ContactField,
   MessageSource,
@@ -25,6 +25,8 @@ import type {
   RequestOrder,
   RequestType,
 } from "@/lib/types";
+import { stoppedLine, SUSPICIOUS_LIMIT } from "@/lib/chat/safety";
+import { queueLead } from "@/lib/crm/leads";
 import { appUrl, emailConfigured } from "@/lib/config";
 import { offerFor, requestRef } from "@/lib/requests/rules";
 import {
@@ -41,7 +43,9 @@ import {
 import { withinHours } from "./hours";
 import { botPaused, nextStatus, type ConversationEvent, type ConversationStatus } from "./status";
 import { queueSuggestion } from "./suggest";
-import { knownFor, outstandingTasks, taskExhibitor, typesFor } from "@/lib/requests/tasks";
+import { exhibitorChecklist, knownFor, taskExhibitor, typesFor } from "@/lib/requests/tasks";
+import { checklistText, hasToDo } from "@/lib/exhibitors/checklist";
+import { londonDate } from "@/lib/time";
 import { recordFor, signedInAs } from "@/lib/exhibitors/service";
 
 /**
@@ -63,6 +67,8 @@ export type VisitorMessage = {
   author: string | null;
   rating: number | null;
   createdAt: string;
+  /** The team's links, as buttons under Billie's answer. */
+  links: { label: string; url: string }[];
 };
 
 export type Turn = {
@@ -79,8 +85,13 @@ export type Turn = {
   request: RequestOffer | null;
   /** The exhibitor signed in to this chat, if any (lib/exhibitors/sign-in.ts). */
   signedIn?: { name: string; company: string; stand: string } | null;
-  /** Tasks the signed-in exhibitor still has to do, as buttons (lib/requests/tasks.ts). */
-  tasks?: ChatTask[];
+  /**
+   * What the signed-in exhibitor has to do before the show, while something
+   * still is (lib/exhibitors/checklist.ts): deadlines ticked off, tasks as buttons.
+   */
+  checklist?: ChecklistItem[];
+  /** Billie has stopped answering this chat (lib/chat/safety.ts): what to show instead. */
+  stopped?: string;
 };
 
 export class ChatError extends Error {
@@ -109,7 +120,23 @@ export function toVisitor(m: MessageRow, authorName?: string | null): VisitorMes
     author: m.role === "agent" ? firstName(authorName) : null,
     rating: m.rating,
     createdAt: m.createdAt.toISOString(),
+    links: m.role === "bot" ? safeLinks((m.meta as AnswerMeta | null)?.links) : [],
   };
+}
+
+/** Links kept with a message, re-checked as http(s) before they reach the page. */
+function safeLinks(links: unknown): { label: string; url: string }[] {
+  if (!Array.isArray(links)) return [];
+  return links
+    .filter(
+      (l): l is { label: string; url: string } =>
+        Boolean(l) &&
+        typeof l.label === "string" &&
+        typeof l.url === "string" &&
+        /^https?:\/\//i.test(l.url),
+    )
+    .slice(0, 2)
+    .map((l) => ({ label: l.label.slice(0, 60), url: l.url.slice(0, 500) }));
 }
 
 async function authorNames(rows: MessageRow[]): Promise<Map<string, string>> {
@@ -280,6 +307,17 @@ export async function visitorMessage(input: {
   };
   if (botPaused(status)) return out; // A person has this chat; the Inbox shows the new message.
 
+  // A chat Billie stopped answering (suspicious messages) gets the same line, without Claude.
+  if (conv.flags >= SUSPICIOUS_LIMIT) {
+    const line = stoppedLine(input.bot.contactEmail);
+    const row = await db.transaction((tx) =>
+      insertMessage(tx, convId, { role: "bot", text: line, meta: { flag: "suspicious" } }),
+    );
+    out.messages.push(...(await view([row])));
+    out.stopped = line;
+    return out;
+  }
+
   // 2. Billie answers.
   let answer;
   // Requests for some stands only (a task for space only stands) are only offered to them.
@@ -291,12 +329,14 @@ export async function visitorMessage(input: {
   try {
     const answerBot = await answerBotFor(input.bot);
     const person =
-      answerBot.personal && input.channel !== "whatsapp" ? await signedInRecord(convId) : null;
+      answerBot.personal && input.channel !== "whatsapp"
+        ? await signedInRecord(input.bot, convId, exhibitor)
+        : null;
     answer = await answerQuestion({
       // WhatsApp can't show a form, or sign anyone in: both are only on the web.
       bot:
         input.channel === "whatsapp"
-          ? { ...answerBot, requestTypes: [], personal: false }
+          ? { ...answerBot, requestTypes: [], personal: false, links: [] }
           : { ...answerBot, requestTypes: typesFor(input.bot, exhibitor) },
       history,
       question: text,
@@ -322,19 +362,37 @@ export async function visitorMessage(input: {
   const offered = offerFor(
     typesFor(input.bot, exhibitor),
     answer.request,
+    input.bot.audience,
     knownFor(exhibitor, chatRow?.signedInEmail ?? null),
   );
-  const botRow = await db.transaction((tx) =>
-    insertMessage(tx, convId, {
+  const links =
+    input.channel === "whatsapp" ? [] : answer.links.map((l) => ({ label: l.label, url: l.url }));
+  const { botRow, flags } = await db.transaction(async (tx) => {
+    const botRow = await insertMessage(tx, convId, {
       role: "bot",
       text: answer.answer,
       sources: answer.sources,
-      // The form offered is kept with the answer: it comes back if the page reloads.
-      meta: offered ? { ...answer.meta, request: offered.typeId } : answer.meta,
-    }),
-  );
+      // The form offered and the links are kept with the answer: they come back on reload.
+      meta: {
+        ...answer.meta,
+        ...(offered ? { request: offered.typeId } : {}),
+        ...(links.length ? { links } : {}),
+      },
+    });
+    if (answer.flag !== "suspicious") return { botRow, flags: 0 };
+    const [c] = await tx
+      .update(conversations)
+      .set({ flags: sql`${conversations.flags} + 1` })
+      .where(eq(conversations.id, convId))
+      .returning({ flags: conversations.flags });
+    return { botRow, flags: c?.flags ?? 0 };
+  });
   out.messages.push(...(await view([botRow])));
   out.request = offered;
+  if (flags >= SUSPICIOUS_LIMIT) {
+    out.stopped = stoppedLine(input.bot.contactEmail);
+    return out;
+  }
 
   const decision = afterAnswer(answer.handover);
   if (out.request) {
@@ -623,13 +681,17 @@ export async function submitRequest(
       { requestId: req.id },
       { tx, dedupeKey: `notify-request:${req.id}` },
     );
+    // A lead (e.g. interested in exhibiting): to Twenty CRM too.
+    if (type.crm) await queueLead(tx, req.id);
     return [line];
   });
   await kickJobs();
   const c = await db.query.conversations.findFirst({ where: eq(conversations.id, conversationId) });
-  // A task done: the rest of the exhibitor's tasks, still to do.
-  const tasks =
-    c && type.task && c.status === "bot" ? await outstandingTasks(bot, await taskExhibitor(c)) : [];
+  // A task done: the rest of the exhibitor's list, while something is still to do.
+  const checklist =
+    c && type.task && c.status === "bot"
+      ? await exhibitorChecklist(bot, await taskExhibitor(c))
+      : [];
   return {
     conversationId,
     status: c?.status ?? "bot",
@@ -637,7 +699,7 @@ export async function submitRequest(
     offer: null,
     form: null,
     request: null,
-    ...(tasks.length ? { tasks } : {}),
+    ...(hasToDo(checklist) ? { checklist } : {}),
   };
 }
 
@@ -719,13 +781,14 @@ export async function visitorUpdates(
       ? offerFor(
           typesFor(bot, exhibitor),
           (last.meta as AnswerMeta).request ?? null,
+          bot.audience,
           knownFor(exhibitor, conversation.signedInEmail),
         )
       : null;
-  // Signed in, with nothing else on screen: what's still to do for their stand.
-  const tasks =
+  // Signed in, with nothing else on screen: what they still have to do before the show.
+  const checklist =
     !after && !pending && conversation.status === "bot"
-      ? await outstandingTasks(bot, exhibitor)
+      ? await exhibitorChecklist(bot, exhibitor)
       : [];
   return {
     conversationId: conversation.id,
@@ -735,7 +798,8 @@ export async function visitorUpdates(
     form: conversation.status === "collecting" ? formFor(bot) : null,
     request: pending,
     signedIn: after ? undefined : await signedInAs(conversation),
-    ...(tasks.length ? { tasks } : {}),
+    ...(hasToDo(checklist) ? { checklist } : {}),
+    ...(conversation.flags >= SUSPICIOUS_LIMIT ? { stopped: stoppedLine(bot.contactEmail) } : {}),
   };
 }
 
@@ -773,18 +837,25 @@ export async function startTask(
     messages: await view([row]),
     offer: null,
     form: null,
-    request: offerFor([type], type.id, knownFor(exhibitor, c.signedInEmail)),
+    request: offerFor([type], type.id, bot.audience, knownFor(exhibitor, c.signedInEmail)),
   };
 }
 
 /** The signed-in exhibitor's record for Billie to answer from (none if nobody is). */
-async function signedInRecord(conversationId: string): Promise<{ record: string } | null> {
+async function signedInRecord(
+  bot: BotRow,
+  conversationId: string,
+  exhibitor: Awaited<ReturnType<typeof taskExhibitor>>,
+): Promise<{ record: string } | null> {
   const c = await db.query.conversations.findFirst({
     where: eq(conversations.id, conversationId),
     columns: { exhibitorId: true, signedInAt: true, signedInEmail: true },
   });
   const record = c ? await recordFor(c) : null;
-  return record ? { record } : null;
+  if (!record) return null;
+  // What they still have to do, so "what's left for us to do?" gets a true answer.
+  const list = checklistText(await exhibitorChecklist(bot, exhibitor), londonDate());
+  return { record: list ? `${record}\n\n${list}` : record };
 }
 
 /** Whether Billie offered this request's form in this chat (the only way to send one). */

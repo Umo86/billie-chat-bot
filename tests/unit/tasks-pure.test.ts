@@ -61,7 +61,7 @@ describe("tasks from the exhibitor manual", () => {
   });
 
   it("offers the form with its items, and what Billie already knows", () => {
-    const offer = offerFor([electrics], "elec0001", { name: "Sam", stand: "B12" });
+    const offer = offerFor([electrics], "elec0001", "exhibitors", { name: "Sam", stand: "B12" });
     expect(offer?.items).toHaveLength(2);
     expect(offer?.known).toEqual({ name: "Sam", stand: "B12" });
   });

@@ -14,6 +14,7 @@ test("a bot's own knowledge: edit it, then find and replace across it", async ({
   await page.getByRole("link", { name: "New bot" }).first().click();
   await page.getByLabel("Bot name").fill("Christmas Show Help");
   await page.getByLabel("Show name").fill("Ideal Home Show Christmas 2026");
+  await page.getByLabel("Event team email").fill("ops@idealhome.test");
   await page.getByRole("radio", { name: /^Exhibitor chatbot/ }).check();
   await page.getByRole("button", { name: "Create bot and continue" }).click();
   await expect(page.getByText("Bot created.")).toBeVisible();

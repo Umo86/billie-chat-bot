@@ -1,0 +1,1 @@
+ALTER TABLE "bots" ADD COLUMN "links" jsonb DEFAULT '[]'::jsonb NOT NULL;

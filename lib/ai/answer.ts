@@ -1,8 +1,15 @@
 import "server-only";
-import type { AnswerMeta, BotRules, HandoverKind, MessageSource, RequestType } from "@/lib/types";
+import type {
+  AnswerMeta,
+  BotLink,
+  BotRules,
+  HandoverKind,
+  MessageSource,
+  RequestType,
+} from "@/lib/types";
+import { suspiciousLine } from "@/lib/chat/safety";
 import { retrieve } from "@/lib/knowledge/search";
-import { answerSchema } from "./schemas";
-import { answerJsonSchema } from "./schemas";
+import { answerJsonSchema, answerSchema, type AnswerFlag } from "./schemas";
 import { answerSystem, answerUser, knowledgeBlock, type PromptPassage, type Turn } from "./prompts";
 import { modelsFor } from "./chosen";
 import { AiError, structured, type StructuredResult } from "./provider";
@@ -38,6 +45,10 @@ export type AnswerBot = {
   personal: boolean;
   /** How: the chat's "Your stand" button, or only by opening the chat from the exhibitor manual. */
   signInBy?: "button" | "manual";
+  /** The event team's email (Look step), for suspicious chats and anyone who needs the team. */
+  contactEmail: string;
+  /** The team's links it can show as buttons; empty where buttons can't be shown (WhatsApp). */
+  links: BotLink[];
 };
 
 export type AnswerResult = {
@@ -48,6 +59,10 @@ export type AnswerResult = {
   topic: string;
   /** The request form to show under the answer, if the person wants to make one. */
   request: string | null;
+  /** The team's links to show as buttons under the answer. */
+  links: BotLink[];
+  /** off_topic: not about the show; suspicious: a trick, abuse or fraud (lib/chat/safety.ts). */
+  flag: AnswerFlag;
   meta: AnswerMeta;
 };
 
@@ -95,6 +110,9 @@ export async function answerQuestion(input: {
     if (again)
       return {
         ...again,
+        // Kept before links and flags existed: none.
+        links: again.links ?? [],
+        flag: again.flag ?? "none",
         meta: {
           handover: again.handover,
           confident: again.confident,
@@ -146,6 +164,8 @@ export async function answerQuestion(input: {
       requests: bot.requestTypes.map((r) => ({ id: r.id, name: r.name, when: r.when })),
       personal: bot.personal,
       signInBy: bot.signInBy,
+      contactEmail: bot.contactEmail,
+      links: bot.links.map((l) => ({ id: l.id, label: l.label, when: l.when })),
     }),
     knowledge: knowledgeBlock(found),
     user: answerUser(
@@ -162,6 +182,7 @@ export async function answerQuestion(input: {
       passages,
       alwaysHuman: bot.rules.alwaysHuman,
       requests: bot.requestTypes.map((r) => ({ id: r.id, name: r.name })),
+      links: bot.links.map((l) => ({ id: l.id, label: l.label })),
     },
   };
 
@@ -202,19 +223,25 @@ export async function answerQuestion(input: {
     if (!unsure || last || sameModel(result.model, thorough.model)) break;
   }
   const { result, reply } = chosen!;
-  const { handover, used, answer, request } = reply;
+  const suspicious = reply.flag === "suspicious";
+  // A suspicious message gets the fixed reply: nothing Claude wrote for it is shown.
+  const handover = suspicious ? "none" : reply.handover;
+  const { used, answer, request } = reply;
 
   const out: AnswerResult = {
-    answer: answer || NO_ANSWER,
-    sources: handover === "none" ? citeSources(used, passages) : [],
+    answer: suspicious ? suspiciousLine(bot.contactEmail) : answer || NO_ANSWER,
+    sources: handover === "none" && !suspicious ? citeSources(used, passages) : [],
     handover,
-    confident: reply.confident,
-    topic: reply.topic,
-    request: handover === "none" ? request : null,
+    confident: suspicious ? true : reply.confident,
+    topic: suspicious ? "Suspicious message" : reply.topic,
+    request: handover === "none" && !suspicious ? request : null,
+    links: suspicious ? [] : reply.links,
+    flag: reply.flag,
     meta: {
+      ...(reply.flag !== "none" ? { flag: reply.flag } : {}),
       handover,
-      confident: reply.confident,
-      topic: reply.topic,
+      confident: suspicious ? true : reply.confident,
+      topic: suspicious ? "Suspicious message" : reply.topic,
       model: result.model,
       latencyMs: result.latencyMs,
       inputTokens: result.usage.inputTokens,
@@ -223,7 +250,8 @@ export async function answerQuestion(input: {
       passages: passages.length,
     },
   };
-  if (reuse)
+  // Only ordinary answers are given again: never a refusal meant for one person.
+  if (reuse && reply.flag === "none")
     await keepForReuse(
       reuse,
       out,
@@ -240,9 +268,11 @@ type Reply = {
   confident: boolean;
   topic: string;
   request: string | null;
+  links: BotLink[];
+  flag: AnswerFlag;
 };
 
-/** Claude's reply, checked: only passages that exist, only requests the bot has. */
+/** Claude's reply, checked: only passages that exist, only requests and links the bot has. */
 function readReply(json: unknown, bot: AnswerBot, passageCount: number): Reply | null {
   const parsed = answerSchema.safeParse(json);
   if (!parsed.success) return null;
@@ -254,7 +284,21 @@ function readReply(json: unknown, bot: AnswerBot, passageCount: number): Reply |
   // Only a request this bot really has; making one is not a reason to hand over.
   const request = bot.requestTypes.some((t) => t.id === r.request) ? r.request : null;
   if (request && handover !== "always_human" && handover !== "asked_for_person") handover = "none";
-  return { handover, used, answer, confident: r.confident, topic: r.topic.slice(0, 60), request };
+  // Only the team's own links, at most two, each once.
+  const links = [...new Set(r.links)]
+    .map((id) => bot.links.find((l) => l.id === id))
+    .filter((l): l is BotLink => Boolean(l))
+    .slice(0, 2);
+  return {
+    handover,
+    used,
+    answer,
+    confident: r.confident,
+    topic: r.topic.slice(0, 60),
+    request,
+    links,
+    flag: r.flag,
+  };
 }
 
 const billedOf = (u: StructuredResult["usage"]) => ({

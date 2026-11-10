@@ -28,7 +28,17 @@ type Recipient = {
   status: "pending" | "left_out" | "queued" | "sending" | "sent" | "failed";
   note: string;
   since: "done" | "gone" | null;
+  /** The day they last had a reminder email, when that's recent (another deadline, say). */
+  recent?: string | null;
 };
+
+const shortDay = (day: string) =>
+  new Intl.DateTimeFormat("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "Europe/London",
+  }).format(new Date(`${day}T12:00:00Z`));
 
 const SHOW = 200;
 const plural = (n: number, one: string, many: string) =>
@@ -58,6 +68,7 @@ export function ReminderReview({
   replyTo,
   emailReady,
   canSend,
+  repeatEvery = 0,
 }: {
   botId: string;
   batch: {
@@ -69,17 +80,26 @@ export function ReminderReview({
     note: string;
     sources: { title: string; label: string }[];
     sent: string | null;
+    /** 1 for the first round; more for a repeat of the email sent before. */
+    round?: number;
   };
   recipients: Recipient[];
   replyTo: string | null;
   emailReady: boolean;
   canSend: boolean;
+  /** The bot's plan repeats reminders every so many days (0: it doesn't). */
+  repeatEvery?: number;
 }) {
   const router = useRouter();
   const [subject, setSubject] = useState(batch.subject);
   const [body, setBody] = useState(batch.body);
   const [ticked, setTicked] = useState<Set<string>>(
-    () => new Set(recipients.filter((r) => r.status === "pending" && !r.since).map((r) => r.id)),
+    () =>
+      new Set(
+        recipients
+          .filter((r) => r.status === "pending" && !r.since && !(repeatEvery && r.recent))
+          .map((r) => r.id),
+      ),
   );
   const [all, setAll] = useState(false);
   const [confirm, setConfirm] = useState(false);
@@ -183,6 +203,13 @@ export function ReminderReview({
                 bot&apos;s knowledge.
               </Note>
             ) : null}
+            {open && repeatEvery ? (
+              <p className="text-sm text-muted-foreground" data-testid="repeat-hint">
+                {(batch.round ?? 1) > 1
+                  ? "The email sent last time, for those who still haven't done it."
+                  : `Once this is sent, Billie sends it again every ${repeatEvery === 7 ? "week" : `${repeatEvery} days`} to anyone who still hasn't done it. So give the date it's due, not how many days are left.`}
+              </p>
+            ) : null}
             {open && canSend ? (
               <>
                 <Field id="rm-subject" label="Subject">
@@ -279,6 +306,13 @@ export function ReminderReview({
               one.
             </p>
           ) : null}
+          {open && recipients.some((r) => r.recent && !r.since) ? (
+            <p className="text-sm text-muted-foreground">
+              {repeatEvery
+                ? "Some had a reminder email in the last few days, so they're unticked: they get the next round. Tick them to send one now anyway."
+                : "Some had a reminder email in the last few days. Untick them if one more is too many."}
+            </p>
+          ) : null}
           <div className="overflow-x-auto rounded-[10px] border border-border">
             <table className="w-full min-w-[620px] text-left text-sm">
               <thead className="bg-muted text-[0.8rem] text-muted-foreground">
@@ -330,6 +364,8 @@ export function ReminderReview({
                           <Chip tone="good">Done since</Chip>
                         ) : r.since === "gone" ? (
                           <Chip>Not on the list</Chip>
+                        ) : open && r.recent ? (
+                          <Chip tone="info">Reminded {shortDay(r.recent)}</Chip>
                         ) : open ? null : (
                           <span className="flex flex-col gap-0.5">
                             <Chip tone={STATUS[r.status].tone}>{STATUS[r.status].label}</Chip>

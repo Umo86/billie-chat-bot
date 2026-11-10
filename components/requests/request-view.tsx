@@ -3,12 +3,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ExternalLink, MessageCircle } from "lucide-react";
+import { ArrowLeft, ExternalLink, MessageCircle, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Chip, Panel } from "@/components/ui/bits";
 import { Field, Select, Textarea } from "@/components/ui/form";
 import { useRunner } from "@/components/ui/use-runner";
-import { updateRequestAction } from "@/app/actions/requests";
+import { sendLeadAction, updateRequestAction } from "@/app/actions/requests";
 import { REQUEST_STATUS_LABEL } from "@/lib/requests/rules";
 import { FIELD_LABEL } from "@/lib/bots/defaults";
 import type { RequestDetail } from "@/lib/requests/service";
@@ -122,6 +122,8 @@ export function RequestView({
           </dl>
         </section>
 
+        {r.crm ? <CrmLead id={r.id} crm={r.crm} canSend={canHandle} /> : null}
+
         <div className="flex flex-wrap gap-2">
           {r.conversationId ? (
             <Button asChild size="sm">
@@ -212,5 +214,52 @@ export function RequestView({
         </Panel>
       ) : null}
     </div>
+  );
+}
+
+const CRM_TEXT = {
+  waiting: "Waiting: Twenty isn't connected yet. Send it once it is.",
+  queued: "Sending to Twenty…",
+  sent: "In Twenty as a lead.",
+  failed: "Couldn't send it to Twenty.",
+} as const;
+
+/** A lead's journey to Twenty CRM, with a button to send it again. */
+function CrmLead({
+  id,
+  crm,
+  canSend,
+}: {
+  id: string;
+  crm: NonNullable<RequestDetail["crm"]>;
+  canSend: boolean;
+}) {
+  const router = useRouter();
+  const { pending, run } = useRunner();
+  const tone = crm.status === "sent" ? "good" : crm.status === "failed" ? "bad" : "info";
+  return (
+    <section aria-label="Twenty CRM" className="flex flex-col gap-2">
+      <h3 className="text-[0.95rem]">Twenty CRM</h3>
+      <div className="flex flex-wrap items-center gap-2">
+        <Chip tone={tone}>{CRM_TEXT[crm.status]}</Chip>
+        {crm.status === "sent" && crm.url ? (
+          <Button asChild size="sm" variant="ghost">
+            <a href={crm.url} target="_blank" rel="noreferrer">
+              <ExternalLink /> Open in Twenty
+            </a>
+          </Button>
+        ) : null}
+        {canSend && (crm.status === "failed" || crm.status === "waiting") ? (
+          <Button
+            size="sm"
+            disabled={pending}
+            onClick={() => run(() => sendLeadAction({ id }), { done: () => router.refresh() })}
+          >
+            <Send /> {crm.status === "failed" ? "Try again" : "Send to Twenty"}
+          </Button>
+        ) : null}
+      </div>
+      {crm.status === "failed" && crm.note ? <p className="text-sm text-bad">{crm.note}</p> : null}
+    </section>
   );
 }

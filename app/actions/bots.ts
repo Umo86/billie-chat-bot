@@ -15,6 +15,13 @@ import {
 } from "@/lib/bots/service";
 import { CONTACT_FIELDS, PERSONALITY_MAX, SIGN_OFF_MAX } from "@/lib/bots/defaults";
 import { AVOID_MAX, LAUNCHER_LABEL_MAX } from "@/lib/bots/style";
+import {
+  cleanLinks,
+  LINK_LABEL_MAX,
+  LINK_WHEN_MAX,
+  linkProblem,
+  MAX_LINKS,
+} from "@/lib/bots/links";
 import { BAR_LEAD_MAX, BAR_TOPIC_MAX, BAR_TOPICS_MAX, cleanTopics } from "@/lib/chat/bar";
 import { validTime } from "@/lib/conversations/hours";
 import { UserError } from "@/lib/errors";
@@ -26,9 +33,10 @@ import { MAX_REQUEST_FIELDS, MAX_REQUEST_ITEMS, MAX_REQUEST_TYPES } from "@/lib/
 import { showDaysProblem } from "@/lib/bots/show-days";
 import { MAX_ROUTES, wordList } from "@/lib/conversations/routes";
 import { saveRoutes } from "@/lib/conversations/routing";
-import { cleanPageRules, MAX_PAGE_RULES, MAX_STARTERS } from "@/lib/bots/page-starters";
+import { cleanPageRules, MAX_PAGE_RULES, MAX_STARTERS, NUDGE_MAX } from "@/lib/bots/page-starters";
 
 const AVATAR = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
+const EMAIL = /^[^\s@<>()",;:]+@[^\s@<>()",;:]+\.[a-z]{2,}$/i;
 
 const look = z.object({
   name: z
@@ -40,6 +48,13 @@ const look = z.object({
     error: "Choose what kind of chatbot it is: for exhibitors or for visitors.",
   }),
   showName: z.string().trim().max(80),
+  contactEmail: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .max(200)
+    .refine((v) => !v || EMAIL.test(v), "Enter the event team's email address, like ops@show.com.")
+    .optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Pick a colour."),
   avatarUrl: z
     .string()
@@ -88,6 +103,11 @@ const look = z.object({
       z.object({
         match: z.string().trim().min(1, "Say which pages, e.g. /travel.").max(200),
         starters: z.array(z.string().trim().max(80)).max(MAX_STARTERS),
+        nudge: z
+          .string()
+          .trim()
+          .max(NUDGE_MAX, `Keep the nudge under ${NUDGE_MAX} characters.`)
+          .optional(),
       }),
     )
     .max(MAX_PAGE_RULES, `Up to ${MAX_PAGE_RULES} page rules.`)
@@ -154,6 +174,33 @@ const patch = z.object({
     )
     .max(50)
     .optional(),
+  /** Links Billie can share as buttons (Rules step, lib/bots/links.ts). */
+  links: z
+    .array(
+      z.object({
+        id: z.string().max(20),
+        label: z
+          .string()
+          .trim()
+          .min(2, "Give the button its words, e.g. Register to visit.")
+          .max(LINK_LABEL_MAX, `Keep the button's words under ${LINK_LABEL_MAX} characters.`),
+        url: z
+          .string()
+          .trim()
+          .superRefine((u, ctx) => {
+            const problem = linkProblem(u);
+            if (problem) ctx.addIssue({ code: "custom", message: problem });
+          }),
+        when: z
+          .string()
+          .trim()
+          .min(5, "Say when Billie should offer it.")
+          .max(LINK_WHEN_MAX, `Keep it under ${LINK_WHEN_MAX} characters.`),
+      }),
+    )
+    .max(MAX_LINKS, `Up to ${MAX_LINKS} links.`)
+    .transform(cleanLinks)
+    .optional(),
   requestTypes: z
     .array(
       z.object({
@@ -172,6 +219,7 @@ const patch = z.object({
           )
           .max(MAX_REQUEST_FIELDS),
         task: z.boolean().optional(),
+        crm: z.boolean().optional(),
         forColumn: z.string().trim().max(80).nullable().optional(),
         forValues: z.array(z.string().trim().min(1).max(80)).max(20).optional(),
         items: z
@@ -200,8 +248,14 @@ function refresh(id?: string) {
   if (id) revalidatePath(`/bots/${id}`);
 }
 
+// A new bot needs the event team's email: suspicious chats are sent there.
+const newBot = look.refine((d) => Boolean(d.contactEmail), {
+  path: ["contactEmail"],
+  error: "Enter the event team's email. Billie gives it to anyone it can't help.",
+});
+
 export async function createBotAction(input: unknown) {
-  return runAction("bots.edit", look, input, async (actor, data) => {
+  return runAction("bots.edit", newBot, input, async (actor, data) => {
     const id = await createBot(actor, data);
     refresh();
     return { id };
@@ -230,6 +284,7 @@ export async function updateBotAction(input: unknown) {
         ...(data.domains ? { domains: data.domains } : {}),
         ...(data.tests ? { tests: data.tests } : {}),
         ...(data.requestTypes ? { requestTypes: data.requestTypes } : {}),
+        ...(data.links ? { links: data.links } : {}),
       });
       refresh(data.id);
     },

@@ -17,6 +17,11 @@ With BluePrint connected to an exhibitor bot:
   team sets up: a signed-in exhibitor gets a button for each one still to
   do for their stand, fills it in (with quantities and a total for orders),
   and BluePrint collects it to record and invoice (section 3).
+- **A checklist for the show.** Each time a signed-in exhibitor opens the
+  chat, they see "Before the show": every deadline, ticked off from the
+  list BluePrint sends, with a button for the tasks and the team's link for
+  things done elsewhere (badges in Visit Connect, say). It goes once
+  everything is done.
 
 The examples use Billie's live address, `https://billie-teal.vercel.app`.
 
@@ -239,9 +244,10 @@ On the bot's **Rules** step, under **Requests it can take**, add one
 - **Who it's for**: a column of the exhibitor list, and the answers in it,
   e.g. Stand type: `Space only`. Only signed-in exhibitors with one of those
   get it, as a button and in Billie's answers.
-- **Its deadline** (optional): a deadline from the Exhibitors step. Its due
-  date shows on the button, and anyone the deadline counts as done (from
-  the list BluePrint sends) doesn't get it.
+- **Its deadline** (optional): a deadline from the Exhibitors step. The
+  task's button sits with that deadline in the exhibitor's checklist, and
+  anyone the deadline counts as done (from the list BluePrint sends)
+  doesn't get it.
 - **Things to order, with prices** (optional): each item and its price in
   pounds. The chat asks how many of each and shows the total. Billie works
   the total out itself, at these prices, and never takes payment.

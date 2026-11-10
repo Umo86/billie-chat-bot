@@ -5,6 +5,7 @@ import { z } from "zod";
 import { runAction } from "@/lib/actions/run";
 import { updateRequest } from "@/lib/requests/service";
 import { assertOnBotOf } from "@/lib/auth/bots";
+import { resendLead } from "@/lib/crm/leads";
 
 /** Status, owner and the message to the person on a request from chat. */
 export async function updateRequestAction(input: unknown) {
@@ -31,5 +32,20 @@ export async function updateRequestAction(input: unknown) {
       revalidatePath("/requests");
     },
     "Saved.",
+  );
+}
+
+/** Sends a lead to Twenty again (it waited for Twenty to be connected, or it failed). */
+export async function sendLeadAction(input: unknown) {
+  return runAction(
+    "inbox.reply",
+    z.object({ id: z.uuid() }),
+    input,
+    async (actor, d) => {
+      await assertOnBotOf(actor, "inbox.reply", "request", d.id);
+      await resendLead(actor, d.id);
+      revalidatePath("/requests");
+    },
+    "Sending it to Twenty.",
   );
 }

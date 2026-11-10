@@ -15,7 +15,14 @@ import {
   vector,
   boolean,
 } from "drizzle-orm/pg-core";
-import type { BotRules, CheckIssue, RequestType, TestQuestion, TestRun } from "@/lib/types";
+import type {
+  BotLink,
+  BotRules,
+  CheckIssue,
+  RequestType,
+  TestQuestion,
+  TestRun,
+} from "@/lib/types";
 import {
   answerLength,
   audience,
@@ -62,6 +69,12 @@ export const bots = pgTable(
     /** The show's days, from the first of build-up to the last of breakdown (UK dates). */
     showStartsOn: date("show_starts_on", { mode: "string" }),
     showEndsOn: date("show_ends_on", { mode: "string" }),
+    /**
+     * The event team's email address, set when the bot is made: shown to anyone
+     * the bot stops helping (a suspicious or abusive chat), and in its answers
+     * when someone needs the team directly.
+     */
+    contactEmail: text("contact_email").notNull().default(""),
     color: text("color").notNull().default("#0d6a5b"),
     avatarUrl: text("avatar_url"),
     /** Buttons, starters and the person's own messages; null uses the header colour. */
@@ -88,6 +101,11 @@ export const bots = pgTable(
     routes: jsonb("routes").$type<HandoverRoute[]>().notNull().default([]),
     /** Different starters on some pages ("the address contains …"; lib/bots/page-starters.ts). */
     pageStarters: jsonb("page_starters").$type<PageStarters[]>().notNull().default([]),
+    /**
+     * Links the bot can show as buttons (lib/bots/links.ts): register to visit,
+     * exhibitor badges, the website listing, ordering. Never an address it made up.
+     */
+    links: jsonb("links").$type<BotLink[]>().notNull().default([]),
     tone: tone("tone").notNull().default("friendly"),
     /** How it should come across, in the team's own words (style only; the rules always win). */
     personality: text("personality").notNull().default(""),

@@ -1,16 +1,31 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { and, eq, like } from "drizzle-orm";
+import { and, eq, like, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { auditLog, deadlines, jobs, reminderBatches, reminders } from "@/lib/db/schema";
+import {
+  auditLog,
+  bots,
+  conversations,
+  deadlines,
+  exhibitors,
+  jobs,
+  reminderBatches,
+  reminders,
+} from "@/lib/db/schema";
 import { uploadList } from "@/lib/exhibitors/service";
 import {
   deadlineSetup,
+  reminderPlan,
   saveDeadline,
+  saveReminderPlan,
   startReminders,
   startScheduledReminders,
   type DeadlineInput,
 } from "@/lib/exhibitors/deadlines";
+import { DEFAULT_PLAN } from "@/lib/exhibitors/reminder-plan";
+import { botById } from "@/lib/bots/load";
+import { startConversation, visitorUpdates } from "@/lib/conversations/service";
+import { exhibitorChecklist, taskExhibitor } from "@/lib/requests/tasks";
 import {
   batchDetail,
   discardReminders,
@@ -397,6 +412,8 @@ describe.skipIf(!hasDb)("deadline reminders", () => {
 
   it("starts on schedule from the reminder day, once, and never after the deadline", async () => {
     const { admin, bot } = await setup();
+    // Any day of the week, so the test runs the same at weekends.
+    await saveReminderPlan(admin, bot.id, { ...DEFAULT_PLAN, weekdaysOnly: false });
     const today = londonDate();
     const inDays = (n: number) => {
       const d = new Date(`${today}T12:00:00Z`);
@@ -452,5 +469,259 @@ describe.skipIf(!hasDb)("deadline reminders", () => {
     expect(await db.select().from(reminders).where(eq(reminders.batchId, batchId))).toHaveLength(0);
     // The deadline itself stays.
     expect(await db.query.deadlines.findFirst({ where: eq(deadlines.id, id) })).toBeTruthy();
+  });
+});
+
+const dayFrom = (today: string, n: number) => {
+  const d = new Date(`${today}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
+
+describe.skipIf(!hasDb)("how often reminders go", () => {
+  beforeAll(() => {
+    vi.stubEnv("RESEND_API_KEY", "re_test_not_real");
+    vi.stubEnv("EMAIL_FROM", "Billie <billie@media10.test>");
+  });
+  afterAll(() => {
+    vi.unstubAllEnvs();
+  });
+  beforeEach(() => {
+    sent.length = 0;
+  });
+
+  /** A first round, checked and sent `ago` days ago (as if the schedule had run then). */
+  async function sentRound(ago: number) {
+    const { admin, bot, e, rows } = await setup();
+    const today = londonDate();
+    // Only "Yes" is done: Acme (No), Kite (no answer) and Oak (Approved) get it.
+    const id = await saveDeadline(admin, bot.id, {
+      ...PLAN,
+      doneValues: ["yes"],
+      dueOn: dayFrom(today, 3),
+      remindDaysBefore: 14,
+    });
+    const { batchId } = (await startReminders(admin, id))!;
+    await writeReminders(batchId);
+    await sendReminders(admin, batchId, {
+      subject: "Your stand plan for {stand}",
+      body: "Hi {first_name},\n\nPlease send the stand plan for {company} by Sunday 14 February.",
+      leaveOut: [],
+    });
+    await sendReminderBatch(batchId, { round: 1, pauseMs: 0 });
+    await db
+      .update(reminderBatches)
+      .set({ createdAt: daysAgo(ago), sentAt: daysAgo(ago) })
+      .where(eq(reminderBatches.id, batchId));
+    await db
+      .update(reminders)
+      .set({ sentAt: daysAgo(ago) })
+      .where(eq(reminders.batchId, batchId));
+    sent.length = 0;
+    return { admin, bot, e, rows, id, batchId };
+  }
+
+  const roundsOf = (id: string) =>
+    db.select().from(reminderBatches).where(eq(reminderBatches.deadlineId, id));
+
+  it("is one round by default, and saved with a note in the audit log", async () => {
+    const admin = await makeUser("admin");
+    const { bot } = await makeBot();
+    expect(await reminderPlan(bot.id)).toEqual(DEFAULT_PLAN);
+    const weekly = { repeatDays: 7, autoSend: true, gapDays: 3, weekdaysOnly: false } as const;
+    await saveReminderPlan(admin, bot.id, weekly);
+    expect(await reminderPlan(bot.id)).toEqual(weekly);
+    await expect(
+      saveReminderPlan(admin, bot.id, { ...weekly, repeatDays: 5 as 7 }),
+    ).rejects.toThrow(/from the options/);
+    const audit = await db.select().from(auditLog).where(eq(auditLog.entityId, bot.id));
+    expect(audit.map((a) => a.summary)).toContain(
+      "Set deadline reminders to again every 7 days until done, sent automatically, at most one email in 3 days",
+    );
+  });
+
+  it("sends the approved email again a week later, to those still not done, without asking Claude", async () => {
+    const { admin, bot, e, rows, id, batchId } = await sentRound(8);
+    await saveReminderPlan(admin, bot.id, {
+      repeatDays: 7,
+      autoSend: true,
+      gapDays: 2,
+      weekdaysOnly: false,
+    });
+    // Since then: Acme's plan is approved, and Kite had another reminder yesterday.
+    await uploadList(admin, bot.id, {
+      name: "list.csv",
+      bytes: csv(rows.map((r) => (r[0] === "Acme Ltd" ? [...r.slice(0, 4), "Yes", r[5]] : r))),
+    });
+    const [kite] = await db
+      .select()
+      .from(reminders)
+      .where(and(eq(reminders.batchId, batchId), eq(reminders.company, "Kite Stands")));
+    await db
+      .update(reminders)
+      .set({ sentAt: daysAgo(1) })
+      .where(eq(reminders.id, kite.id));
+
+    // (Other tests' deadlines share the database: this one's rounds are what count.)
+    await startScheduledReminders();
+    const repeat = (await roundsOf(id)).find((b) => b.round === 2)!;
+    expect(repeat).toMatchObject({
+      status: "sending",
+      subject: "Reminder: Your stand plan for {stand}",
+      body: "Hi {first_name},\n\nPlease send the stand plan for {company} by Sunday 14 February.",
+      sentBy: null,
+    });
+    // No new draft: the wording was already checked.
+    const drafts = await db
+      .select()
+      .from(jobs)
+      .where(eq(jobs.dedupeKey, `reminders:${repeat.id}`));
+    expect(drafts).toHaveLength(0);
+    // Acme has done it since, and Kite had a reminder yesterday: only Oak gets it.
+    const people = await db.select().from(reminders).where(eq(reminders.batchId, repeat.id));
+    expect(people.map((p) => [p.company, p.status])).toEqual([["Oak Builds", "queued"]]);
+    await sendReminderBatch(repeat.id, { round: 1, pauseMs: 0 });
+    expect(sent).toEqual([
+      expect.objectContaining({ to: [e.oak], subject: "Reminder: Your stand plan for stand A1" }),
+    ]);
+    // Once a week: nothing more today.
+    await startScheduledReminders();
+    expect(await roundsOf(id)).toHaveLength(2);
+    const audit = await db.select().from(auditLog).where(eq(auditLog.entityId, bot.id));
+    expect(audit.map((a) => a.summary)).toContain(
+      'Billie sent 1 reminder for "Stand plan" again (round 2), in the wording sent before',
+    );
+  });
+
+  it("waits for a person to check a repeat, unless the plan says otherwise", async () => {
+    const { admin, bot, id } = await sentRound(8);
+    await saveReminderPlan(admin, bot.id, {
+      repeatDays: 7,
+      autoSend: false,
+      gapDays: 2,
+      weekdaysOnly: false,
+    });
+    await startScheduledReminders();
+    const repeat = (await roundsOf(id)).find((b) => b.round === 2)!;
+    expect(repeat.status).toBe("ready");
+    const detail = (await batchDetail(repeat.id))!;
+    expect(detail.plan.repeatDays).toBe(7);
+    expect(detail.recipients.map((r) => [r.company, r.status])).toEqual([
+      ["Acme Ltd", "pending"],
+      ["Kite Stands", "pending"],
+      ["Oak Builds", "pending"],
+    ]);
+    expect(sent).toHaveLength(0);
+  });
+
+  it("doesn't repeat too soon, at weekends when asked not to, or with one round only", async () => {
+    const { admin, bot, id } = await sentRound(3);
+    await saveReminderPlan(admin, bot.id, { ...DEFAULT_PLAN, repeatDays: 7, autoSend: true });
+    await startScheduledReminders(); // sent 3 days ago: too soon
+    expect(await roundsOf(id)).toHaveLength(1);
+    await db
+      .update(reminderBatches)
+      .set({ createdAt: daysAgo(8), sentAt: daysAgo(8) })
+      .where(eq(reminderBatches.deadlineId, id));
+    await db
+      .update(reminders)
+      .set({ sentAt: daysAgo(8) })
+      .where(
+        sql`${reminders.batchId} IN (SELECT id FROM reminder_batches WHERE deadline_id = ${id})`,
+      );
+    // A Saturday, with weekdays only: nothing.
+    const today = londonDate();
+    const sat = [0, 1, 2, 3, 4, 5, 6]
+      .map((n) => dayFrom(today, -n))
+      .find((d) => new Date(`${d}T12:00:00Z`).getUTCDay() === 6)!;
+    await startScheduledReminders(new Date(`${sat}T10:00:00Z`));
+    expect(await roundsOf(id)).toHaveLength(1);
+    await saveReminderPlan(admin, bot.id, { ...DEFAULT_PLAN, repeatDays: 0, weekdaysOnly: false });
+    await startScheduledReminders(); // one round only
+    expect(await roundsOf(id)).toHaveLength(1);
+    // Weekly again, on a weekday: it goes.
+    await saveReminderPlan(admin, bot.id, { ...DEFAULT_PLAN, repeatDays: 7, weekdaysOnly: false });
+    await startScheduledReminders();
+    expect(await roundsOf(id)).toHaveLength(2);
+  });
+
+  it("adds the deadline's link to the drafted email", async () => {
+    const { admin, bot } = await setup();
+    await db
+      .update(bots)
+      .set({
+        links: [
+          {
+            id: "lplan01",
+            label: "Upload your stand plan",
+            url: "https://manual.ukcw.test/plans",
+            when: "",
+          },
+        ],
+      })
+      .where(eq(bots.id, bot.id));
+    await expect(saveDeadline(admin, bot.id, { ...PLAN, linkId: "lnope" })).rejects.toThrow(
+      /isn't one of the bot's links/,
+    );
+    const id = await saveDeadline(admin, bot.id, { ...PLAN, linkId: "lplan01" });
+    expect((await deadlineSetup(bot.id)).deadlines[0].linkId).toBe("lplan01");
+    const { batchId } = (await startReminders(admin, id))!;
+    await writeReminders(batchId);
+    const body = (await batchDetail(batchId))!.batch.body;
+    expect(body).toContain("\n\nUpload your stand plan: https://manual.ukcw.test/plans\n\n");
+  });
+
+  it("shows a signed-in exhibitor what's still to do, and tells Billie", async () => {
+    const { admin, bot: made, e } = await setup();
+    await db
+      .update(bots)
+      .set({
+        personalAnswers: true,
+        links: [
+          {
+            id: "lbadge1",
+            label: "Get your badges",
+            url: "https://visitconnect.test/ukcw",
+            when: "",
+          },
+        ],
+      })
+      .where(eq(bots.id, made.id));
+    await saveDeadline(admin, made.id, PLAN);
+    await saveDeadline(admin, made.id, {
+      name: "Nameboard",
+      dueOn: "2027-01-20",
+      column: "Nameboard",
+      doneValues: ["*any"],
+      remindDaysBefore: 0,
+      linkId: "lbadge1",
+    });
+    const bot = (await botById(made.id))!;
+    const [acme] = await db
+      .select()
+      .from(exhibitors)
+      .where(and(eq(exhibitors.botId, bot.id), eq(exhibitors.stand, "B12")));
+    const { conversation } = await startConversation({ bot, channel: "web" });
+    expect((await visitorUpdates(bot, conversation, null)).checklist).toBeUndefined();
+    await db
+      .update(conversations)
+      .set({ exhibitorId: acme.id, signedInEmail: e.acme, signedInAt: new Date() })
+      .where(eq(conversations.id, conversation.id));
+    const signed = (await db.query.conversations.findFirst({
+      where: eq(conversations.id, conversation.id),
+    }))!;
+    // Acme: the nameboard is in (a date), the stand plan isn't approved yet.
+    expect((await visitorUpdates(bot, signed, null)).checklist).toEqual([
+      { id: expect.any(String), name: "Nameboard", due: "2027-01-20", state: "done" },
+      { id: expect.any(String), name: "Stand plan", due: "2027-02-14", state: "todo" },
+    ]);
+    // A column the team keeps from Billie isn't shown.
+    await db.execute(
+      sql`UPDATE exhibitor_lists SET hidden_columns = '["Stand plan approved"]'::jsonb WHERE bot_id = ${bot.id}`,
+    );
+    const hidden = await exhibitorChecklist(bot, await taskExhibitor(signed));
+    expect(hidden.map((i) => i.name)).toEqual(["Nameboard"]);
+    expect((await visitorUpdates(bot, signed, null)).checklist).toBeUndefined();
   });
 });

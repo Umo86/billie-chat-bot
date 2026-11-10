@@ -23,6 +23,19 @@ export const MAX_QUANTITY = 99;
 
 /** Always asked with a request: who it's from and how to reach them. Name and email are required. */
 export const REQUEST_CONTACT: ContactField[] = ["name", "company", "stand", "email", "phone"];
+/** Visitors and leads aren't exhibitors (yet): no stand to ask for. */
+export const LEAD_CONTACT: ContactField[] = ["name", "company", "email", "phone"];
+
+export type Audience = "visitors" | "exhibitors";
+
+/** The contact details a request asks for: a stand only from exhibitors. */
+export function contactFor(t: Pick<RequestType, "crm">, audience: Audience): ContactField[] {
+  return t.crm || audience === "visitors" ? LEAD_CONTACT : REQUEST_CONTACT;
+}
+
+/** Said on a lead's form, so people know where their details go. */
+export const LEAD_PROMISE =
+  "We'll pass your details to our sales team, who will contact you about exhibiting.";
 
 export const REQUEST_STATUS_LABEL: Record<RequestStatus, string> = {
   new: "New",
@@ -117,6 +130,21 @@ export const REQUEST_TEMPLATES: Template[] = [
   },
 ];
 
+/** Ready-made requests for visitor bots: someone keen to exhibit becomes a lead. */
+export const VISITOR_REQUEST_TEMPLATES: Template[] = [
+  {
+    name: "Interested in exhibiting",
+    when: "They're thinking of exhibiting or sponsoring, ask about stand prices, space or packages, or want to talk to the sales team.",
+    crm: true,
+    fields: [
+      { label: "What does your company do or sell?", kind: "long", required: true },
+      { label: "Your job title", kind: "short", required: false },
+      { label: "What size of stand are you thinking of?", kind: "short", required: false },
+      { label: "Anything else our sales team should know", kind: "long", required: false },
+    ],
+  },
+];
+
 export function fromTemplate(t: Template): RequestType {
   return {
     ...t,
@@ -131,6 +159,7 @@ export function fromTemplate(t: Template): RequestType {
 export function offerFor(
   types: RequestType[],
   typeId: string | null,
+  audience: Audience,
   known?: RequestOffer["known"],
 ): RequestOffer | null {
   const t = typeId ? types.find((x) => x.id === typeId) : null;
@@ -139,7 +168,8 @@ export function offerFor(
     typeId: t.id,
     name: t.name,
     fields: t.fields,
-    contact: REQUEST_CONTACT,
+    contact: contactFor(t, audience),
+    ...(t.crm ? { promise: LEAD_PROMISE } : {}),
     ...(t.items?.length ? { items: t.items } : {}),
     ...(known ? { known } : {}),
   };

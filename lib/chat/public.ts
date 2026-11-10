@@ -6,7 +6,7 @@ import { getSettings } from "@/lib/settings";
 import { signInOpen } from "@/lib/exhibitors/sign-in";
 import { bearer } from "./token";
 import { normaliseDomain } from "./domains";
-import { startersForPage } from "@/lib/bots/page-starters";
+import { pageNudges, startersForPage } from "@/lib/bots/page-starters";
 import { barTopics, DEFAULT_BAR_LEAD } from "./bar";
 import {
   conversationForToken,
@@ -32,6 +32,8 @@ export type PublicBot = {
   logoUrl: string | null;
   /** Words on the website's chat button; empty shows just the icon. */
   launcherLabel: string;
+  /** Nudges for some pages: "the page address contains …" (lib/bots/page-starters.ts). */
+  nudges: { match: string; text: string }[];
   /** The chat button on the website: a round button, or the bar (lib/chat/bar.ts). */
   launcher:
     | { style: "button" }
@@ -78,6 +80,8 @@ export async function publicBot(bot: BotRow, pageUrl: string | null = null): Pro
         : { style: "button" },
     welcome: bot.welcome,
     starters: startersForPage(bot.pageStarters, bot.starters, pageUrl),
+    // The widget picks the nudge for the page it's on (public/widget.js).
+    nudges: pageNudges(bot.pageStarters),
     consent: s.consentText,
     collect: bot.rules.collect,
     promise: bot.rules.promise,

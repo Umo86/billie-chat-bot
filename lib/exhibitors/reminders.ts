@@ -8,6 +8,7 @@ import {
   exhibitorLists,
   exhibitors,
   reminderBatches,
+  reminderPlans,
   reminders,
   users,
   type ReminderBatchStatus,
@@ -32,7 +33,9 @@ import { sendEmail, textToHtml } from "@/lib/email/send";
 import { adaptiveMessage, plainLine } from "@/lib/alerts/card";
 import { cardOf, queueDirect } from "@/lib/alerts/direct";
 import { worksOnBotSql } from "@/lib/auth/bots";
-import { fillIn, isDone, unknownPlaceholders } from "./deadline-rules";
+import { dueLabel, fillIn, isDone, unknownPlaceholders } from "./deadline-rules";
+import { planOf, tooSoon } from "./reminder-plan";
+import { londonDate } from "@/lib/time";
 
 /**
  * Deadline reminders after a batch is started (lib/exhibitors/deadlines.ts):
@@ -41,21 +44,8 @@ import { fillIn, isDone, unknownPlaceholders } from "./deadline-rules";
  * the email service's rate limit is never hit.
  */
 
-const longDate = new Intl.DateTimeFormat("en-GB", {
-  timeZone: "Europe/London",
-  weekday: "long",
-  day: "numeric",
-  month: "long",
-  year: "numeric",
-});
-
-/** "Friday 14 February 2027" (built from parts: some ICU versions add a comma). */
-export function dueLabel(dueOn: string): string {
-  const p = Object.fromEntries(
-    longDate.formatToParts(new Date(`${dueOn}T12:00:00Z`)).map((x) => [x.type, x.value]),
-  );
-  return `${p.weekday} ${p.day} ${p.month} ${p.year}`;
-}
+/** "Friday 14 February 2027" (lib/exhibitors/deadline-rules.ts). */
+export { dueLabel };
 
 async function setBatch(id: string, values: Partial<typeof reminderBatches.$inferInsert>) {
   await db.update(reminderBatches).set(values).where(eq(reminderBatches.id, id));
@@ -85,6 +75,8 @@ export async function writeReminders(
           : "This month's Claude budget has been reached. An admin can raise it in Settings → AI.",
       ));
     const due = dueLabel(d.dueOn);
+    // Where they do it (Visit Connect, say): added word for word, never written by Claude.
+    const link = d.linkId ? bot.links.find((l) => l.id === d.linkId) : undefined;
     const passages = await retrieve(
       (await answerBotFor(bot)).knowledgeBaseIds,
       `${d.name} deadline ${d.column}`.slice(0, 400),
@@ -99,7 +91,7 @@ export async function writeReminders(
         avoidWords: bot.avoidWords,
       }),
       knowledge: knowledgeBlock(passages),
-      user: reminderUser({ deadline: d.name, due, column: d.column }),
+      user: reminderUser({ deadline: d.name, due, column: d.column, link: link?.label }),
       schema: reminderJsonSchema,
       maxTokens: 1200,
       fake: { purpose: "deadline_reminder", deadline: d.name, due, passages },
@@ -112,11 +104,14 @@ export async function writeReminders(
     await setBatch(batchId, {
       status: "ready",
       subject: r.subject.replace(/\s+/g, " ").trim().slice(0, 200),
-      body: `${r.body.trim()}\n\n${signature}`.trim().slice(0, 10_000),
+      body: [r.body.trim(), link ? `${link.label}: ${link.url}` : "", signature]
+        .filter(Boolean)
+        .join("\n\n")
+        .slice(0, 10_000),
       note: r.missing.trim().slice(0, 300),
       sources: citeSources(r.used, passages).map((s) => ({ title: s.title, label: s.label })),
     });
-    await tellReady(batchId);
+    await tellRemindersReady(batchId);
   } catch (err) {
     if (err instanceof AiError && err.code === "not_configured")
       return void (await failed("Claude isn't connected yet."));
@@ -127,7 +122,7 @@ export async function writeReminders(
 }
 
 /** A Teams message to whoever asked (or set the deadline up), else the bot's editors. */
-async function tellReady(batchId: string): Promise<void> {
+export async function tellRemindersReady(batchId: string): Promise<void> {
   const [row] = await db
     .select({
       botId: reminderBatches.botId,
@@ -136,6 +131,7 @@ async function tellReady(batchId: string): Promise<void> {
       dueOn: deadlines.dueOn,
       requestedBy: reminderBatches.requestedBy,
       createdBy: deadlines.createdBy,
+      round: reminderBatches.round,
     })
     .from(reminderBatches)
     .innerJoin(deadlines, eq(deadlines.id, reminderBatches.deadlineId))
@@ -165,7 +161,11 @@ async function tellReady(batchId: string): Promise<void> {
         size: "Medium",
       }),
       plainLine(`${row.botName} · due ${dueLabel(row.dueOn)}`, { spacing: "None" }),
-      plainLine("Billie wrote the email. Check it and who it goes to, then send them all at once."),
+      plainLine(
+        row.round > 1
+          ? "The email sent last time, again, for those who still haven't done it. Check who it goes to, then send them all at once."
+          : "Billie wrote the email. Check it and who it goes to, then send them all at once.",
+      ),
     ],
     actions: [
       {
@@ -178,6 +178,31 @@ async function tellReady(batchId: string): Promise<void> {
   await queueDirect(people, `reminders-ready:${batchId}`, cardOf(card));
 }
 
+/**
+ * Who on a bot's exhibitor list has had a reminder email (any deadline) too
+ * recently for another today: their addresses, with the day it went.
+ */
+export async function remindedRecently(
+  runner: DbOrTx,
+  botId: string,
+  today: string,
+  gapDays: number,
+): Promise<Map<string, string>> {
+  const rows = await query<{ email: string; day: string }>(
+    runner,
+    sql`SELECT e AS email,
+          to_char(max((coalesce(r.sent_at, b.sent_at, b.created_at) AT TIME ZONE 'Europe/London')::date), 'YYYY-MM-DD') AS day
+        FROM ${reminders} r
+        JOIN ${reminderBatches} b ON b.id = r.batch_id
+        CROSS JOIN LATERAL unnest(r."to") AS e
+        WHERE b.bot_id = ${botId}
+          AND r.status IN ('sent', 'queued', 'sending')
+          AND coalesce(r.sent_at, b.sent_at, b.created_at) > ${today}::date - ${gapDays + 1}::int
+        GROUP BY e`,
+  );
+  return new Map(rows.filter((r) => tooSoon(r.day, today, gapDays)).map((r) => [r.email, r.day]));
+}
+
 export type Recipient = {
   id: string;
   company: string;
@@ -188,6 +213,8 @@ export type Recipient = {
   note: string;
   /** Since it was drafted: done now, or gone from the list (only while it's waiting). */
   since: "done" | "gone" | null;
+  /** While it's waiting: the day they last had a reminder email, if that's within the plan's gap. */
+  recent?: string | null;
 };
 
 /** Who's in the batch, and which of them have done it (or left the list) since. */
@@ -243,7 +270,7 @@ export async function batchDetail(batchId: string) {
     .innerJoin(bots, eq(bots.id, reminderBatches.botId))
     .where(eq(reminderBatches.id, batchId));
   if (!row) return null;
-  const [recipients, replyTo, by] = await Promise.all([
+  const [recipients, replyTo, by, planRow] = await Promise.all([
     recipientsOf(db, row.batch, row.deadline),
     replyAddress(row.batch.botId),
     row.batch.sentBy
@@ -252,7 +279,15 @@ export async function batchDetail(batchId: string) {
           columns: { fullName: true },
         })
       : null,
+    db.query.reminderPlans.findFirst({ where: eq(reminderPlans.botId, row.batch.botId) }),
   ]);
+  const plan = planOf(planRow);
+  // Waiting to be checked: who had a reminder email lately (another deadline, say).
+  if (row.batch.status === "ready") {
+    const recent = await remindedRecently(db, row.batch.botId, londonDate(), plan.gapDays);
+    for (const r of recipients)
+      if (r.status === "pending") r.recent = r.to.map((e) => recent.get(e)).find(Boolean) ?? null;
+  }
   return {
     batch: { ...row.batch, sentByName: by?.fullName ?? null },
     deadline: row.deadline,
@@ -260,6 +295,7 @@ export async function batchDetail(batchId: string) {
     recipients,
     replyTo,
     emailReady: emailConfigured(),
+    plan,
   };
 }
 

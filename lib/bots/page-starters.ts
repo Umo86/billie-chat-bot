@@ -6,10 +6,29 @@
  * usual starters. A rule with no questions shows none on those pages.
  */
 
-export type PageStarters = { match: string; starters: string[] };
+export type PageStarters = {
+  match: string;
+  starters: string[];
+  /**
+   * A nudge for that page, e.g. on /exhibit "Thinking of exhibiting? I can put
+   * you in touch with our sales team." The chat button or bar shows it once,
+   * after the visitor has spent a little while on the page (public/widget.js).
+   */
+  nudge?: string;
+};
 
 export const MAX_PAGE_RULES = 10;
 export const MAX_STARTERS = 3;
+export const NUDGE_MAX = 90;
+/** Seconds on a page before its nudge shows: long enough to show interest. */
+export const NUDGE_AFTER_SECONDS = 8;
+
+/** The nudges the widget can show, by "the page address contains …". */
+export function pageNudges(rules: PageStarters[]): { match: string; text: string }[] {
+  return rules
+    .filter((r) => r.match.trim() && r.nudge?.trim())
+    .map((r) => ({ match: r.match.trim().toLowerCase(), text: r.nudge!.trim() }));
+}
 
 /** The starters to show on the page at `pageUrl` (null: not on a website, e.g. the chat page). */
 export function startersForPage(
@@ -32,6 +51,9 @@ export function cleanPageRules(rules: PageStarters[]): PageStarters[] {
         .map((s) => s.trim().slice(0, 80))
         .filter(Boolean)
         .slice(0, MAX_STARTERS),
+      ...(r.nudge?.trim()
+        ? { nudge: r.nudge.replace(/\s+/g, " ").trim().slice(0, NUDGE_MAX) }
+        : {}),
     }))
     .filter((r) => r.match)
     .slice(0, MAX_PAGE_RULES);

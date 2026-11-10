@@ -836,3 +836,70 @@ reads every page. It costs nothing extra in credits: a page whose words
 are the same is not embedded again. When a read finds different words the
 page's `content_changed_at` is set, so the team can see which pages
 changed in the last week, and that the change was picked up.
+
+## Off-topic is declined; suspicious is a fixed reply, then a stop
+
+Claude says what kind of message it was answering ("flag": none,
+off_topic or suspicious) in the same structured reply, so it costs no
+extra call. Off-topic questions get a polite one-line refusal and never
+count against the chat: someone asking about the weather is not a threat.
+A suspicious message (getting round the rules, other people's details,
+pretending to be staff, abuse, threats, fraud) never shows what Claude
+wrote: Billie gives a fixed line pointing to the event team's email,
+which every bot must have before it goes live. Two of those and the chat
+stops answering, with no further Claude calls, so a persistent attacker
+costs nothing. The count is on the chat row, increased in the same
+transaction as the reply. An unknown or missing flag counts as none, so a
+garbled reply never stops a real chat, and flagged answers are never
+given again to someone else.
+
+## Links are the team's, chosen by id
+
+The team gives each link an address and when to offer it (Rules step).
+Claude sees the label and when, never the address, and answers with ids;
+Billie shows only ids the bot really has, at most two, as buttons. So an
+address can't be invented, mistyped or out of date in an answer, and a
+changed address changes every answer at once. A link can answer on its
+own ("How do I register?" with nothing in the knowledge), which is the
+one exception to "say you don't know". No buttons on WhatsApp.
+
+## Leads go to Twenty on the queue, found before they're made
+
+A form marked as a sales lead goes to Twenty CRM's REST API from the job
+queue, never in the visitor's request. Each step looks before it makes:
+the company by its web address (from a work email, never a free one),
+then its name; the person by email; and what was made is kept on the
+request, so a job retried after a failure part way makes nothing twice.
+Busy or down is tried again (six tries); a refused key or a record Twenty
+won't accept fails at once with the reason on the request's page, where
+the team can send it again. Without a key, leads wait rather than fail.
+Twenty's field names come from its source, not its docs pages, which
+showed an older shape. The key is read on the server only.
+
+## Repeat reminders reuse the approved email
+
+A plan per bot says what happens after a deadline's first round: nothing,
+or another round every week or every 3 days until it's done or due. A
+repeat sends the email a person checked and sent last time, with
+"Reminder:" on the subject, to those still not done: no Claude call, so a
+round costs nothing, and nothing goes out that no person has read. So the
+draft prompt asks for the due date, never "in 5 days", and the review page
+says why. Repeats can still wait for a check. Without an approved round
+(the first was discarded), the next is a fresh draft to check, whatever
+the plan says. One open round per deadline at a time, still. Nobody gets
+two reminder emails within the plan's gap, counted across deadlines from
+what was sent or queued: skipped exhibitors get the next round, and in a
+round a person checks they start unticked. Weekdays only by default. The
+plan has its own table, so saving it never touches the bot's row (and the
+answers kept for reuse). Automatic repeats only start when email can be
+sent.
+
+## The checklist is the deadlines, read from the exhibitor's row
+
+"Before the show" in the chat is the bot's deadlines, each done or not by
+the same column and answers the chasers use, plus the tasks: nothing new
+for the team to keep up. A deadline tied to a task that isn't for their
+stand isn't theirs; one whose column has gone, or is kept from Billie,
+isn't shown. It shows when the chat opens while anything's still to do,
+and goes once all is done, so it reminds without nagging. Billie gets it
+with the exhibitor's record.

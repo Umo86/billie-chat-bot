@@ -22,12 +22,17 @@ test("build a bot with its own knowledge, test it and put it live", async ({ pag
   await expect(page.getByText(/^First choose the kind: an exhibitor chatbot/)).toBeVisible();
   await page.getByLabel("Bot name").fill("Exhibitor Help");
   await page.getByLabel("Show name").fill("UK Construction Week 2027");
+  await page.getByLabel("Event team email").fill("ops@ukconstructionweek.test");
   await page.getByLabel("First day of build-up").fill("2027-03-08");
   await page.getByLabel("Last day of breakdown").fill("2027-03-12");
   // Its own questions on the website's exhibit pages (the widget test checks them).
-  await page.getByRole("button", { name: "Add starters for a page" }).click();
+  await page.getByRole("button", { name: "Add a page" }).click();
   await page.getByLabel("The page address contains").fill("/exhibit");
   await page.getByLabel("Page 1, starter question 1").fill("Where do we unload?");
+  // And a nudge there: the widget shows it after a few seconds on the page.
+  await page
+    .getByLabel("Nudge on this page (optional)")
+    .fill("Need your badges? I can show you where.");
   await page.getByRole("button", { name: "Suggest a welcome message" }).click();
   await expect(page.getByLabel("Welcome message")).toHaveValue(/Exhibitor Help/);
   // The chat window's branding: the show's logo, and words on the website's chat button.
@@ -212,6 +217,22 @@ test("build a bot with its own knowledge, test it and put it live", async ({ pag
       .filter({ hasText: "Stand plan" })
       .getByText("Discarded", { exact: true }),
   ).toBeVisible();
+  // How often: again every week until it's done, sent without a check once one is approved.
+  const plan = page.getByTestId("reminder-plan");
+  await expect(plan.getByTestId("reminder-plan-summary")).toContainText(
+    "Billie drafts one round of reminders for each deadline",
+  );
+  await plan
+    .getByLabel("After the first round")
+    .selectOption({ label: "Remind them again every week until it's done" });
+  await plan.getByRole("radio", { name: /Send them automatically/ }).check();
+  await expect(plan.getByTestId("reminder-plan-summary")).toContainText(
+    "Repeats go automatically, in the wording you approved.",
+  );
+  await plan.getByRole("button", { name: "Save how often" }).click();
+  await expect(page.getByText("Saved.").first()).toBeVisible();
+  await expect(deadline).toContainText("then sends them again every week until it's done");
+  await shot(page, "reminder-plan");
   // The kind can be changed on the Look step, but not while it has an exhibitor list.
   await page.getByRole("link", { name: "1 Look" }).click();
   await page.getByRole("radio", { name: /^Visitor chatbot/ }).check();
@@ -486,8 +507,11 @@ test("a visitor chats on the chat page: answer, rating, then the team", async ({
     page.getByText(/Signed in from the exhibitor manual as Sam Patel, Acme Displays Ltd/),
   ).toBeVisible();
   await shot(page, "chat-signed-in-from-manual");
-  // A shell scheme stand: the nameboard is still to do, a button away, with Sam's details in.
-  await expect(page.getByText("Still to do for your stand")).toBeVisible();
+  // What's still to do before the show: the stand plan (not approved yet) and, for a shell
+  // scheme stand, the nameboard, a button away with Sam's details in.
+  const checklist = page.getByTestId("checklist");
+  await expect(checklist).toContainText("Before the show · 0 of 2 done");
+  await expect(checklist).toContainText("Stand plan");
   await page.getByRole("button", { name: "Nameboard" }).click();
   const nameboard = page.getByRole("form", { name: "Request: Nameboard" });
   await expect(nameboard.getByLabel("Name", { exact: true })).toHaveValue("Sam Patel");
@@ -497,7 +521,9 @@ test("a visitor chats on the chat page: answer, rating, then the team", async ({
   await nameboard.getByRole("button", { name: "Send the request" }).click();
   await expect(page.getByText(/Your request R-\d+ \(Nameboard\) is with the team/)).toBeVisible();
   await page.reload();
-  await expect(page.getByText("Still to do for your stand")).toHaveCount(0);
+  await expect(checklist).toContainText("Before the show · 1 of 2 done");
+  await expect(checklist).toContainText("Sent to the team");
+  await expect(page.getByRole("button", { name: "Nameboard" })).toHaveCount(0);
   // Next on the same laptop, someone the manual vouches for but who isn't on the list yet:
   // told why, and never shown Sam's chat.
   await page.goto("about:blank");
@@ -509,8 +535,8 @@ test("a visitor chats on the chat page: answer, rating, then the team", async ({
   await page.goto("about:blank");
   await page.goto(signIn("jo@bolt-co.test"));
   await expect(page.getByRole("button", { name: "Stand C4" })).toBeVisible();
-  // Space only: the nameboard isn't for Jo's stand.
-  await expect(page.getByText("Still to do for your stand")).toHaveCount(0);
+  // Space only: the nameboard isn't for Jo's stand, and the stand plan is approved: nothing to do.
+  await expect(page.getByTestId("checklist")).toHaveCount(0);
   await expect(page.getByText(/Stand plan approved/)).toHaveCount(0);
   await visitor.close();
 });
@@ -536,7 +562,11 @@ test("the website widget shows only on the bot's own websites", async ({ browser
   // The words set on the Look step, in the Christmas colour chosen with its style.
   await expect(button).toHaveText("Ask us");
   await expect(button).toHaveCSS("background-color", "rgb(179, 18, 27)");
-  await button.click();
+  // After a few seconds on the exhibit page, its nudge: pressing it opens the chat.
+  const nudge = page.getByRole("button", { name: "Need your badges? I can show you where." });
+  await expect(nudge).toBeVisible({ timeout: 15_000 });
+  await nudge.click();
+  await expect(nudge).toBeHidden();
   const chat = page.frameLocator('iframe[title="Chat with Exhibitor Help"]');
   await expect(chat.getByRole("heading", { name: "Exhibitor Help" })).toBeVisible({
     timeout: 15_000,

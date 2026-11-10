@@ -118,6 +118,10 @@ const handlers: Handlers = {
       lastTry: job.attempts >= job.maxAttempts,
     });
   },
+  crm_lead: async (p, job) =>
+    (await import("@/lib/crm/leads")).sendLead(String(p.requestId), {
+      lastTry: job.attempts >= job.maxAttempts,
+    }),
   crawl_website: async (p) => {
     await (
       await import("@/lib/knowledge/websites")

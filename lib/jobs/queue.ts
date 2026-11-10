@@ -48,7 +48,8 @@ export type JobKind =
   | "slack_action"
   | "slack_direct"
   | "slack_email_digest"
-  | "alert_email";
+  | "alert_email"
+  | "crm_lead";
 
 export type Job = typeof jobs.$inferSelect;
 

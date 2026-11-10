@@ -8,6 +8,10 @@ import { z } from "zod";
  */
 export const HANDOVER_VALUES = ["none", "unknown", "always_human", "asked_for_person"] as const;
 
+/** none: an ordinary message; off_topic: not about the show; suspicious: a trick, abuse or fraud. */
+export const ANSWER_FLAGS = ["none", "off_topic", "suspicious"] as const;
+export type AnswerFlag = (typeof ANSWER_FLAGS)[number];
+
 export const answerJsonSchema = {
   type: "object",
   properties: {
@@ -24,8 +28,14 @@ export const answerJsonSchema = {
       type: "string",
       description: "The id of the request form to offer, or an empty string.",
     },
+    links: {
+      type: "array",
+      items: { type: "string" },
+      description: "Ids of the team's links to show as buttons under the reply (at most two).",
+    },
+    flag: { type: "string", enum: [...ANSWER_FLAGS] },
   },
-  required: ["answer", "used", "confident", "handover", "topic", "request"],
+  required: ["answer", "used", "confident", "handover", "topic", "request", "links", "flag"],
   additionalProperties: false,
 } as const;
 
@@ -36,6 +46,14 @@ export const answerSchema = z.object({
   handover: z.enum(HANDOVER_VALUES),
   topic: z.string(),
   request: z.string().optional().default(""),
+  links: z.array(z.string()).optional().default([]),
+  // An unknown flag is treated as none: never stop a chat on a garbled reply.
+  flag: z
+    .string()
+    .optional()
+    .transform((f): AnswerFlag =>
+      (ANSWER_FLAGS as readonly string[]).includes(f ?? "") ? (f as AnswerFlag) : "none",
+    ),
 });
 export type AnswerJson = z.infer<typeof answerSchema>;
 

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { runAction } from "@/lib/actions/run";
+import { UserError } from "@/lib/errors";
 import { updateSettings } from "@/lib/settings";
 import { MODEL_IDS, modelName } from "@/lib/ai/pricing";
 import { deletePerson, findPerson } from "@/lib/privacy/requests";
@@ -185,5 +186,24 @@ export async function deletePersonAction(input: unknown) {
       revalidatePath("/emails");
       return done;
     },
+  );
+}
+
+/** Checks Twenty's address and API key work (Settings → Connections). */
+export async function checkTwentyAction() {
+  return runAction(
+    "settings.manage",
+    z.object({}),
+    {},
+    async () => {
+      const { checkTwenty, TwentyError } = await import("@/lib/crm/twenty");
+      try {
+        await checkTwenty();
+      } catch (err) {
+        if (err instanceof TwentyError) throw new UserError(err.message);
+        throw err;
+      }
+    },
+    "Twenty answered: Billie can send leads to it.",
   );
 }

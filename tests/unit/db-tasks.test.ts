@@ -88,7 +88,7 @@ describe.skipIf(!hasDb)("tasks from the exhibitor manual, done in the chat (Post
     // Not signed in: only the request for everyone, and no tasks.
     const { conversation } = await startConversation({ bot, channel: "web" });
     expect(typesFor(bot, null).map((t) => t.id)).toEqual(["hour0001"]);
-    expect((await visitorUpdates(bot, conversation, null)).tasks).toBeUndefined();
+    expect((await visitorUpdates(bot, conversation, null)).checklist).toBeUndefined();
 
     // Signed in as Sam, a space only stand: the electrics order, not the nameboard.
     await db
@@ -98,8 +98,8 @@ describe.skipIf(!hasDb)("tasks from the exhibitor manual, done in the chat (Post
     const signed = (await db.query.conversations.findFirst({
       where: eq(conversations.id, conversation.id),
     }))!;
-    expect((await visitorUpdates(bot, signed, null)).tasks).toEqual([
-      { typeId: "elec0001", name: "Electrics order", due: null },
+    expect((await visitorUpdates(bot, signed, null)).checklist).toEqual([
+      { id: "task:elec0001", name: "Electrics order", due: null, state: "todo", task: "elec0001" },
     ]);
     await expect(startTask(bot, conversation.id, "name0001")).rejects.toBeInstanceOf(ChatError);
 
@@ -122,7 +122,8 @@ describe.skipIf(!hasDb)("tasks from the exhibitor manual, done in the chat (Post
       { name: "Sam Patel", email: sam, company: "Acme Ltd", stand: "B12" },
       { order, exhibitorId: row.id },
     );
-    expect(done.tasks).toBeUndefined();
+    // Sent: on their list as sent, and with nothing else to do the list goes.
+    expect(done.checklist).toBeUndefined();
     expect(await outstandingTasks(bot, await taskExhibitor(signed))).toEqual([]);
     const [req] = await db
       .select()

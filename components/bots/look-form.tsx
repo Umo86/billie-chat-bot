@@ -25,7 +25,12 @@ import { BarPreview } from "@/components/bots/bar-preview";
 import { Segmented } from "@/components/ui/segmented";
 import { Switch } from "@/components/ui/switch";
 import { BotTypeChoice } from "@/components/bots/bot-type";
-import { MAX_PAGE_RULES, MAX_STARTERS } from "@/lib/bots/page-starters";
+import {
+  MAX_PAGE_RULES,
+  MAX_STARTERS,
+  NUDGE_AFTER_SECONDS,
+  NUDGE_MAX,
+} from "@/lib/bots/page-starters";
 import { createBotAction, updateBotAction } from "@/app/actions/bots";
 import { cn } from "@/lib/utils";
 
@@ -33,6 +38,8 @@ export type Look = {
   name: string;
   audience: "visitors" | "exhibitors";
   showName: string;
+  /** The event team's email: given to anyone Billie can't help. */
+  contactEmail: string;
   color: string;
   /** Buttons, starters and the person's own messages; null uses the header colour. */
   accentColor: string | null;
@@ -50,7 +57,7 @@ export type Look = {
   welcome: string;
   starters: string[];
   /** Different starters on some pages ("the page address contains …"). */
-  pageStarters: { match: string; starters: string[] }[];
+  pageStarters: { match: string; starters: string[]; nudge?: string }[];
   /** Show days, "YYYY-MM-DD" or "" for none. */
   showFrom: string;
   showTo: string;
@@ -175,6 +182,7 @@ export function LookForm({
       name: "",
       audience: null,
       showName: "",
+      contactEmail: "",
       color: BOT_COLOURS[0],
       accentColor: null,
       avatarUrl: null,
@@ -222,6 +230,7 @@ export function LookForm({
       pageStarters: look.pageStarters.map((r) => ({
         match: r.match,
         starters: r.starters.map((s) => s.trim()).filter(Boolean),
+        ...(r.nudge?.trim() ? { nudge: r.nudge.trim() } : {}),
       })),
       showDays: showFrom || showTo ? { from: showFrom, to: showTo } : null,
     };
@@ -290,6 +299,23 @@ export function LookForm({
             value={look.showName}
             onChange={(e) => set("showName", e.target.value)}
             maxLength={80}
+          />
+        </Field>
+        <Field
+          id="bot-contact"
+          label="Event team email"
+          hint="Billie gives this to anyone it can't help, such as someone trying to misuse the chat, and to people who need the team directly."
+          error={err("contactEmail")}
+        >
+          <Input
+            id="bot-contact"
+            type="email"
+            value={look.contactEmail}
+            onChange={(e) => set("contactEmail", e.target.value)}
+            maxLength={200}
+            required
+            placeholder="ops@yourshow.com"
+            aria-invalid={!!err("contactEmail")}
           />
         </Field>
         <fieldset className="flex flex-col gap-2" aria-describedby="bot-days-hint">
@@ -618,13 +644,19 @@ export function LookForm({
         </fieldset>
         <fieldset className="flex flex-col gap-3">
           <legend className="mb-1 text-[0.9rem] font-semibold">
-            Starters for some pages (optional)
+            Pages: starters and nudges (optional)
           </legend>
           <p className="text-sm text-muted-foreground">
             On a page of the show&apos;s website whose address contains these words, the chat shows
             these questions instead, e.g. &ldquo;/travel&rdquo; with &ldquo;Where can I
             park?&rdquo;. The first that matches is used. Leave the questions empty to show none
             there.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            A nudge reacts to what the visitor is looking at. After {NUDGE_AFTER_SECONDS} seconds on
+            that page, the chat button shows it once, e.g. on &ldquo;/exhibit&rdquo;:
+            &ldquo;Thinking of exhibiting? I can put you in touch with our sales team.&rdquo; It
+            shows at most once per page per visit.
           </p>
           {look.pageStarters.map((rule, i) => {
             const update = (next: Partial<(typeof look.pageStarters)[number]>) =>
@@ -667,6 +699,23 @@ export function LookForm({
                     <Trash2 />
                   </Button>
                 </div>
+                <Field
+                  id={`page-${i}-nudge`}
+                  label="Nudge on this page (optional)"
+                  error={err(`pageStarters.${i}.nudge`)}
+                >
+                  <Input
+                    id={`page-${i}-nudge`}
+                    value={rule.nudge ?? ""}
+                    maxLength={NUDGE_MAX}
+                    placeholder={
+                      kind === "visitors"
+                        ? "Not registered yet? I can help you get your free ticket."
+                        : "Need your exhibitor badges? I can show you where."
+                    }
+                    onChange={(e) => update({ nudge: e.target.value })}
+                  />
+                </Field>
                 {qs.map((q, j) => (
                   <Input
                     key={j}
@@ -691,7 +740,7 @@ export function LookForm({
                   set("pageStarters", [...look.pageStarters, { match: "", starters: [] }])
                 }
               >
-                <Plus /> Add starters for a page
+                <Plus /> Add a page
               </Button>
             </div>
           ) : null}

@@ -6,7 +6,14 @@ import { writeAudit } from "@/lib/audit";
 import { answerQuestion } from "@/lib/ai/answer";
 import { normaliseDomain } from "@/lib/chat/domains";
 import type { Actor } from "@/lib/authz";
-import type { BotRules, RequestType, TestQuestion, TestResult, TestRun } from "@/lib/types";
+import type {
+  BotLink,
+  BotRules,
+  RequestType,
+  TestQuestion,
+  TestResult,
+  TestRun,
+} from "@/lib/types";
 import { UserError } from "@/lib/errors";
 import { createBotKnowledgeBase, renameBotKnowledgeBase } from "@/lib/knowledge/bases";
 import { answerBotFor, botById } from "./load";
@@ -26,6 +33,8 @@ export type BotLook = {
   name: string;
   audience: "visitors" | "exhibitors";
   showName: string;
+  /** The event team's email address: given to anyone Billie can't help. */
+  contactEmail?: string;
   color: string;
   avatarUrl: string | null;
   /** Buttons and the person's messages; null uses the header colour. */
@@ -69,6 +78,7 @@ export type BotPatch = Partial<
     tests: TestQuestion[];
     requestTypes: RequestType[];
     personalAnswers: boolean;
+    links: BotLink[];
   }
 >;
 
@@ -200,6 +210,11 @@ async function refuseIfExhibitorData(tx: Tx, botId: string): Promise<void> {
 export async function setStatus(actor: Actor, id: string, status: "draft" | "live"): Promise<void> {
   const bot = await botById(id);
   if (!bot) throw new UserError("That bot no longer exists.");
+  if (status === "live" && !bot.contactEmail.trim()) {
+    throw new UserError(
+      "Add the event team's email on the Look step first. Billie gives it to anyone it can't help.",
+    );
+  }
   if (status === "live" && !bot.lastTestRun?.total) {
     throw new UserError(
       "Run the test questions first. You can put the bot live once it has been tested.",

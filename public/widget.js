@@ -488,6 +488,30 @@
         }, 3000);
       move(wrap, [{ opacity: 0 }, { opacity: 1 }], { duration: 600 });
       wrap.main = el;
+      // A page's nudge in place of the topics for a while, then back to them.
+      wrap.say = function (words) {
+        paused = true;
+        first.style.setProperty("display", "none");
+        topic.textContent = words;
+        move(
+          topic,
+          [
+            { opacity: 0, transform: "translateY(70%)" },
+            { opacity: 1, transform: "none" },
+          ],
+          { duration: 380, easing: "cubic-bezier(.3,.8,.3,1)" },
+        );
+        move(
+          go,
+          [{ transform: "scale(1)" }, { transform: "scale(1.18)" }, { transform: "scale(1)" }],
+          { duration: 700, iterations: 2, easing: "ease-in-out" },
+        );
+        setTimeout(function () {
+          first.style.removeProperty("display");
+          topic.textContent = topics[at];
+          paused = false;
+        }, 15000);
+      };
       return wrap;
     }
 
@@ -584,5 +608,133 @@
     document.body.appendChild(panel);
     if (bar) document.body.appendChild(bar);
     document.body.appendChild(button);
+
+    // A nudge for this page (Look step → Pages), e.g. on the exhibit page
+    // "Thinking of exhibiting? ...": once per page per visit, after the visitor
+    // has stayed a little while, and never while the chat is open.
+    var here = (location.origin + location.pathname).toLowerCase();
+    var nudge = null;
+    (Array.isArray(bot.nudges) ? bot.nudges : []).some(function (n) {
+      if (
+        n &&
+        typeof n.match === "string" &&
+        typeof n.text === "string" &&
+        n.match &&
+        here.indexOf(n.match.toLowerCase()) !== -1
+      ) {
+        nudge = n.text.slice(0, 90);
+        return true;
+      }
+      return false;
+    });
+    var nudgeKey = "billie-nudge-" + slug + "-" + location.pathname;
+    var nudged = false;
+    try {
+      nudged = sessionStorage.getItem(nudgeKey) === "1";
+    } catch (e) {
+      /* No storage: it may show again on the next page load. */
+    }
+    if (nudge && !nudged)
+      setTimeout(function () {
+        if (open || document.hidden) return;
+        try {
+          sessionStorage.setItem(nudgeKey, "1");
+        } catch (e) {
+          /* Private browsing: fine. */
+        }
+        // Said politely to screen readers too.
+        var spoken = document.createElement("div");
+        spoken.setAttribute("role", "status");
+        css(spoken, {
+          position: "absolute",
+          width: "1px",
+          height: "1px",
+          overflow: "hidden",
+          clip: "rect(0 0 0 0)",
+          "white-space": "nowrap",
+        });
+        document.body.appendChild(spoken);
+        setTimeout(function () {
+          spoken.textContent = bot.name + ": " + nudge;
+        }, 50);
+        if (bar && !tucked) return void bar.say(nudge);
+        showBubble(nudge);
+      }, 8000);
+
+    function showBubble(words) {
+      var bubble = document.createElement("div");
+      css(bubble, {
+        position: "fixed",
+        bottom: "92px",
+        "max-width": "min(280px, calc(100vw - 40px))",
+        "box-sizing": "border-box",
+        padding: "12px 36px 12px 14px",
+        background: "#ffffff",
+        color: "#1a1a1a",
+        "border-radius": "14px",
+        "box-shadow": "0 8px 28px rgba(0,0,0,0.18)",
+        "font-family": "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+        "font-size": "14px",
+        "line-height": "1.4",
+        "z-index": "2147483000",
+      });
+      bubble.style.setProperty(side, "20px");
+      var say = document.createElement("button");
+      say.type = "button";
+      say.textContent = words;
+      css(say, {
+        display: "block",
+        padding: "0",
+        margin: "0",
+        border: "0",
+        background: "transparent",
+        color: "inherit",
+        font: "inherit",
+        "text-align": "left",
+        cursor: "pointer",
+      });
+      var shut = document.createElement("button");
+      shut.type = "button";
+      shut.setAttribute("aria-label", "Hide this message");
+      shut.innerHTML =
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+      css(shut, {
+        position: "absolute",
+        top: "8px",
+        right: "8px",
+        width: "22px",
+        height: "22px",
+        display: "grid",
+        "place-items": "center",
+        padding: "0",
+        border: "0",
+        "border-radius": "50%",
+        background: "transparent",
+        color: "#555555",
+        cursor: "pointer",
+      });
+      function gone() {
+        if (bubble.parentNode) bubble.parentNode.removeChild(bubble);
+      }
+      say.addEventListener("click", function () {
+        gone();
+        setOpen(true);
+      });
+      shut.addEventListener("click", gone);
+      button.addEventListener("click", gone);
+      bubble.appendChild(say);
+      bubble.appendChild(shut);
+      document.body.appendChild(bubble);
+      var calm = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (!calm && bubble.animate)
+        bubble.animate(
+          [
+            { opacity: 0, transform: "translateY(8px)" },
+            { opacity: 1, transform: "none" },
+          ],
+          { duration: 300, easing: "ease-out" },
+        );
+      setTimeout(gone, 20000);
+    }
   }
 })();

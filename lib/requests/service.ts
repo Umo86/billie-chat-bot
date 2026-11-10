@@ -1,4 +1,5 @@
 import "server-only";
+import { twentyRecordUrl } from "@/lib/crm/lead-rules";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { auditLog, bots, chatRequests, conversations, users } from "@/lib/db/schema";
@@ -114,6 +115,14 @@ export type RequestDetail = {
   updatedAt: string;
   history: { at: string; who: string; what: string }[];
   test: boolean;
+  /** A lead for Twenty CRM: where it's got to (null: not a lead). */
+  crm: {
+    status: "waiting" | "queued" | "sent" | "failed";
+    note: string;
+    sentAt: string | null;
+    /** Opens the opportunity in Twenty, when its app address is set. */
+    url: string | null;
+  } | null;
 };
 
 export async function requestDetail(id: string): Promise<RequestDetail | null> {
@@ -165,6 +174,18 @@ export async function requestDetail(id: string): Promise<RequestDetail | null> {
       what: h.what,
     })),
     test: r.channel === "try",
+    crm: r.req.crmStatus
+      ? {
+          status: r.req.crmStatus,
+          note: r.req.crmNote,
+          sentAt: r.req.crmSentAt?.toISOString() ?? null,
+          url: r.req.crmIds?.opportunityId
+            ? twentyRecordUrl("opportunity", r.req.crmIds.opportunityId)
+            : r.req.crmIds?.personId
+              ? twentyRecordUrl("person", r.req.crmIds.personId)
+              : null,
+        }
+      : null,
   };
 }
 

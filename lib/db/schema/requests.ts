@@ -21,6 +21,9 @@ import { exhibitors } from "./exhibitors";
  * team's latest message to them. They follow it on a page of its own
  * (/r/<token>), and get an email when it changes if email is set up.
  */
+export type CrmStatus = "waiting" | "queued" | "sent" | "failed";
+export type CrmIds = { personId: string; companyId: string | null; opportunityId: string | null };
+
 export const chatRequests = pgTable(
   "chat_requests",
   {
@@ -47,6 +50,16 @@ export const chatRequests = pgTable(
     note: text("note").notNull().default(""),
     /** The person's link to their request's page. */
     trackToken: text("track_token").notNull(),
+    /**
+     * A lead for the CRM (a request type marked "send to Twenty", lib/crm):
+     * waiting (Twenty not connected yet), queued, sent or failed. Null: not a lead.
+     */
+    crmStatus: text("crm_status").$type<CrmStatus>(),
+    /** Why sending failed, in plain words. */
+    crmNote: text("crm_note").notNull().default(""),
+    /** The records made in Twenty, for a link to them. */
+    crmIds: jsonb("crm_ids").$type<CrmIds>(),
+    crmSentAt: timestamp("crm_sent_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()

@@ -51,5 +51,7 @@ export async function answerBotFor(bot: BotRow): Promise<AnswerBot> {
     // Only when someone can really sign in: the prompt tells people how.
     personal: codes || manual,
     signInBy: codes ? "button" : "manual",
+    contactEmail: bot.contactEmail,
+    links: bot.links,
   };
 }

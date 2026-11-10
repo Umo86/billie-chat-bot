@@ -93,6 +93,22 @@ export function draftFrom(dueOn: string, remindDaysBefore: number): string | nul
   return d.toISOString().slice(0, 10);
 }
 
+const longDate = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Europe/London",
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
+
+/** "Friday 14 February 2027" (built from parts: some ICU versions add a comma). */
+export function dueLabel(dueOn: string): string {
+  const p = Object.fromEntries(
+    longDate.formatToParts(new Date(`${dueOn}T12:00:00Z`)).map((x) => [x.type, x.value]),
+  );
+  return `${p.weekday} ${p.day} ${p.month} ${p.year}`;
+}
+
 /** "today", "tomorrow", "in 12 days", "yesterday", "3 days ago" */
 export function daysLeft(days: number): string {
   if (days === 0) return "today";

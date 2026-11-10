@@ -1,7 +1,15 @@
 import "server-only";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { db, query } from "@/lib/db/client";
-import { botMembers, bots, knowledgeBases, passages, sources, websites } from "@/lib/db/schema";
+import {
+  botMembers,
+  bots,
+  knowledgeBases,
+  passages,
+  reminderPlans,
+  sources,
+  websites,
+} from "@/lib/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { UserError } from "@/lib/errors";
 import type { Actor } from "@/lib/authz";
@@ -39,6 +47,8 @@ export async function copyBot(
         showName: next.showName.trim().slice(0, 80),
         color: from.color,
         avatarUrl: from.avatarUrl,
+        contactEmail: from.contactEmail,
+        links: from.links,
         accentColor: from.accentColor,
         logoUrl: from.logoUrl,
         launcherLabel: from.launcherLabel,
@@ -79,6 +89,20 @@ export async function copyBot(
       .where(eq(botMembers.botId, from.id));
     for (const p of people) await addToBot(tx, bot.id, p.userId, actor.id);
     await addToBot(tx, bot.id, actor.id, actor.id);
+
+    // How often reminders go is the team's way of working: it comes across (deadlines don't).
+    const plan = await tx.query.reminderPlans.findFirst({
+      where: eq(reminderPlans.botId, from.id),
+    });
+    if (plan)
+      await tx.insert(reminderPlans).values({
+        botId: bot.id,
+        repeatDays: plan.repeatDays,
+        autoSend: plan.autoSend,
+        gapDays: plan.gapDays,
+        weekdaysOnly: plan.weekdaysOnly,
+        updatedBy: actor.id,
+      });
 
     // All its knowledge, passages and all.
     const own = await tx.query.knowledgeBases.findFirst({

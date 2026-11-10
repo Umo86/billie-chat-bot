@@ -64,6 +64,10 @@ export type AnswerMeta = {
   request?: string;
   /** Given again from earlier today, without Claude (lib/ai/reuse.ts). */
   reused?: boolean;
+  /** off_topic or suspicious (lib/chat/safety.ts); absent for an ordinary message. */
+  flag?: "off_topic" | "suspicious";
+  /** The team's links shown as buttons under this answer (lib/bots/links.ts). */
+  links?: { label: string; url: string }[];
 };
 
 export type EmailTags = {
@@ -114,6 +118,21 @@ export type RequestType = {
   items?: RequestItem[];
   /** Its deadline (Exhibitors step): its due date, and who has done it, come from there. */
   deadlineId?: string | null;
+  /** A lead: each one sent is also sent to Twenty CRM (lib/crm), e.g. "Interested in exhibiting". */
+  crm?: boolean;
+};
+
+/**
+ * A link the team lets the bot share as a button (lib/bots/links.ts): register
+ * to visit, get exhibitor badges, update the website listing, order services.
+ * The bot only ever shows these, never an address it made up.
+ */
+export type BotLink = {
+  id: string;
+  label: string;
+  url: string;
+  /** When to offer it, in the team's words. */
+  when: string;
 };
 
 /** Something to order through a request, e.g. a 16A socket, at its price in pounds. */
@@ -128,6 +147,21 @@ export type RequestOrder = {
 /** A task a signed-in exhibitor still has to do, shown as a button in the chat. */
 export type ChatTask = { typeId: string; name: string; due: string | null };
 
+/** One thing a signed-in exhibitor has to do before the show (lib/exhibitors/checklist.ts). */
+export type ChecklistItem = {
+  /** The deadline's id, or "task:<request type id>" for a task with no deadline. */
+  id: string;
+  name: string;
+  /** UK date it's due ("YYYY-MM-DD"), if it has a deadline. */
+  due: string | null;
+  /** Done by their row of the list; sent through this chat; or still to do. */
+  state: "todo" | "sent" | "done";
+  /** Still to do, and it can be done in the chat: the task's form. */
+  task?: string;
+  /** Still to do, somewhere else: the team's link for it (Visit Connect, ASP.events…). */
+  link?: { label: string; url: string };
+};
+
 /** What the person filled in, with the labels as they were then. */
 export type RequestAnswer = { label: string; value: string };
 
@@ -141,6 +175,8 @@ export type RequestOffer = {
   items?: RequestItem[];
   /** What the exhibitor signed in to the chat already gave (prefilled). */
   known?: Partial<Record<ContactField, string>>;
+  /** A line under the form: where the details go (a lead for the sales team). */
+  promise?: string;
 };
 
 export type RequestStatus = "new" | "in_progress" | "done" | "declined";

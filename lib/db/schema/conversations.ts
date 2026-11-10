@@ -40,6 +40,8 @@ export const conversations = pgTable(
     /** Thumbs-down in a row; two hands the chat over. */
     thumbsDownStreak: integer("thumbs_down_streak").notNull().default(0),
     pageUrl: text("page_url"),
+    /** Messages Billie judged suspicious (tricks, abuse, fraud). At two, it stops answering. */
+    flags: integer("flags").notNull().default(0),
     /** Billie's suggested reply for the team (lib/conversations/suggest.ts). */
     suggestion: jsonb("suggestion").$type<ReplySuggestion | null>(),
     /** The exhibitor who signed in with a code from their email (lib/exhibitors/sign-in.ts). */

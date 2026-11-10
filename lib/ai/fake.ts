@@ -69,6 +69,24 @@ function bestPassage(
   return { index: best, sentences: (sentences.length ? sentences : [text]).slice(0, 3).join(" ") };
 }
 
+/** Tries to get round the rules: the stand-in flags them like Claude would. */
+const SUSPICIOUS =
+  /\b(ignore (all |your |the )?(previous |earlier )?(instructions|rules)|system prompt|your instructions|jailbreak|pretend (you are|to be)|other (exhibitors'|people's) (emails|details|phone))/i;
+
+/** A link whose label shares a meaningful word with the question (register, badges…). */
+function linkHit(question: string, links: { id: string; label: string }[]): string[] {
+  const words = new Set(searchTerms(question));
+  const hit = links.find((l) =>
+    searchTerms(l.label).some(
+      (w) =>
+        w.length > 3 &&
+        !COMMON.has(w) &&
+        (words.has(w) || words.has(`${w}s`) || words.has(w.replace(/s$/, ""))),
+    ),
+  );
+  return hit ? [hit.id] : [];
+}
+
 const WANTS =
   /\b(want|wants|need|needs|like to|request|book|apply|arrange|can we have|could we have)\b/i;
 
@@ -87,7 +105,20 @@ function fakeAnswer(
   passages: PromptPassage[],
   alwaysHuman: string[],
   requests: { id: string; name: string }[] = [],
+  links: { id: string; label: string }[] = [],
 ): AnswerJson {
+  if (SUSPICIOUS.test(question)) {
+    return {
+      answer: "I won't do that.",
+      used: [],
+      confident: true,
+      handover: "none",
+      topic: "Suspicious",
+      request: "",
+      links: [],
+      flag: "suspicious",
+    };
+  }
   if (SMALL_TALK.test(question)) {
     const thanks = /thank|cheers|thx/i.test(question);
     const bye = /bye|see you/i.test(question);
@@ -102,6 +133,8 @@ function fakeAnswer(
       handover: "none",
       topic: "Small talk",
       request: "",
+      links: [],
+      flag: "none",
     };
   }
   if (PERSON.test(question)) {
@@ -112,6 +145,8 @@ function fakeAnswer(
       handover: "asked_for_person",
       topic: "Speak to a person",
       request: "",
+      links: [],
+      flag: "none",
     };
   }
   if (alwaysHumanHit(question, alwaysHuman)) {
@@ -122,6 +157,8 @@ function fakeAnswer(
       handover: "always_human",
       topic: "Always a person",
       request: "",
+      links: [],
+      flag: "none",
     };
   }
   if (OFF_TOPIC.test(question)) {
@@ -132,6 +169,8 @@ function fakeAnswer(
       handover: "none",
       topic: "Off topic",
       request: "",
+      links: [],
+      flag: "off_topic",
     };
   }
   const request = requestHit(question, requests);
@@ -144,9 +183,25 @@ function fakeAnswer(
       handover: "none",
       topic: "Request",
       request,
+      links: [],
+      flag: "none",
     };
   }
   const hit = bestPassage(question, passages);
+  const link = linkHit(question, links);
+  if (!hit && link.length) {
+    // Nothing in the knowledge, but the team's link does it ("How do I register?").
+    return {
+      answer: "You can do that with the button below.",
+      used: [],
+      confident: true,
+      handover: "none",
+      topic: "Link",
+      request: "",
+      links: link,
+      flag: "none",
+    };
+  }
   if (!hit) {
     return {
       answer: "Sorry, I don't have the answer to that one yet. The team can help.",
@@ -155,6 +210,8 @@ function fakeAnswer(
       handover: "unknown",
       topic: "Unknown",
       request: "",
+      links: [],
+      flag: "none",
     };
   }
   return {
@@ -164,6 +221,8 @@ function fakeAnswer(
     handover: "none",
     topic: passages[hit.index].sourceTitle.slice(0, 40),
     request: "",
+    links: link,
+    flag: "none",
   };
 }
 
@@ -384,7 +443,7 @@ function fakeReminder(ctx: Extract<FakeContext, { purpose: "deadline_reminder" }
 export function fakeStructured(ctx: FakeContext): unknown {
   switch (ctx.purpose) {
     case "answer":
-      return fakeAnswer(ctx.question, ctx.passages, ctx.alwaysHuman, ctx.requests);
+      return fakeAnswer(ctx.question, ctx.passages, ctx.alwaysHuman, ctx.requests, ctx.links);
     case "email_tag":
       return fakeTag(ctx);
     case "email_draft":

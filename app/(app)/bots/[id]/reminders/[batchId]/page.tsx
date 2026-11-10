@@ -49,7 +49,11 @@ export default async function RemindersPage({
       </Link>
       <PageHeader
         title={`Reminders: ${deadline.name}`}
-        lede={`Due ${dueLabel(deadline.dueOn)} (${daysLeft(daysUntil(deadline.dueOn, londonDate()))}). Drafted ${formatDateTime(batch.createdAt)}.`}
+        lede={`Due ${dueLabel(deadline.dueOn)} (${daysLeft(daysUntil(deadline.dueOn, londonDate()))}). ${
+          batch.round > 1
+            ? `Round ${batch.round}: the email sent last time, again, made ${formatDateTime(batch.createdAt)}.`
+            : `Drafted ${formatDateTime(batch.createdAt)}.`
+        }`}
       />
       <AutoRefresh active={batch.status === "drafting" || batch.status === "sending"} />
       <ReminderReview
@@ -64,9 +68,17 @@ export default async function RemindersPage({
           note: batch.note,
           sources: batch.sources,
           sent: batch.sentAt
-            ? `${formatDateTime(batch.sentAt)}${batch.sentByName ? ` by ${batch.sentByName}` : ""}`
+            ? `${formatDateTime(batch.sentAt)}${
+                batch.sentByName
+                  ? ` by ${batch.sentByName}`
+                  : batch.round > 1
+                    ? " by Billie, automatically"
+                    : ""
+              }`
             : null,
+          round: batch.round,
         }}
+        repeatEvery={detail.plan.repeatDays}
         recipients={detail.recipients}
         replyTo={detail.replyTo}
         emailReady={detail.emailReady}

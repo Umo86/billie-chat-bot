@@ -49,9 +49,30 @@ Chatbots, live handover and an email assistant for Media10 shows.
   owner, shows on the Requests page with a Teams message to whoever handles
   it, and the person follows it on a page of its own (and by email once
   email is set up).
-- **Starter questions for some pages**: on the Look step, "the page
-  address contains /travel" shows "Where can I park?" on the travel pages,
-  instead of the bot's usual starters (up to 10 rules, 3 questions each).
+- **Starter questions and nudges for some pages**: on the Look step, "the
+  page address contains /travel" shows "Where can I park?" on the travel
+  pages, instead of the bot's usual starters (up to 10 rules, 3 questions
+  each). A page can also have a nudge ("Thinking of exhibiting? I can help."):
+  after 8 seconds on that page the chat bar or button shows it once a visit,
+  never while the chat is open.
+- **Only the show, and a way out for trouble**: each bot helps only with
+  its show and declines anything else politely. A message that tries to
+  trick it, asks for other people's details, pretends to be staff, or is
+  abusive or fraud gets a fixed reply pointing to the event team's email
+  (set when the bot is made, and needed before it goes live); after two,
+  the chat stops answering. Nothing Claude wrote for those is shown.
+- **Links Billie can share** (Rules step): the team's own addresses, each
+  with when to offer it, shown as buttons under an answer. Ready-made ones
+  for visitors (Register to visit, the agenda, exhibiting) and exhibitors
+  (badges in Visit Connect, their website listing in ASP.events, ordering
+  stand services, the manual). Claude picks the link; it never writes an
+  address, so none can be made up.
+- **Sales leads to Twenty CRM** (`docs/twenty.md`): a visitor bot's
+  _Interested in exhibiting_ form (or any form marked as a sales lead)
+  sends the person to Twenty as a person at their company, with an
+  opportunity for the show and a note of what they said. Found again by
+  email, never made twice; tried again when Twenty is busy; the request's
+  page shows how it went.
 - **Knowledge gaps**: questions the bots couldn't answer, fixed in one click
   (the answer goes into the knowledge of the bot that was asked).
 - **Answers people found unhelpful**: a thumbs down puts the question and
@@ -123,12 +144,23 @@ Chatbots, live handover and an email assistant for Media10 shows.
   the exhibitor list up to date. The guide for BluePrint's side is
   `docs/blueprint.md`.
 - **Deadline chasers**: on the Exhibitors step, each deadline (stand
-  plan, nameboard, electrics) is tied to a column of the exhibitor list
-  that shows who has done it. A week before (or when asked), Billie writes
-  one reminder from the bot's knowledge for everyone who hasn't, and tells
-  whoever set it up in Teams. A person checks the email and who it goes to,
-  then sends them all at once (replies go to the event mailbox). Needs
-  email sending (Resend).
+  plan, nameboard, electrics, badges) is tied to a column of the exhibitor
+  list that shows who has done it, and can have one of the bot's links for
+  where it's done (Visit Connect for badges). A week before (or when
+  asked), Billie writes one reminder from the bot's knowledge for everyone
+  who hasn't, and tells whoever set it up. A person checks the email and
+  who it goes to, then sends them all at once (replies go to the event
+  mailbox). Needs email sending (Resend).
+- **How often Billie reminds** (Exhibitors step): one round per deadline,
+  or again every week or every 3 days until it's done or due; repeats
+  checked first or sent automatically in the wording a person approved (no
+  Claude call); never more than one reminder email to an exhibitor in 1, 2,
+  3 or 7 days, across deadlines; weekdays only.
+- **"Before the show" in the chat**: a signed-in exhibitor sees every
+  deadline ticked off from their row, with the tasks as buttons and the
+  team's links, each time they open the chat, until everything's done.
+  Billie gets the same list, so "what do we still need to do?" is answered
+  truly.
 - **People on each bot**: admins choose who works on each bot. Editors run
   their bots; agents answer their bots' Inbox, requests and emails. Each
   person sees only their bots, with a filter for one bot's Inbox.

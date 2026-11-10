@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CalendarClock, Pencil, Plus, Send, Trash2 } from "lucide-react";
+import { CalendarClock, ExternalLink, Pencil, Plus, Send, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Chip, Note, Panel, type Tone } from "@/components/ui/bits";
 import { Field, Input, Select } from "@/components/ui/form";
@@ -35,6 +35,7 @@ type Deadline = {
   column: string;
   doneValues: string[];
   remindDaysBefore: number;
+  linkId: string | null;
   notDone: number;
   total: number;
   columnMissing: boolean;
@@ -108,6 +109,8 @@ export function DeadlinesPanel({
   hasList,
   canEdit,
   emailReady,
+  links = [],
+  repeatEvery = 0,
 }: {
   botId: string;
   columns: string[];
@@ -118,6 +121,10 @@ export function DeadlinesPanel({
   hasList: boolean;
   canEdit: boolean;
   emailReady: boolean;
+  /** The bot's links (Rules step): where exhibitors do something, e.g. Visit Connect. */
+  links?: { id: string; label: string }[];
+  /** The bot's plan repeats reminders every so many days (0: one round). */
+  repeatEvery?: number;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState<Deadline | "new" | null>(null);
@@ -177,6 +184,7 @@ export function DeadlinesPanel({
           values={values}
           filled={filled}
           total={total}
+          links={links}
           onDone={() => setEditing(null)}
         />
       ) : null}
@@ -192,6 +200,7 @@ export function DeadlinesPanel({
                   values={values}
                   filled={filled}
                   total={total}
+                  links={links}
                   initial={d}
                   onDone={() => setEditing(null)}
                 />
@@ -256,11 +265,23 @@ export function DeadlinesPanel({
                       {d.notDone ? ` (of ${d.total.toLocaleString("en-GB")}).` : "."}
                     </p>
                     <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                      <CalendarClock className="size-4" aria-hidden />
+                      <CalendarClock className="size-4 shrink-0" aria-hidden />
                       {d.remindDaysBefore
-                        ? `Billie drafts reminders ${d.remindDaysBefore} days before, for you to check.`
+                        ? `Billie drafts reminders ${d.remindDaysBefore} days before, for you to check${
+                            repeatEvery
+                              ? `, then sends them again every ${repeatEvery === 7 ? "week" : `${repeatEvery} days`} until it's done.`
+                              : "."
+                          }`
                         : "Billie drafts reminders only when you ask."}
                     </p>
+                    {d.linkId && links.some((l) => l.id === d.linkId) ? (
+                      <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                        <ExternalLink className="size-4 shrink-0" aria-hidden />
+                        Exhibitors do it at &ldquo;
+                        {links.find((l) => l.id === d.linkId)!.label}&rdquo;: the button is in their
+                        checklist and the link in its reminders.
+                      </p>
+                    ) : null}
                   </>
                 )}
                 {d.latest ? latestLine(botId, d.latest) : null}
@@ -306,6 +327,7 @@ function DeadlineForm({
   values,
   filled,
   total,
+  links,
   initial,
   onDone,
 }: {
@@ -314,6 +336,7 @@ function DeadlineForm({
   values: Record<string, Value[]>;
   filled: Record<string, number>;
   total: number;
+  links: { id: string; label: string }[];
   initial?: Deadline;
   onDone: () => void;
 }) {
@@ -326,6 +349,9 @@ function DeadlineForm({
   );
   const [done, setDone] = useState<string[]>(initial?.doneValues ?? []);
   const [remind, setRemind] = useState(String(initial?.remindDaysBefore ?? 7));
+  const [linkId, setLinkId] = useState(
+    initial?.linkId && links.some((l) => l.id === initial.linkId) ? initial.linkId : "",
+  );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const id = initial?.id ?? "new";
 
@@ -360,6 +386,7 @@ function DeadlineForm({
           column,
           doneValues: done,
           remindDaysBefore: Number(remind),
+          linkId: linkId || null,
         }),
       {
         done: () => {
@@ -488,6 +515,29 @@ function DeadlineForm({
           {REMIND.map((r) => (
             <option key={r.value} value={r.value}>
               {r.label}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field
+        id={`dl-link-${id}`}
+        label="Where do exhibitors do it? (optional)"
+        hint={
+          links.length
+            ? "One of the bot's links, such as Visit Connect for badges. It's a button in their checklist in the chat, and goes at the end of the reminder."
+            : "Add the bot's links on the Rules step (Visit Connect, the website listing) to choose one here."
+        }
+      >
+        <Select
+          id={`dl-link-${id}`}
+          value={linkId}
+          disabled={!links.length}
+          onChange={(e) => setLinkId(e.target.value)}
+        >
+          <option value="">Nowhere else (or in the chat)</option>
+          {links.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.label}
             </option>
           ))}
         </Select>

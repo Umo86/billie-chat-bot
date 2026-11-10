@@ -15,6 +15,7 @@ import {
   MAX_REQUEST_TYPES,
   newRequestId,
   REQUEST_TEMPLATES,
+  VISITOR_REQUEST_TEMPLATES,
 } from "@/lib/requests/rules";
 import type { RequestField, RequestItem, RequestType } from "@/lib/types";
 
@@ -49,7 +50,8 @@ export function RequestsPanel({
   const [dirty, setDirty] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const { pending, run } = useRunner();
-  const unused = REQUEST_TEMPLATES.filter((t) => !types.some((x) => x.name === t.name));
+  const templates = exhibitors ? REQUEST_TEMPLATES : VISITOR_REQUEST_TEMPLATES;
+  const unused = templates.filter((t) => !types.some((x) => x.name === t.name));
 
   function change(next: RequestType[]) {
     setTypes(next);
@@ -152,6 +154,21 @@ export function RequestsPanel({
                   onChange={(e) => edit(t.id, { when: e.target.value })}
                 />
               </Field>
+              <label className="flex items-start gap-2.5 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 size-4 accent-[var(--color-primary)]"
+                  checked={Boolean(t.crm)}
+                  disabled={!canEdit}
+                  onChange={(e) => edit(t.id, { crm: e.target.checked })}
+                />
+                <span>
+                  <span className="font-semibold">A sales lead: send it to Twenty CRM too.</span>{" "}
+                  Each one becomes a person at their company in Twenty, with an opportunity for the
+                  show and a note of what they said. The form asks for their name, company, email
+                  and phone, and tells them the sales team will be in touch.
+                </span>
+              </label>
               {exhibitors ? (
                 <TaskOptions
                   t={t}
@@ -167,7 +184,11 @@ export function RequestsPanel({
                 <p className="text-[0.9rem] font-semibold">
                   Questions on the form{" "}
                   <span className="font-normal text-muted-foreground">
-                    (name, company, stand, email and phone are always asked)
+                    (
+                    {t.crm || !exhibitors
+                      ? "name, company, email and phone are always asked"
+                      : "name, company, stand, email and phone are always asked"}
+                    )
                   </span>
                 </p>
                 {t.fields.map((f, i) => (
@@ -254,7 +275,7 @@ export function RequestsPanel({
 
       {canEdit ? (
         <div className="flex flex-wrap items-end gap-2">
-          {exhibitors && unused.length ? (
+          {unused.length ? (
             <Select
               aria-label="Add a ready-made request"
               value=""
@@ -386,7 +407,7 @@ function TaskOptions({
         <Field
           id={`rt-deadline-${t.id}`}
           label="Its deadline"
-          hint="Its due date shows on the button, and anyone the deadline counts as done doesn't get it."
+          hint="The button sits with that deadline in the exhibitor's checklist, with its due date. Anyone the deadline counts as done doesn't get it."
         >
           <Select
             id={`rt-deadline-${t.id}`}

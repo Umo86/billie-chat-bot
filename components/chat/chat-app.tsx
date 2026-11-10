@@ -1,13 +1,22 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { Send, ThumbsDown, ThumbsUp, UserRound, X } from "lucide-react";
+import {
+  CheckCircle2,
+  Circle,
+  ExternalLink,
+  Send,
+  ThumbsDown,
+  ThumbsUp,
+  UserRound,
+  X,
+} from "lucide-react";
 import { BotAvatar } from "@/components/bots/bot-avatar";
 import { textOn } from "@/lib/bots/slug";
 import { FIELD_LABEL } from "@/lib/bots/defaults";
 import { MAX_QUANTITY, money } from "@/lib/requests/rules";
 import type { PublicBot } from "@/lib/chat/public";
-import type { ContactField } from "@/lib/types";
+import type { ChecklistItem, ContactField } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -28,6 +37,8 @@ type Msg = {
   author: string | null;
   rating: number | null;
   createdAt: string;
+  /** The team's links, as buttons under Billie's answer. */
+  links?: { label: string; url: string }[];
 };
 type RequestOffer = {
   typeId: string;
@@ -38,8 +49,9 @@ type RequestOffer = {
   items?: { id: string; name: string; price: number }[];
   /** Filled in already, for an exhibitor who's signed in. */
   known?: Partial<Record<ContactField, string>>;
+  /** Where the details go (a lead for the sales team). */
+  promise?: string;
 };
-type ChatTask = { typeId: string; name: string; due: string | null };
 type Turn = {
   conversationId: string;
   status: Status;
@@ -51,8 +63,10 @@ type Turn = {
   signedIn?: SignedIn | null;
   /** Why signing in from the exhibitor manual didn't work. */
   signInNote?: string;
-  /** What the signed-in exhibitor still has to do for their stand. */
-  tasks?: ChatTask[];
+  /** What the signed-in exhibitor has to do before the show, while something still is. */
+  checklist?: ChecklistItem[];
+  /** Billie has stopped answering this chat: what to show instead of the message box. */
+  stopped?: string;
 };
 
 /** "2027-02-14" as "Sun 14 Feb". */
@@ -155,7 +169,9 @@ export function ChatApp({
   const [offer, setOffer] = useState<Turn["offer"]>(null);
   const [form, setForm] = useState<Turn["form"]>(null);
   const [request, setRequest] = useState<RequestOffer | null>(null);
-  const [tasks, setTasks] = useState<ChatTask[]>([]);
+  const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
+  // Billie stopped answering this chat (suspicious messages): what to show instead of the box.
+  const [stopped, setStopped] = useState<string | null>(null);
   // How many of each item, in a form with things to order.
   const [qty, setQty] = useState<Record<string, number>>({});
   const [text, setText] = useState("");
@@ -211,11 +227,12 @@ export function ChatApp({
       });
       setStatus(turn.status);
       setForm(turn.form);
+      if (turn.stopped) setStopped(turn.stopped);
       if (turn.signedIn !== undefined) setSignedIn(turn.signedIn);
       if (replaceOffer) {
         setOffer(turn.offer);
         setRequest(turn.request ?? null);
-        setTasks(turn.tasks ?? []);
+        setChecklist(turn.checklist ?? []);
         if (turn.request) setQty({});
       }
     },
@@ -232,7 +249,8 @@ export function ChatApp({
     setOffer(null);
     setForm(null);
     setRequest(null);
-    setTasks([]);
+    setChecklist([]);
+    setStopped(null);
     setSignedIn(null);
   }, [key]);
 
@@ -708,6 +726,23 @@ export function ChatApp({
               >
                 <Linked text={m.text} />
               </p>
+              {m.role === "bot" && m.links?.length ? (
+                <div className="flex flex-wrap gap-1.5 px-0.5">
+                  {m.links.map((l) => (
+                    <a
+                      key={l.url}
+                      href={l.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[0.85rem] font-semibold"
+                      style={{ background: accent, color: onAccent }}
+                    >
+                      {l.label}
+                      <ExternalLink className="size-3.5" aria-hidden />
+                    </a>
+                  ))}
+                </div>
+              ) : null}
               {m.role === "bot" && m.sources.length ? (
                 <p className="px-1 text-[0.74rem] text-muted-foreground">
                   Source:{" "}
@@ -756,29 +791,74 @@ export function ChatApp({
             <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground" />
           </li>
         ) : null}
-        {tasks.length && status === "bot" && !request && !form ? (
-          <li className="flex flex-col gap-2 rounded-[14px] border border-border p-3">
-            <p className="text-[0.92rem] font-semibold">Still to do for your stand</p>
-            <div className="flex flex-wrap gap-2">
-              {tasks.map((t) => (
-                <button
-                  key={t.typeId}
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void startTask(t.typeId)}
-                  className="cursor-pointer rounded-full border px-3.5 py-1.5 text-left text-[0.88rem] font-semibold disabled:opacity-60"
-                  style={{ borderColor: accent }}
-                >
-                  {t.name}
-                  {t.due ? (
-                    <span className="font-normal text-muted-foreground">
-                      {" "}
-                      · due {dueDay(t.due)}
+        {checklist.length && status === "bot" && !request && !form ? (
+          <li
+            className="flex flex-col gap-2 rounded-[14px] border border-border p-3"
+            aria-label="Before the show"
+            data-testid="checklist"
+          >
+            <p className="text-[0.92rem] font-semibold">
+              Before the show{" "}
+              <span className="font-normal text-muted-foreground">
+                · {checklist.filter((i) => i.state !== "todo").length} of {checklist.length} done
+              </span>
+            </p>
+            <ul className="flex flex-col gap-1.5">
+              {checklist.map((i) => (
+                <li key={i.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  {i.state === "todo" ? (
+                    <Circle className="size-4 shrink-0 text-muted-foreground" aria-label="To do" />
+                  ) : (
+                    <CheckCircle2
+                      className="size-4 shrink-0"
+                      style={{ color: accent }}
+                      aria-label={i.state === "sent" ? "Sent" : "Done"}
+                    />
+                  )}
+                  {i.task ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void startTask(i.task!)}
+                      className="cursor-pointer rounded-full border px-3 py-1 text-left text-[0.88rem] font-semibold disabled:opacity-60"
+                      style={{ borderColor: accent }}
+                    >
+                      {i.name}
+                    </button>
+                  ) : (
+                    <span
+                      className={cn(
+                        "text-[0.88rem]",
+                        i.state === "todo" ? "font-semibold" : "text-muted-foreground",
+                      )}
+                    >
+                      {i.name}
                     </span>
+                  )}
+                  <span className="text-[0.82rem] text-muted-foreground">
+                    {i.state === "done"
+                      ? "Done"
+                      : i.state === "sent"
+                        ? "Sent to the team"
+                        : i.due
+                          ? `Due ${dueDay(i.due)}`
+                          : "To do"}
+                  </span>
+                  {i.link ? (
+                    <a
+                      href={i.link.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-[0.85rem] font-semibold"
+                      style={{ borderColor: accent }}
+                    >
+                      {i.link.label}
+                      <ExternalLink className="size-3.5" aria-hidden />
+                    </a>
                   ) : null}
-                </button>
+                </li>
               ))}
-            </div>
+            </ul>
           </li>
         ) : null}
         {offer && status === "bot" ? (
@@ -930,6 +1010,9 @@ export function ChatApp({
                   ) : null}
                 </label>
               ))}
+              {request.promise ? (
+                <p className="text-[0.8rem] font-normal text-muted-foreground">{request.promise}</p>
+              ) : null}
               <div className="flex flex-wrap gap-2">
                 <button
                   type="submit"
@@ -937,7 +1020,7 @@ export function ChatApp({
                   className="cursor-pointer rounded-full px-3.5 py-1.5 text-[0.88rem] font-bold disabled:opacity-60"
                   style={{ background: accent, color: onAccent }}
                 >
-                  Send the request
+                  {request.promise ? "Send my details" : "Send the request"}
                 </button>
                 <button
                   type="button"
@@ -1030,43 +1113,52 @@ export function ChatApp({
             The team has your details. Anything you add here goes to them too.
           </p>
         ) : null}
-        <form
-          className="flex items-end gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void send(text);
-          }}
-        >
-          <label htmlFor="chat-input" className="sr-only">
-            Your message
-          </label>
-          <textarea
-            id="chat-input"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                e.preventDefault();
-                void send(text);
-              }
-            }}
-            rows={1}
-            maxLength={2000}
-            placeholder={status === "live" ? "Write to the team…" : "Ask a question…"}
-            className="max-h-32 min-h-[42px] flex-1 resize-none rounded-[12px] border border-input bg-card px-3 py-2.5 text-[0.95rem]"
-          />
-          <button
-            type="submit"
-            disabled={busy || !text.trim()}
-            aria-label="Send"
-            className="grid size-[42px] shrink-0 cursor-pointer place-items-center rounded-full disabled:opacity-50"
-            style={{ background: accent, color: onAccent }}
+        {stopped ? (
+          <p
+            role="status"
+            className="rounded-[12px] border border-border bg-muted px-3 py-2.5 text-[0.9rem]"
           >
-            <Send className="size-[18px]" />
-          </button>
-        </form>
+            {stopped}
+          </p>
+        ) : (
+          <form
+            className="flex items-end gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void send(text);
+            }}
+          >
+            <label htmlFor="chat-input" className="sr-only">
+              Your message
+            </label>
+            <textarea
+              id="chat-input"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  void send(text);
+                }
+              }}
+              rows={1}
+              maxLength={2000}
+              placeholder={status === "live" ? "Write to the team…" : "Ask a question…"}
+              className="max-h-32 min-h-[42px] flex-1 resize-none rounded-[12px] border border-input bg-card px-3 py-2.5 text-[0.95rem]"
+            />
+            <button
+              type="submit"
+              disabled={busy || !text.trim()}
+              aria-label="Send"
+              className="grid size-[42px] shrink-0 cursor-pointer place-items-center rounded-full disabled:opacity-50"
+              style={{ background: accent, color: onAccent }}
+            >
+              <Send className="size-[18px]" />
+            </button>
+          </form>
+        )}
         <div className="mt-1.5 flex items-center justify-between gap-2 text-[0.74rem] text-muted-foreground">
-          {status === "bot" ? (
+          {status === "bot" && !stopped ? (
             <button
               type="button"
               onClick={askForPerson}

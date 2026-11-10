@@ -15,6 +15,7 @@ import { ReplaceDialog } from "@/components/knowledge/replace-dialog";
 import { KnowledgeWorkspace } from "@/components/knowledge/workspace";
 import { RulesStep } from "@/components/bots/rules-step";
 import { RequestsPanel } from "@/components/bots/requests-panel";
+import { LinksPanel } from "@/components/bots/links-panel";
 import { EmailStep } from "@/components/bots/email-step";
 import { TestStep } from "@/components/bots/test-step";
 import { LiveStep } from "@/components/bots/live-step";
@@ -25,7 +26,8 @@ import { taskChoices } from "@/lib/requests/tasks";
 import { blueprintStatus } from "@/lib/exhibitors/blueprint";
 import { slackStatus } from "@/lib/alerts/slack-settings";
 import { DeadlinesPanel } from "@/components/bots/deadlines-panel";
-import { deadlineSetup } from "@/lib/exhibitors/deadlines";
+import { deadlineSetup, reminderPlan } from "@/lib/exhibitors/deadlines";
+import { ReminderPlanPanel } from "@/components/bots/reminder-plan-panel";
 import { dueLabel } from "@/lib/exhibitors/reminders";
 import { daysLeft, daysUntil } from "@/lib/exhibitors/deadline-rules";
 import { requireActor } from "@/lib/auth/actor";
@@ -96,6 +98,7 @@ export default async function BotPage({
           name: bot.name,
           audience: bot.audience,
           showName: bot.showName,
+          contactEmail: bot.contactEmail,
           color: bot.color,
           accentColor: bot.accentColor,
           avatarUrl: bot.avatarUrl,
@@ -181,10 +184,11 @@ export default async function BotPage({
       );
     }
   } else if (step === "exhibitors") {
-    const [list, setup, link] = await Promise.all([
+    const [list, setup, link, plan] = await Promise.all([
       listSummary(bot.id),
       deadlineSetup(bot.id),
       blueprintStatus(bot.id),
+      reminderPlan(bot.id),
     ]);
     const next = nextStep("exhibitors", bot.audience);
     const today = londonDate();
@@ -234,6 +238,8 @@ export default async function BotPage({
           hasList={Boolean(list)}
           canEdit={canEdit}
           emailReady={emailConfigured()}
+          links={bot.links.map((l) => ({ id: l.id, label: l.label }))}
+          repeatEvery={plan.repeatDays}
           deadlines={setup.deadlines.map((d) => ({
             ...d,
             due: dueLabel(d.dueOn),
@@ -244,6 +250,12 @@ export default async function BotPage({
             },
           }))}
         />
+        <ReminderPlanPanel
+          botId={bot.id}
+          initial={plan}
+          canEdit={await mayOnBot(actor, "reminders.send", bot.id)}
+          emailReady={emailConfigured()}
+        />
       </ExhibitorsStep>
     );
   } else if (step === "rules") {
@@ -251,6 +263,7 @@ export default async function BotPage({
     body = (
       <div className="flex flex-col gap-4">
         <RulesStep botId={bot.id} initial={bot.rules} canEdit={canEdit} />
+        <LinksPanel botId={bot.id} audience={bot.audience} initial={bot.links} canEdit={canEdit} />
         <RequestsPanel
           botId={bot.id}
           initial={bot.requestTypes}

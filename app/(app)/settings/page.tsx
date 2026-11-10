@@ -9,6 +9,8 @@ import { Team } from "@/components/settings/team";
 import { Privacy } from "@/components/settings/privacy";
 import { TeamsDirect } from "@/components/settings/teams-direct";
 import { SlackSetup } from "@/components/settings/slack-setup";
+import { TwentyCheck } from "@/components/settings/twenty-check";
+import { twentyConfigured, twentyHost } from "@/lib/crm/lead-rules";
 import { slackStatus } from "@/lib/alerts/slack-settings";
 import { slackManifest, slackManifestJson } from "@/lib/channels/slack-manifest";
 import { AiUsage } from "@/components/settings/ai-usage";
@@ -251,6 +253,14 @@ export default async function SettingsPage({
             },
           ]),
     ];
+    rows.push({
+      name: "Twenty CRM (sales leads)",
+      ok: twentyConfigured(),
+      detail: twentyConfigured()
+        ? `Connected to ${twentyHost()}. Forms marked as sales leads (such as Interested in exhibiting) go to Twenty as a person, their company, an opportunity and a note.`
+        : "Optional. Visitor bots' Interested in exhibiting form can send each lead to Twenty. Make an API key in Twenty (Settings → Developers → API → Create key).",
+      vars: "TWENTY_API_KEY (plus TWENTY_API_URL if Twenty runs on your own server)",
+    });
     body = (
       <div className="flex flex-col gap-4">
         <Panel className="p-0 sm:p-0">
@@ -288,6 +298,7 @@ export default async function SettingsPage({
           channelId={s.slackChannelId ?? null}
         />
         {slack.connected ? null : <TeamsDirect saved={direct} me={actor.email} />}
+        {twentyConfigured() ? <TwentyCheck /> : null}
         <Panel className="flex flex-col gap-3">
           <h2 className="text-[1.05rem]">Event mailboxes</h2>
           {mailboxes.length ? (

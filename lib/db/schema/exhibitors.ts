@@ -1,4 +1,5 @@
 import {
+  boolean,
   date,
   index,
   integer,
@@ -117,6 +118,12 @@ export const deadlines = pgTable(
     doneValues: text("done_values").array().notNull().default([]),
     /** Billie drafts reminders this many days before (0: only when someone asks). */
     remindDaysBefore: integer("remind_days_before").notNull().default(7),
+    /**
+     * Where exhibitors do it, if somewhere else: one of the bot's links
+     * (lib/bots/links.ts), e.g. Visit Connect for badges. Shown with it in the
+     * chat's checklist and added to its reminder emails.
+     */
+    linkId: text("link_id"),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -139,6 +146,8 @@ export const reminderBatches = pgTable(
       .notNull()
       .references(() => bots.id, { onDelete: "cascade" }),
     status: text("status").$type<ReminderBatchStatus>().notNull().default("drafting"),
+    /** 1 for the first round of a deadline; 2 and on for repeats (lib/exhibitors/reminder-plan.ts). */
+    round: integer("round").notNull().default(1),
     subject: text("subject").notNull().default(""),
     /** With {first_name}, {company} and {stand} filled in for each exhibitor. */
     body: text("body").notNull().default(""),
@@ -185,3 +194,24 @@ export const reminders = pgTable(
   },
   (t) => [index("reminders_batch_idx").on(t.batchId), index("reminders_to_idx").using("gin", t.to)],
 );
+
+/**
+ * How often a bot's deadline reminders go out (Exhibitors step; lib/exhibitors/reminder-plan.ts).
+ * No row: one round per deadline, checked by a person, on weekdays. Kept apart
+ * from the bot's own row so changing it never touches the bot's answers.
+ */
+export const reminderPlans = pgTable("reminder_plans", {
+  botId: uuid("bot_id")
+    .primaryKey()
+    .references(() => bots.id, { onDelete: "cascade" }),
+  /** 0: one round per deadline; 3 or 7: again every so many days until it's done or due. */
+  repeatDays: integer("repeat_days").notNull().default(0),
+  /** Repeats are sent without a check, in the wording a person approved for that deadline. */
+  autoSend: boolean("auto_send").notNull().default(false),
+  /** The fewest days between two reminder emails to the same exhibitor (when repeating). */
+  gapDays: integer("gap_days").notNull().default(2),
+  /** No rounds start on Saturdays or Sundays (UK). */
+  weekdaysOnly: boolean("weekdays_only").notNull().default(true),
+  updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

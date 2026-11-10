@@ -42,6 +42,7 @@ export type FakeContext =
       passages: PromptPassage[];
       alwaysHuman: string[];
       requests?: { id: string; name: string }[];
+      links?: { id: string; label: string }[];
     }
   | { purpose: "email_tag"; email: PromptEmail; alwaysHuman: string[] }
   | { purpose: "email_draft"; email: PromptEmail; passages: PromptPassage[] }

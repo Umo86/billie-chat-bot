@@ -29,7 +29,7 @@ import {
   visitorUpdates,
 } from "@/lib/conversations/service";
 import type { HandoverReason } from "@/lib/conversations/handover";
-import { cleanAnswers, cleanOrder, orderAnswers, REQUEST_CONTACT } from "@/lib/requests/rules";
+import { cleanAnswers, cleanOrder, contactFor, orderAnswers } from "@/lib/requests/rules";
 import { taskExhibitor, typesFor } from "@/lib/requests/tasks";
 import {
   dropEmptyConversation,
@@ -369,7 +369,10 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
       if (!type || !(await requestOffered(conversation.id, type.id)))
         return problem(404, "That request isn't available any more. Ask again.");
       const { answers, errors } = cleanAnswers(type, parsed.data.answers);
-      const { contact, errors: contactErrors } = cleanContact(REQUEST_CONTACT, parsed.data.contact);
+      const { contact, errors: contactErrors } = cleanContact(
+        contactFor(type, bot.audience),
+        parsed.data.contact,
+      );
       // The order is worked out here, at the prices the team set: never the page's own sums.
       const { order, error: orderError } = cleanOrder(type, parsed.data.items ?? {});
       if (orderError) errors.items = orderError;

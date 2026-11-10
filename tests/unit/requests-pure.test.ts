@@ -27,14 +27,21 @@ const hours: RequestType = {
 
 describe("requests from chat", () => {
   it("offers the form for one of the bot's own requests only", () => {
-    expect(offerFor([hours], "hours001")).toEqual({
+    expect(offerFor([hours], "hours001", "exhibitors")).toEqual({
       typeId: "hours001",
       name: "Extra build-up or breakdown hours",
       fields: hours.fields,
       contact: REQUEST_CONTACT,
     });
-    expect(offerFor([hours], "nope")).toBeNull();
-    expect(offerFor([hours], null)).toBeNull();
+    expect(offerFor([hours], "nope", "exhibitors")).toBeNull();
+    expect(offerFor([hours], null, "exhibitors")).toBeNull();
+    // Visitors have no stand to give.
+    expect(offerFor([hours], "hours001", "visitors")!.contact).toEqual([
+      "name",
+      "company",
+      "email",
+      "phone",
+    ]);
   });
 
   it("checks the form: required answers, real dates, and labels kept with the answers", () => {

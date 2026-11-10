@@ -99,6 +99,8 @@ export async function keepForReuse(
     confident: a.confident,
     topic: a.topic,
     request: a.request,
+    links: a.links,
+    flag: a.flag,
   };
   await db
     .insert(answerCache)

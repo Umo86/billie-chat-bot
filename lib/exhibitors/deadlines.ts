@@ -1,12 +1,13 @@
 import "server-only";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
-import { db } from "@/lib/db/client";
+import { db, type DbOrTx } from "@/lib/db/client";
 import {
   bots,
   deadlines,
   exhibitorLists,
   exhibitors,
   reminderBatches,
+  reminderPlans,
   reminders,
   type ReminderBatchStatus,
   type ReminderStatus,
@@ -14,17 +15,13 @@ import {
 import { writeAudit } from "@/lib/audit";
 import { UserError } from "@/lib/errors";
 import type { Actor } from "@/lib/authz";
+import { emailConfigured } from "@/lib/config";
 import { enqueue } from "@/lib/jobs/queue";
 import { kickJobs } from "@/lib/jobs/kick";
 import { formatDate, londonDate } from "@/lib/time";
-import {
-  ANY_ANSWER,
-  columnValues,
-  draftFrom,
-  isDone,
-  REMIND_DAYS,
-  type ColumnValue,
-} from "./deadline-rules";
+import { ANY_ANSWER, columnValues, isDone, REMIND_DAYS, type ColumnValue } from "./deadline-rules";
+import { DEFAULT_PLAN, nextRound, planOf, repeatSubject, type ReminderPlan } from "./reminder-plan";
+import { remindedRecently, tellRemindersReady } from "./reminders";
 
 /**
  * Deadline chasers: each exhibitor bot can have deadlines (stand plan,
@@ -40,6 +37,8 @@ export type DeadlineInput = {
   column: string;
   doneValues: string[];
   remindDaysBefore: number;
+  /** One of the bot's links: where exhibitors do it (Visit Connect for badges, say). */
+  linkId?: string | null;
 };
 
 export type BatchSummary = {
@@ -59,6 +58,7 @@ export type DeadlineSummary = {
   column: string;
   doneValues: string[];
   remindDaysBefore: number;
+  linkId: string | null;
   /** On the list and not done yet. */
   notDone: number;
   total: number;
@@ -115,6 +115,7 @@ export async function deadlineSetup(botId: string): Promise<{
       column: d.column,
       doneValues: d.doneValues,
       remindDaysBefore: d.remindDaysBefore,
+      linkId: d.linkId,
       notDone: rows.filter((r) => !isDone(r.fields, d.column, d.doneValues)).length,
       total: rows.length,
       columnMissing: Boolean(list) && !columns.includes(d.column),
@@ -166,7 +167,11 @@ async function latestBatches(deadlineIds: string[]): Promise<Map<string, BatchSu
   return out;
 }
 
-function cleanInput(input: DeadlineInput, columns: readonly string[]): DeadlineInput {
+function cleanInput(
+  input: DeadlineInput,
+  columns: readonly string[],
+  linkIds: readonly string[],
+): DeadlineInput & { linkId: string | null } {
   const name = input.name.replace(/\s+/g, " ").trim();
   if (name.length < 2 || name.length > 60) throw new UserError("Give the deadline a short name.");
   const due = /^\d{4}-\d{2}-\d{2}$/.test(input.dueOn) ? new Date(`${input.dueOn}T12:00:00Z`) : null;
@@ -187,12 +192,16 @@ function cleanInput(input: DeadlineInput, columns: readonly string[]): DeadlineI
     throw new UserError("Tick fewer answers.");
   if (!(REMIND_DAYS as readonly number[]).includes(input.remindDaysBefore))
     throw new UserError("Choose when Billie drafts reminders.");
+  const linkId = input.linkId || null;
+  if (linkId && !linkIds.includes(linkId))
+    throw new UserError("That link isn't one of the bot's links any more. Choose another.");
   return {
     name,
     dueOn: input.dueOn,
     column: input.column,
     doneValues,
     remindDaysBefore: input.remindDaysBefore,
+    linkId,
   };
 }
 
@@ -203,10 +212,17 @@ export async function saveDeadline(
   input: DeadlineInput,
   id?: string,
 ): Promise<string> {
-  const list = await db.query.exhibitorLists.findFirst({ where: eq(exhibitorLists.botId, botId) });
+  const [list, bot] = await Promise.all([
+    db.query.exhibitorLists.findFirst({ where: eq(exhibitorLists.botId, botId) }),
+    db.query.bots.findFirst({ where: eq(bots.id, botId), columns: { links: true } }),
+  ]);
   if (!list)
     throw new UserError("Upload the exhibitor list first: a deadline uses one of its columns.");
-  const d = cleanInput(input, list.columns);
+  const d = cleanInput(
+    input,
+    list.columns,
+    (bot?.links ?? []).map((l) => l.id),
+  );
   return db.transaction(async (tx) => {
     let savedId: string;
     if (id) {
@@ -293,7 +309,12 @@ export async function startReminders(
     if (!due.length) return refuse("Everyone on the list has done this. There's nobody to remind.");
     const [batch] = await tx
       .insert(reminderBatches)
-      .values({ deadlineId: d.id, botId: d.botId, requestedBy: actor?.id ?? null })
+      .values({
+        deadlineId: d.id,
+        botId: d.botId,
+        requestedBy: actor?.id ?? null,
+        round: await nextRoundNumber(tx, d.id),
+      })
       .returning({ id: reminderBatches.id });
     for (let i = 0; i < due.length; i += 500)
       await tx.insert(reminders).values(
@@ -325,14 +346,166 @@ export async function startReminders(
   return started;
 }
 
+/** The number of a deadline's next round of reminders (1 for its first). */
+async function nextRoundNumber(tx: DbOrTx, deadlineId: string): Promise<number> {
+  const [{ n }] = await tx
+    .select({ n: sql<number>`coalesce(max(${reminderBatches.round}), 0)::int` })
+    .from(reminderBatches)
+    .where(eq(reminderBatches.deadlineId, deadlineId));
+  return n + 1;
+}
+
+/** A bot's reminder plan (Exhibitors step): the defaults until someone changes it. */
+export async function reminderPlan(botId: string): Promise<ReminderPlan> {
+  const row = await db.query.reminderPlans.findFirst({ where: eq(reminderPlans.botId, botId) });
+  return planOf(row);
+}
+
+export async function saveReminderPlan(
+  actor: Actor,
+  botId: string,
+  input: ReminderPlan,
+): Promise<void> {
+  const plan = planOf(input);
+  if (
+    plan.repeatDays !== input.repeatDays ||
+    plan.gapDays !== input.gapDays ||
+    plan.autoSend !== input.autoSend ||
+    plan.weekdaysOnly !== input.weekdaysOnly
+  )
+    throw new UserError("Choose how often Billie reminds from the options.");
+  await db.transaction(async (tx) => {
+    await tx
+      .insert(reminderPlans)
+      .values({ botId, ...plan, updatedBy: actor.id, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: reminderPlans.botId,
+        set: { ...plan, updatedBy: actor.id, updatedAt: new Date() },
+      });
+    const how = plan.repeatDays
+      ? `again every ${plan.repeatDays} days until done${plan.autoSend ? ", sent automatically" : ", checked first"}, at most one email in ${plan.gapDays} ${plan.gapDays === 1 ? "day" : "days"}`
+      : "one round per deadline";
+    await writeAudit(tx, {
+      actorUserId: actor.id,
+      entityType: "bot",
+      entityId: botId,
+      action: "update",
+      summary: `Set deadline reminders to ${how}${plan.weekdaysOnly ? ", weekdays only" : ""}`,
+    });
+  });
+}
+
 /**
- * The daily schedule: deadlines whose reminder day has come (and that are
- * still to come) get a batch, once per deadline and reminder day.
+ * A repeat round (lib/exhibitors/reminder-plan.ts): the wording a person
+ * approved and sent last time, again, for everyone still not done. No
+ * Claude call. Anyone who had a reminder email too recently waits for the
+ * next round. Sent at once when the plan says so; otherwise it waits for a
+ * person to check, like any other.
+ */
+export async function repeatReminders(
+  deadlineId: string,
+  plan: ReminderPlan,
+  now = new Date(),
+): Promise<{ batchId: string; count: number; sent: boolean } | null> {
+  const today = londonDate(now);
+  const started = await db.transaction(async (tx) => {
+    const [d] = await tx.select().from(deadlines).where(eq(deadlines.id, deadlineId)).for("update");
+    if (!d) return null;
+    const [open] = await tx
+      .select({ id: reminderBatches.id })
+      .from(reminderBatches)
+      .where(and(eq(reminderBatches.deadlineId, d.id), inArray(reminderBatches.status, OPEN)))
+      .limit(1);
+    if (open) return null;
+    const [last] = await tx
+      .select()
+      .from(reminderBatches)
+      .where(and(eq(reminderBatches.deadlineId, d.id), eq(reminderBatches.status, "sent")))
+      .orderBy(desc(reminderBatches.sentAt), desc(reminderBatches.createdAt))
+      .limit(1);
+    if (!last) return null;
+    const list = await tx.query.exhibitorLists.findFirst({
+      where: eq(exhibitorLists.botId, d.botId),
+    });
+    if (!list || !list.columns.includes(d.column)) return null;
+    const rows = await tx
+      .select()
+      .from(exhibitors)
+      .where(eq(exhibitors.botId, d.botId))
+      .orderBy(asc(exhibitors.company), asc(exhibitors.stand));
+    const recent = await remindedRecently(tx, d.botId, today, plan.gapDays);
+    const due = rows.filter(
+      (r) =>
+        r.emails.length &&
+        !isDone(r.fields, d.column, d.doneValues) &&
+        !r.emails.some((e) => recent.has(e)),
+    );
+    if (!due.length) return null;
+    const auto = plan.autoSend;
+    const round = await nextRoundNumber(tx, d.id);
+    const [batch] = await tx
+      .insert(reminderBatches)
+      .values({
+        deadlineId: d.id,
+        botId: d.botId,
+        round,
+        status: auto ? "sending" : "ready",
+        subject: repeatSubject(last.subject),
+        body: last.body,
+        sources: last.sources,
+        ...(auto ? { sentAt: now } : {}),
+      })
+      .returning({ id: reminderBatches.id });
+    for (let i = 0; i < due.length; i += 500)
+      await tx.insert(reminders).values(
+        due.slice(i, i + 500).map((r) => ({
+          batchId: batch.id,
+          exhibitorId: r.id,
+          company: r.company,
+          stand: r.stand,
+          name: r.name,
+          to: r.emails,
+          status: (auto ? "queued" : "pending") as ReminderStatus,
+        })),
+      );
+    const n = `${due.length} ${due.length === 1 ? "reminder" : "reminders"}`;
+    await writeAudit(tx, {
+      actorType: "system",
+      entityType: "bot",
+      entityId: d.botId,
+      action: "create",
+      summary: auto
+        ? `Billie sent ${n} for "${d.name}" again (round ${round}), in the wording sent before`
+        : `Billie got ${n} for "${d.name}" ready to send again (round ${round}), for a person to check`,
+    });
+    if (auto)
+      await enqueue(
+        "send_reminders",
+        { batchId: batch.id, round: 1 },
+        { tx, dedupeKey: `send-reminders:${batch.id}:1`, once: true, maxAttempts: 3 },
+      );
+    return { batchId: batch.id, count: due.length, sent: auto };
+  });
+  if (started?.sent) await kickJobs({ long: true });
+  else if (started) await tellRemindersReady(started.batchId);
+  return started;
+}
+
+/**
+ * The daily schedule (after 08:00 UK time): each deadline whose first
+ * reminder day has come gets its first round, once; with a plan that
+ * repeats, another every few days until everyone has done it or it's due
+ * (lib/exhibitors/reminder-plan.ts).
  */
 export async function startScheduledReminders(now = new Date()): Promise<number> {
   const today = londonDate(now);
   const due = await db
-    .select({ id: deadlines.id, dueOn: deadlines.dueOn, remind: deadlines.remindDaysBefore })
+    .select({
+      id: deadlines.id,
+      botId: deadlines.botId,
+      dueOn: deadlines.dueOn,
+      remind: deadlines.remindDaysBefore,
+    })
     .from(deadlines)
     .innerJoin(bots, eq(bots.id, deadlines.botId))
     .where(
@@ -342,23 +515,48 @@ export async function startScheduledReminders(now = new Date()): Promise<number>
         sql`${deadlines.dueOn} >= ${today}::date`,
       ),
     );
-  let started = 0;
-  for (const d of due) {
-    const from = draftFrom(d.dueOn, d.remind);
-    if (!from || today < from) continue;
-    // Once per reminder day: a batch started since then (by hand or on schedule) counts.
-    const [already] = await db
-      .select({ id: reminderBatches.id })
+  if (!due.length) return 0;
+  const [plans, rounds] = await Promise.all([
+    db
+      .select()
+      .from(reminderPlans)
+      .where(inArray(reminderPlans.botId, [...new Set(due.map((d) => d.botId))])),
+    db
+      .select({
+        deadlineId: reminderBatches.deadlineId,
+        status: reminderBatches.status,
+        createdOn: sql<string>`to_char((${reminderBatches.createdAt} AT TIME ZONE 'Europe/London')::date, 'YYYY-MM-DD')`,
+        sentOn: sql<
+          string | null
+        >`to_char((${reminderBatches.sentAt} AT TIME ZONE 'Europe/London')::date, 'YYYY-MM-DD')`,
+      })
       .from(reminderBatches)
       .where(
-        and(
-          eq(reminderBatches.deadlineId, d.id),
-          sql`(${reminderBatches.createdAt} AT TIME ZONE 'Europe/London')::date >= ${from}::date`,
+        inArray(
+          reminderBatches.deadlineId,
+          due.map((d) => d.id),
         ),
       )
-      .limit(1);
-    if (already) continue;
-    if (await startReminders(null, d.id)) started++;
+      .orderBy(desc(reminderBatches.createdAt)),
+  ]);
+  let started = 0;
+  for (const d of due) {
+    const plan = planOf(plans.find((p) => p.botId === d.botId) ?? DEFAULT_PLAN);
+    const mine = rounds.filter((r) => r.deadlineId === d.id);
+    const next = nextRound({
+      today,
+      dueOn: d.dueOn,
+      remindDaysBefore: d.remind,
+      plan,
+      latest: mine[0] ?? null,
+      hasSent: mine.some((r) => r.status === "sent"),
+    });
+    if (next === "first") {
+      if (await startReminders(null, d.id)) started++;
+    } else if (next === "repeat" && emailConfigured()) {
+      // Repeats are only worth making when they can be sent.
+      if (await repeatReminders(d.id, plan, now)) started++;
+    }
   }
   return started;
 }

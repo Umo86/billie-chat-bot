@@ -7,7 +7,12 @@ import { assertOnBot, assertOnBotOf } from "@/lib/auth/bots";
 import { UserError } from "@/lib/errors";
 import { removeList, setHiddenColumns, uploadList } from "@/lib/exhibitors/service";
 import { makeBlueprintKey, removeBlueprintKey } from "@/lib/exhibitors/blueprint";
-import { deleteDeadline, saveDeadline, startReminders } from "@/lib/exhibitors/deadlines";
+import {
+  deleteDeadline,
+  saveDeadline,
+  saveReminderPlan,
+  startReminders,
+} from "@/lib/exhibitors/deadlines";
 import {
   discardReminders,
   retryFailedReminders,
@@ -113,6 +118,7 @@ const deadlineBody = z.object({
   column: z.string().max(300),
   doneValues: z.array(z.string().max(500)).max(100),
   remindDaysBefore: z.number().int(),
+  linkId: z.string().max(40).nullable().optional(),
 });
 
 export async function saveDeadlineAction(input: unknown) {
@@ -141,6 +147,30 @@ export async function deleteDeadlineAction(input: unknown) {
       revalidatePath("/bots/[id]", "page");
     },
     "Deadline deleted.",
+  );
+}
+
+/**
+ * How often a bot's reminders go (Exhibitors step). Repeats can be sent without
+ * a check, so it's for whoever may send reminders.
+ */
+export async function saveReminderPlanAction(input: unknown) {
+  return runAction(
+    "reminders.send",
+    z.object({
+      botId: z.uuid(),
+      repeatDays: z.union([z.literal(0), z.literal(3), z.literal(7)]),
+      autoSend: z.boolean(),
+      gapDays: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(7)]),
+      weekdaysOnly: z.boolean(),
+    }),
+    input,
+    async (actor, d) => {
+      await assertOnBot(actor, "reminders.send", d.botId);
+      await saveReminderPlan(actor, d.botId, d);
+      revalidatePath(`/bots/${d.botId}`);
+    },
+    "Saved.",
   );
 }
 
