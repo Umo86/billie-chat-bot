@@ -77,11 +77,43 @@
       transition: "transform .15s ease",
     });
     button.style.setProperty(side, "20px");
+    // Words beside the icon ("Ask Billie"), set on the bot's Look step. Text only, never HTML.
+    var label = typeof bot.launcherLabel === "string" ? bot.launcherLabel.trim().slice(0, 24) : "";
     var icon =
       '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
     var close =
       '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>';
-    button.innerHTML = icon;
+    function face() {
+      var pill = Boolean(label) && !open;
+      button.innerHTML = open ? close : icon;
+      if (pill) {
+        var words = document.createElement("span");
+        words.textContent = label;
+        css(words, {
+          "font-family": "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+          "font-size": "15px",
+          "font-weight": "700",
+          "line-height": "1",
+          "white-space": "nowrap",
+        });
+        button.appendChild(words);
+      }
+      css(button, {
+        width: pill ? "auto" : "60px",
+        height: pill ? "56px" : "60px",
+        padding: pill ? "0 20px 0 16px" : "0",
+        "border-radius": pill ? "28px" : "50%",
+        gap: "8px",
+        "grid-auto-flow": "column",
+        "align-items": "center",
+      });
+      if (pill) {
+        var svg = button.querySelector("svg");
+        svg.setAttribute("width", "24");
+        svg.setAttribute("height", "24");
+      }
+    }
+    face();
 
     var panel = document.createElement("div");
     panel.id = id;
@@ -143,7 +175,7 @@
       }
       panel.style.setProperty("display", open ? "block" : "none");
       button.setAttribute("aria-expanded", open ? "true" : "false");
-      button.innerHTML = open ? close : icon;
+      face();
       layout();
       if (open) frame.focus();
       else button.focus();

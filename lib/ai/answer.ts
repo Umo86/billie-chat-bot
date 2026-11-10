@@ -26,6 +26,9 @@ export type AnswerBot = {
   tone: "friendly" | "formal" | "brief";
   personality: string;
   emoji: boolean;
+  answerLength: "short" | "normal" | "detailed";
+  useName: boolean;
+  avoidWords: string;
   quality: "fast" | "thorough";
   rules: BotRules;
   knowledgeBaseIds: string[];
@@ -47,6 +50,9 @@ export type AnswerResult = {
   request: string | null;
   meta: AnswerMeta;
 };
+
+/** If Claude's reply came back empty: kind, and says what happens next. */
+export const NO_ANSWER = "Sorry, I don't have the answer to that one yet. The team can help.";
 
 /** Distinct sources in order, at most four, labelled for display. */
 export function citeSources(used: number[], passages: PromptPassage[]): MessageSource[] {
@@ -133,6 +139,9 @@ export async function answerQuestion(input: {
       tone: bot.tone,
       personality: bot.personality,
       emoji: bot.emoji,
+      answerLength: bot.answerLength,
+      useName: bot.useName,
+      avoidWords: bot.avoidWords,
       alwaysHuman: bot.rules.alwaysHuman,
       requests: bot.requestTypes.map((r) => ({ id: r.id, name: r.name, when: r.when })),
       personal: bot.personal,
@@ -196,7 +205,7 @@ export async function answerQuestion(input: {
   const { handover, used, answer, request } = reply;
 
   const out: AnswerResult = {
-    answer: answer || "I don't have that information yet.",
+    answer: answer || NO_ANSWER,
     sources: handover === "none" ? citeSources(used, passages) : [],
     handover,
     confident: reply.confident,

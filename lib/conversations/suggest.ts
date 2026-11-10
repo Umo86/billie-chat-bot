@@ -117,6 +117,7 @@ export async function writeSuggestion(
         showName: bot.showName,
         tone: bot.tone,
         personality: bot.personality,
+        avoidWords: bot.avoidWords,
         emoji: false,
         alwaysHuman: bot.rules.alwaysHuman,
       }),

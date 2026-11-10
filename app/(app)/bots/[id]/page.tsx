@@ -97,7 +97,10 @@ export default async function BotPage({
           audience: bot.audience,
           showName: bot.showName,
           color: bot.color,
+          accentColor: bot.accentColor,
           avatarUrl: bot.avatarUrl,
+          logoUrl: bot.logoUrl,
+          launcherLabel: bot.launcherLabel,
           welcome: bot.welcome,
           starters: bot.starters,
           pageStarters: bot.pageStarters,
@@ -118,6 +121,9 @@ export default async function BotPage({
           tone: bot.tone,
           personality: bot.personality,
           emoji: bot.emoji,
+          answerLength: bot.answerLength,
+          useName: bot.useName,
+          avoidWords: bot.avoidWords,
           emailSignOff: bot.emailSignOff,
         }}
         companySignOff={settings.emailSignature}

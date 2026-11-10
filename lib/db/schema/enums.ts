@@ -7,6 +7,8 @@ export const userStatus = pgEnum("user_status", ["active", "suspended"]);
 export const audience = pgEnum("audience", ["visitors", "exhibitors"]);
 export const botStatus = pgEnum("bot_status", ["draft", "live"]);
 export const tone = pgEnum("tone", ["friendly", "formal", "brief"]);
+/** How long chat answers run (lib/bots/style.ts). */
+export const answerLength = pgEnum("answer_length", ["short", "normal", "detailed"]);
 /** fast = Haiku, thorough = Sonnet (lib/ai/models.ts). */
 export const quality = pgEnum("quality", ["fast", "thorough"]);
 

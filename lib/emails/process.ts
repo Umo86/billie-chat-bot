@@ -116,6 +116,7 @@ export async function processEmail(emailId: string, opts: { redo?: boolean } = {
         show,
         tone: bot?.tone ?? "friendly",
         personality: bot?.personality ?? "",
+        avoidWords: bot?.avoidWords ?? "",
       }),
       knowledge: knowledgeBlock(passages),
       user: emailDraftUser(prompt),

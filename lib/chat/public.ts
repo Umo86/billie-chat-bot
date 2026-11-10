@@ -25,7 +25,12 @@ export type PublicBot = {
   showName: string;
   audience: "visitors" | "exhibitors";
   color: string;
+  /** Buttons, starters and the person's own messages. */
+  accent: string;
   avatarUrl: string | null;
+  logoUrl: string | null;
+  /** Words on the website's chat button; empty shows just the icon. */
+  launcherLabel: string;
   welcome: string;
   starters: string[];
   consent: string;
@@ -45,7 +50,10 @@ export async function publicBot(bot: BotRow, pageUrl: string | null = null): Pro
     showName: bot.showName,
     audience: bot.audience,
     color: bot.color,
+    accent: bot.accentColor ?? bot.color,
     avatarUrl: bot.avatarUrl,
+    logoUrl: bot.logoUrl,
+    launcherLabel: bot.launcherLabel,
     welcome: bot.welcome,
     starters: startersForPage(bot.pageStarters, bot.starters, pageUrl),
     consent: s.consentText,

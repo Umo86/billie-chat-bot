@@ -28,6 +28,12 @@ export type BotLook = {
   showName: string;
   color: string;
   avatarUrl: string | null;
+  /** Buttons and the person's messages; null uses the header colour. */
+  accentColor?: string | null;
+  /** The show's logo in the chat's header. */
+  logoUrl?: string | null;
+  /** Words on the website's chat button; empty shows just the icon. */
+  launcherLabel?: string;
   welcome: string;
   starters: string[];
   /** Different starters on some pages (lib/bots/page-starters.ts). */
@@ -47,6 +53,9 @@ export type BotPatch = Partial<
     tone: "friendly" | "formal" | "brief";
     personality: string;
     emoji: boolean;
+    answerLength: "short" | "normal" | "detailed";
+    useName: boolean;
+    avoidWords: string;
     emailSignOff: string;
     quality: "fast" | "thorough";
     rules: BotRules;

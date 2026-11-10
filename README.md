@@ -22,8 +22,13 @@ Chatbots, live handover and an email assistant for Media10 shows.
   prepared these replies, please review and send"), the weekly and
   show-day posts and requests go there too, and messages to one person are
   Slack direct messages. Once Slack is connected, Billie stops using Teams.
-- **Each bot has its own** look, personality (tone, a description in your
-  own words, emoji, email sign-off), knowledge and rules.
+- **Each bot has its own** look, personality, knowledge and rules. The
+  chat window is branded per show: header and button colours, the show's
+  logo, a picture, and words on the website's chat button. The personality
+  starts from a ready-made chat style (Friendly, Professional, Calm expert,
+  Short and sweet, Upbeat, Christmas as Santa) and can be changed: tone,
+  answer length, a description in your own words, emoji, using people's
+  names, words it never uses, and the email sign-off.
 - **Event mailboxes**: each bot can have its event's Microsoft 365 mailbox.
   New emails get a reply from that bot's knowledge, saved in the mailbox's
   Drafts in the same thread, and a post in the event's Teams channel that

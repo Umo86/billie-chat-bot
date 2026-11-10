@@ -14,6 +14,7 @@ import {
   updateBot,
 } from "@/lib/bots/service";
 import { CONTACT_FIELDS, PERSONALITY_MAX, SIGN_OFF_MAX } from "@/lib/bots/defaults";
+import { AVOID_MAX, LAUNCHER_LABEL_MAX } from "@/lib/bots/style";
 import { validTime } from "@/lib/conversations/hours";
 import { UserError } from "@/lib/errors";
 import { assertOnBot } from "@/lib/auth/bots";
@@ -44,6 +45,22 @@ const look = z.object({
     .max(200_000, "That picture is too large.")
     .regex(AVATAR, "Use a PNG, JPEG or WebP picture.")
     .nullable(),
+  accentColor: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, "Pick a colour.")
+    .nullable()
+    .optional(),
+  logoUrl: z
+    .string()
+    .max(200_000, "That logo is too large.")
+    .regex(AVATAR, "Use a PNG, JPEG or WebP logo.")
+    .nullable()
+    .optional(),
+  launcherLabel: z
+    .string()
+    .trim()
+    .max(LAUNCHER_LABEL_MAX, `Keep the button's words under ${LAUNCHER_LABEL_MAX} characters.`)
+    .optional(),
   welcome: z.string().trim().max(300),
   starters: z
     .array(z.string().trim().max(80))
@@ -95,6 +112,13 @@ const patch = z.object({
     .max(PERSONALITY_MAX, `Keep it under ${PERSONALITY_MAX} characters.`)
     .optional(),
   emoji: z.boolean().optional(),
+  answerLength: z.enum(["short", "normal", "detailed"]).optional(),
+  useName: z.boolean().optional(),
+  avoidWords: z
+    .string()
+    .trim()
+    .max(AVOID_MAX, `Keep the words to avoid under ${AVOID_MAX} characters.`)
+    .optional(),
   emailSignOff: z
     .string()
     .trim()
@@ -180,6 +204,9 @@ export async function updateBotAction(input: unknown) {
         ...(data.tone ? { tone: data.tone } : {}),
         ...(data.personality !== undefined ? { personality: data.personality } : {}),
         ...(data.emoji !== undefined ? { emoji: data.emoji } : {}),
+        ...(data.answerLength ? { answerLength: data.answerLength } : {}),
+        ...(data.useName !== undefined ? { useName: data.useName } : {}),
+        ...(data.avoidWords !== undefined ? { avoidWords: data.avoidWords } : {}),
         ...(data.emailSignOff !== undefined ? { emailSignOff: data.emailSignOff } : {}),
         ...(data.quality ? { quality: data.quality } : {}),
         ...(data.personalAnswers !== undefined ? { personalAnswers: data.personalAnswers } : {}),

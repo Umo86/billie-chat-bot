@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ImagePlus, Plus, Sparkles, Trash2 } from "lucide-react";
+import { ImagePlus, MessageSquare, Plus, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Note, Panel } from "@/components/ui/bits";
 import { Field, Input, Textarea } from "@/components/ui/form";
@@ -11,6 +11,7 @@ import { useRunner } from "@/components/ui/use-runner";
 import { BotAvatar } from "@/components/bots/bot-avatar";
 import { BOT_COLOURS, textOn } from "@/lib/bots/slug";
 import { STARTER_EXAMPLES, suggestedWelcome } from "@/lib/bots/defaults";
+import { LAUNCHER_LABEL_MAX } from "@/lib/bots/style";
 import { BotTypeChoice } from "@/components/bots/bot-type";
 import { MAX_PAGE_RULES, MAX_STARTERS } from "@/lib/bots/page-starters";
 import { createBotAction, updateBotAction } from "@/app/actions/bots";
@@ -21,7 +22,13 @@ export type Look = {
   audience: "visitors" | "exhibitors";
   showName: string;
   color: string;
+  /** Buttons, starters and the person's own messages; null uses the header colour. */
+  accentColor: string | null;
   avatarUrl: string | null;
+  /** The show's logo, at the right of the chat's header. */
+  logoUrl: string | null;
+  /** Words on the website's chat button; empty shows just the icon. */
+  launcherLabel: string;
   welcome: string;
   starters: string[];
   /** Different starters on some pages ("the page address contains …"). */
@@ -64,6 +71,70 @@ async function toAvatar(file: File): Promise<string> {
   }
 }
 
+/** Shrinks a logo to fit 400 × 120 (keeping its shape) as a WebP data URL, with a clear background kept. */
+async function toLogo(file: File): Promise<string> {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = () => reject(new Error("That file isn't a picture Billie can read."));
+      i.src = url;
+    });
+    const scale = Math.min(1, 400 / img.naturalWidth, 120 / img.naturalHeight);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("This browser can't resize pictures.");
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const webp = canvas.toDataURL("image/webp", 0.9);
+    return webp.startsWith("data:image/webp") ? webp : canvas.toDataURL("image/png");
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** A row of the brand colours plus "any colour". */
+function ColourPicker({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (c: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2" role="group" aria-label={label}>
+      {BOT_COLOURS.map((c) => (
+        <button
+          key={c}
+          type="button"
+          onClick={() => onChange(c)}
+          aria-label={`${label}: ${c}`}
+          aria-pressed={value === c}
+          className={cn(
+            "size-9 cursor-pointer rounded-full border-2 border-transparent",
+            value === c && "border-foreground",
+          )}
+          style={{ background: c }}
+        />
+      ))}
+      <label className="flex items-center gap-2 text-sm text-muted-foreground">
+        <input
+          type="color"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="size-9 cursor-pointer rounded-md border border-border bg-card"
+          aria-label={`${label}: any colour`}
+        />
+        Any colour
+      </label>
+    </div>
+  );
+}
+
 /** The form's own copy: a new bot has no kind until one is chosen. */
 type Draft = Omit<Look, "audience"> & { audience: Look["audience"] | null };
 
@@ -87,7 +158,10 @@ export function LookForm({
       audience: null,
       showName: "",
       color: BOT_COLOURS[0],
+      accentColor: null,
       avatarUrl: null,
+      logoUrl: null,
+      launcherLabel: "",
       welcome: "",
       starters: ["", "", ""],
       pageStarters: [],
@@ -97,6 +171,8 @@ export function LookForm({
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const file = useRef<HTMLInputElement>(null);
+  const logoFile = useRef<HTMLInputElement>(null);
+  const accent = look.accentColor ?? look.color;
   const { pending, run } = useRunner();
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setLook((l) => ({ ...l, [k]: v }));
   const starters = [...look.starters, "", "", ""].slice(0, 3);
@@ -218,36 +294,104 @@ export function LookForm({
               : "With the event's Teams channel set (Email step), Billie posts yesterday's chats and what's still waiting there at 7:30am each show day. The end-of-show report covers these days."}
           </p>
         </fieldset>
-        <div className="flex flex-col gap-2">
-          <span className="text-[0.9rem] font-semibold">Colour</span>
-          <div className="flex flex-wrap items-center gap-2">
-            {BOT_COLOURS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => set("color", c)}
-                aria-label={`Colour ${c}`}
-                aria-pressed={look.color === c}
-                className={cn(
-                  "size-9 cursor-pointer rounded-full border-2 border-transparent",
-                  look.color === c && "border-foreground",
-                )}
-                style={{ background: c }}
-              />
-            ))}
-            <label className="flex items-center gap-2 text-sm text-muted-foreground">
-              <input
-                type="color"
-                value={look.color}
-                onChange={(e) => set("color", e.target.value)}
-                className="size-9 cursor-pointer rounded-md border border-border bg-card"
-                aria-label="Pick any colour"
-              />
-              Any colour
-            </label>
+        <fieldset className="flex flex-col gap-4 rounded-[12px] border border-border p-4">
+          <legend className="px-1 text-[1rem] font-semibold">Chat window</legend>
+          <p className="-mt-1 text-sm text-muted-foreground">
+            Brand it with the show&apos;s colours and logo. The preview shows how it looks.
+          </p>
+          <div className="flex flex-col gap-2">
+            <span className="text-[0.9rem] font-semibold">Header colour</span>
+            <ColourPicker
+              label="Header colour"
+              value={look.color}
+              onChange={(c) => set("color", c)}
+            />
+            <p className="text-sm text-muted-foreground">
+              The top of the chat and the chat button on the website. Use the show&apos;s brand
+              colour.
+            </p>
           </div>
-          <p className="text-sm text-muted-foreground">Use the show&apos;s brand colour.</p>
-        </div>
+          <div className="flex flex-col gap-2">
+            <span className="text-[0.9rem] font-semibold">Button colour</span>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={look.accentColor === null}
+                onChange={(e) => set("accentColor", e.target.checked ? null : look.color)}
+                className="size-4 accent-[var(--primary)]"
+              />
+              Same as the header
+            </label>
+            {look.accentColor !== null ? (
+              <ColourPicker
+                label="Button colour"
+                value={look.accentColor}
+                onChange={(c) => set("accentColor", c)}
+              />
+            ) : null}
+            <p className="text-sm text-muted-foreground">
+              Buttons, starter questions and the person&apos;s own messages.
+            </p>
+            {err("accentColor") ? <Note tone="bad">{err("accentColor")}</Note> : null}
+          </div>
+          <div className="flex flex-col gap-2">
+            <span className="text-[0.9rem] font-semibold">Logo (optional)</span>
+            <div className="flex flex-wrap items-center gap-3">
+              {look.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={look.logoUrl}
+                  alt="The logo"
+                  className="h-12 max-w-[160px] rounded-md border border-border bg-white object-contain p-1"
+                />
+              ) : null}
+              <Button onClick={() => logoFile.current?.click()}>
+                <ImagePlus /> {look.logoUrl ? "Change logo" : "Upload a logo"}
+              </Button>
+              {look.logoUrl ? (
+                <Button variant="ghost" onClick={() => set("logoUrl", null)}>
+                  <Trash2 /> Remove logo
+                </Button>
+              ) : null}
+              <input
+                ref={logoFile}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="sr-only"
+                aria-label="Logo file"
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (!f) return;
+                  try {
+                    set("logoUrl", await toLogo(f));
+                  } catch (err) {
+                    toast.error(err instanceof Error ? err.message : "That logo didn't work.");
+                  }
+                }}
+              />
+            </div>
+            <p className="text-sm text-muted-foreground">
+              The show&apos;s logo, on a white tab at the right of the header. A wide PNG with a
+              clear background works best.
+            </p>
+            {err("logoUrl") ? <Note tone="bad">{err("logoUrl")}</Note> : null}
+          </div>
+          <Field
+            id="bot-launcher"
+            label="Words on the chat button (optional)"
+            hint="Shown beside the chat icon on the website, e.g. “Ask us” or “Need help?”. Leave it empty for just the icon."
+            error={err("launcherLabel")}
+          >
+            <Input
+              id="bot-launcher"
+              value={look.launcherLabel}
+              maxLength={LAUNCHER_LABEL_MAX}
+              placeholder="Need help?"
+              onChange={(e) => set("launcherLabel", e.target.value)}
+            />
+          </Field>
+        </fieldset>
         <div className="flex flex-col gap-2">
           <span className="text-[0.9rem] font-semibold">Picture (optional)</span>
           <div className="flex flex-wrap items-center gap-3">
@@ -416,10 +560,18 @@ export function LookForm({
             style={{ background: look.color, color: textOn(look.color) }}
           >
             <BotAvatar name={look.name} color={look.color} avatarUrl={look.avatarUrl} size={36} />
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="truncate font-bold">{look.name || "Your bot"}</p>
               <p className="truncate text-xs opacity-85">{look.showName || "Media10"}</p>
             </div>
+            {look.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={look.logoUrl}
+                alt=""
+                className="h-8 max-w-[96px] shrink-0 rounded-md bg-white object-contain px-1.5 py-1"
+              />
+            ) : null}
           </div>
           <div className="flex flex-col gap-2 p-4">
             <p className="max-w-[85%] rounded-[14px] rounded-tl-sm bg-muted px-3 py-2 text-sm">
@@ -432,13 +584,34 @@ export function LookForm({
                   <span
                     key={s}
                     className="rounded-full border px-2.5 py-1 text-xs font-semibold"
-                    style={{ borderColor: look.color, color: look.color }}
+                    style={{ borderColor: accent }}
                   >
                     {s}
                   </span>
                 ))}
             </div>
+            <p
+              className="ml-auto max-w-[85%] rounded-[14px] rounded-tr-sm px-3 py-2 text-sm"
+              style={{ background: accent, color: textOn(accent) }}
+            >
+              What time does build-up start?
+            </p>
           </div>
+        </div>
+        <p className="label-caps mt-4 mb-2">Chat button on the website</p>
+        <div className="flex justify-end rounded-[16px] border border-dashed border-border p-4">
+          <span
+            className={cn(
+              "inline-flex items-center gap-2 font-bold shadow-panel",
+              look.launcherLabel.trim()
+                ? "h-12 rounded-full pr-5 pl-4"
+                : "size-14 justify-center rounded-full",
+            )}
+            style={{ background: look.color, color: textOn(look.color) }}
+          >
+            <MessageSquare className="size-6" aria-hidden />
+            {look.launcherLabel.trim() || <span className="sr-only">Chat</span>}
+          </span>
         </div>
       </div>
     </form>

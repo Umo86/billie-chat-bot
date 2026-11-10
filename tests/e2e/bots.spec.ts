@@ -30,6 +30,17 @@ test("build a bot with its own knowledge, test it and put it live", async ({ pag
   await page.getByLabel("Page 1, starter question 1").fill("Where do we unload?");
   await page.getByRole("button", { name: "Suggest a welcome message" }).click();
   await expect(page.getByLabel("Welcome message")).toHaveValue(/Exhibitor Help/);
+  // The chat window's branding: the show's logo, and words on the website's chat button.
+  await page.getByLabel("Logo file").setInputFiles({
+    name: "ukcw.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAgAAAACCAYAAABllJ3tAAAAEklEQVR42mNk+M9Qz0AEYBxVSF8AAH8QAgFlTwXQAAAAAElFTkSuQmCC",
+      "base64",
+    ),
+  });
+  await expect(page.getByRole("img", { name: "The logo" })).toBeVisible();
+  await page.getByLabel("Words on the chat button (optional)").fill("Ask us");
   // The kind of chatbot comes first, and has to be chosen: for exhibitors, in BluePrint.
   await page.getByRole("button", { name: "Create bot and continue" }).click();
   await expect(
@@ -45,10 +56,25 @@ test("build a bot with its own knowledge, test it and put it live", async ({ pag
   // Step 2: personality.
   await expect(page.getByText("Bot created.")).toBeVisible();
   await expect(page.getByText("Exhibitor chatbot", { exact: true })).toBeVisible();
-  await page.getByRole("tab", { name: "Formal" }).click();
-  await page.getByRole("button", { name: "Use the example" }).click();
-  await expect(page.getByLabel("Personality, in your own words")).toHaveValue(/ops manager/);
-  await page.getByRole("switch", { name: "Emoji in chats" }).click();
+  // A ready-made style fills in the settings: Christmas writes like Santa, with its own colours.
+  await expect(page.getByRole("radio", { name: /^Friendly/ })).toHaveAttribute(
+    "aria-checked",
+    "false",
+  );
+  await page.getByRole("radio", { name: /^Christmas \(Santa\)/ }).click();
+  await expect(page.getByRole("radio", { name: /^Christmas \(Santa\)/ })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  await expect(page.getByLabel("Personality, in your own words")).toHaveValue(/Santa/);
+  await expect(page.getByRole("switch", { name: "Emoji in chats" })).toBeChecked();
+  await page.getByRole("button", { name: "Use these colours" }).click();
+  await expect(page.getByText("Christmas (Santa) colours will be used")).toBeVisible();
+  // Changing a setting makes it the team's own style.
+  await page.getByRole("tab", { name: "Short" }).click();
+  await expect(page.getByText("Your own style")).toBeVisible();
+  await page.getByRole("tab", { name: "Normal" }).click();
+  await page.getByLabel("Words it never uses (optional)").fill("Unfortunately, Kindly");
   await page.getByLabel("Email sign-off").fill("Best wishes,\nThe UKCW team");
   await shot(page, "bot-personality");
   await page.getByRole("button", { name: "Save and continue" }).click();
@@ -507,6 +533,9 @@ test("the website widget shows only on the bot's own websites", async ({ browser
   await page.goto("https://www.ukconstructionweek.com/exhibit");
   const button = page.getByRole("button", { name: "Chat with Exhibitor Help" });
   await expect(button).toBeVisible({ timeout: 15_000 });
+  // The words set on the Look step, in the Christmas colour chosen with its style.
+  await expect(button).toHaveText("Ask us");
+  await expect(button).toHaveCSS("background-color", "rgb(179, 18, 27)");
   await button.click();
   const chat = page.frameLocator('iframe[title="Chat with Exhibitor Help"]');
   await expect(chat.getByRole("heading", { name: "Exhibitor Help" })).toBeVisible({

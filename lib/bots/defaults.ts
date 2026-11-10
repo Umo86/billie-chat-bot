@@ -47,9 +47,7 @@ export function suggestedWelcome(b: {
   return `Hi, I'm ${b.name || "your assistant"}. Ask me anything about ${verb} ${b.showName || "the show"}.`;
 }
 
-/** Longest "in your own words" personality, and email sign-off, a bot can have. */
-export const PERSONALITY_MAX = 600;
-export const SIGN_OFF_MAX = 300;
+export { PERSONALITY_MAX, SIGN_OFF_MAX } from "./style";
 
 /** Ideas for the personality box (the placeholder and the "Use an example" button). */
 export const PERSONALITY_EXAMPLES = {

@@ -92,7 +92,12 @@ export async function writeReminders(
     const result = await structured({
       purpose: "deadline_reminder",
       ...(await modelsFor("thorough")),
-      system: reminderSystem({ show: bot.showName, tone: bot.tone, personality: bot.personality }),
+      system: reminderSystem({
+        show: bot.showName,
+        tone: bot.tone,
+        personality: bot.personality,
+        avoidWords: bot.avoidWords,
+      }),
       knowledge: knowledgeBlock(passages),
       user: reminderUser({ deadline: d.name, due, column: d.column }),
       schema: reminderJsonSchema,

@@ -21,6 +21,9 @@ import { searchTerms } from "@/lib/knowledge/rank";
 const PERSON =
   /\b(human|person|someone real|real person|agent|speak to|talk to|call me|the team)\b/i;
 const OFF_TOPIC = /\b(football|weather|joke|poem|bitcoin|recipe|homework)\b/i;
+/** Only a hello, thanks or goodbye: no question in it. */
+const SMALL_TALK =
+  /^\W*(hi|hello|hey|hiya|good (morning|afternoon|evening)|morning|thanks|thank you( (so|very) much)?|cheers|thx|bye|goodbye|see you|ok(ay)?|great|perfect|lovely)( there| billie| all)?[\s!.,]*(thanks|thank you|cheers)?[\s!.,]*$/i;
 
 const TOPIC_WORDS: Record<string, RegExp> = {
   "Payments and refunds": /\b(refund|payment|pay|invoice|money back|charge)/i,
@@ -85,6 +88,22 @@ function fakeAnswer(
   alwaysHuman: string[],
   requests: { id: string; name: string }[] = [],
 ): AnswerJson {
+  if (SMALL_TALK.test(question)) {
+    const thanks = /thank|cheers|thx/i.test(question);
+    const bye = /bye|see you/i.test(question);
+    return {
+      answer: thanks
+        ? "You're welcome! Just ask if anything else comes up."
+        : bye
+          ? "Bye for now, and enjoy the show!"
+          : "Hello! What can I help you with today?",
+      used: [],
+      confident: true,
+      handover: "none",
+      topic: "Small talk",
+      request: "",
+    };
+  }
   if (PERSON.test(question)) {
     return {
       answer: "Of course. I'll get someone from the team.",
@@ -130,7 +149,7 @@ function fakeAnswer(
   const hit = bestPassage(question, passages);
   if (!hit) {
     return {
-      answer: "I don't have that information yet.",
+      answer: "Sorry, I don't have the answer to that one yet. The team can help.",
       used: [],
       confident: false,
       handover: "unknown",

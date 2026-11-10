@@ -16,7 +16,16 @@ import {
   boolean,
 } from "drizzle-orm/pg-core";
 import type { BotRules, CheckIssue, RequestType, TestQuestion, TestRun } from "@/lib/types";
-import { audience, botStatus, checkStatus, quality, sourceKind, sourceStatus, tone } from "./enums";
+import {
+  answerLength,
+  audience,
+  botStatus,
+  checkStatus,
+  quality,
+  sourceKind,
+  sourceStatus,
+  tone,
+} from "./enums";
 import { users } from "./users";
 import type { PageStarters } from "@/lib/bots/page-starters";
 import type { HandoverRoute } from "@/lib/conversations/routes";
@@ -53,6 +62,12 @@ export const bots = pgTable(
     showEndsOn: date("show_ends_on", { mode: "string" }),
     color: text("color").notNull().default("#0d6a5b"),
     avatarUrl: text("avatar_url"),
+    /** Buttons, starters and the person's own messages; null uses the header colour. */
+    accentColor: text("accent_color"),
+    /** The show's logo, at the right of the chat's header (a small WebP or PNG data URL). */
+    logoUrl: text("logo_url"),
+    /** Words on the website's chat button, e.g. "Ask Billie"; empty shows just the icon. */
+    launcherLabel: text("launcher_label").notNull().default(""),
     welcome: text("welcome").notNull().default(""),
     starters: jsonb("starters").$type<string[]>().notNull().default([]),
     /** Who handles what: chats and emails about a topic go to that person first. */
@@ -64,6 +79,12 @@ export const bots = pgTable(
     personality: text("personality").notNull().default(""),
     /** The odd emoji in chats (never in emails). */
     emoji: boolean("emoji").notNull().default(false),
+    /** Short, normal or detailed chat answers. */
+    answerLength: answerLength("answer_length").notNull().default("normal"),
+    /** Uses the person's first name now and then, once they've given it. */
+    useName: boolean("use_name").notNull().default(true),
+    /** Words and phrases it never uses, in the team's words (one per line or comma). */
+    avoidWords: text("avoid_words").notNull().default(""),
     /** Ends this bot's email drafts; empty uses the company signature in Settings. */
     emailSignOff: text("email_sign_off").notNull().default(""),
     /**

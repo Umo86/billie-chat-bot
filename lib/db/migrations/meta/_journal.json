@@ -232,6 +232,13 @@
       "when": 1793795358862,
       "tag": "0032_request_tasks",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1794303857153,
+      "tag": "0033_chat_style",
+      "breakpoints": true
     }
   ]
 }

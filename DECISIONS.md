@@ -248,9 +248,22 @@ them. The change is in the audit log.
 
 ## Personality is style only
 
-Each bot's tone, personality (in the team's own words), emoji choice and
-email sign-off go into its prompts as style. The prompt says the rules win,
-answers still come only from the knowledge, and emails never get emoji.
+Each bot's tone, answer length, personality (in the team's own words),
+emoji choice, use of names, words to avoid and email sign-off go into its
+prompts as style. The prompt says the rules win, answers still come only
+from the knowledge, and emails never get emoji.
+
+Chats sounded robotic, so every prompt now says how to sound like a person
+on the show's team: answer first without stock filler, acknowledge a
+problem before the answer, say kindly what happens next when it can't
+help, and reply naturally to a hello or thanks (with no handover) instead
+of treating it as off-topic or unanswerable. Ready-made styles
+(`lib/bots/style.ts`) fill in the settings and are recognised again while
+they still match; a seasonal one (Christmas) offers its own colours but
+never changes them unasked, and still gives dates, prices and rules plainly.
+A style change changes the bot's `updated_at`, so answers given again are
+written afresh. The chat window's logo and second colour are small data
+URLs like the picture; the chat button's words are set as text, never HTML.
 
 ## Cheapest first: the Fast model, then the Thorough one; answers given again
 

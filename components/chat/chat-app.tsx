@@ -173,6 +173,9 @@ export function ChatApp({
   const manualToken = useRef<string | null>(null);
   const lastAt = useRef<string | null>(null);
   const on = textOn(bot.color);
+  // Older saved settings may lack the second colour: the header colour stands in.
+  const accent = bot.accent || bot.color;
+  const onAccent = textOn(accent);
 
   const api = useCallback(
     async (path: string, init: RequestInit = {}) => {
@@ -513,6 +516,14 @@ export function ChatApp({
                 : bot.showName || "Media10"}
           </p>
         </div>
+        {bot.logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={bot.logoUrl}
+            alt={`${bot.showName || bot.name} logo`}
+            className="h-9 max-w-[110px] shrink-0 rounded-md bg-white object-contain px-1.5 py-1"
+          />
+        ) : null}
         {channel === "try" ? (
           <span className="rounded-md bg-black/20 px-2 py-0.5 text-[0.72rem] font-bold">TEST</span>
         ) : null}
@@ -585,7 +596,7 @@ export function ChatApp({
                   type="submit"
                   disabled={busy}
                   className="cursor-pointer rounded-[10px] px-3.5 py-2 font-bold"
-                  style={{ background: bot.color, color: on }}
+                  style={{ background: accent, color: onAccent }}
                 >
                   Sign in
                 </button>
@@ -622,7 +633,7 @@ export function ChatApp({
                   type="submit"
                   disabled={busy}
                   className="cursor-pointer rounded-[10px] px-3.5 py-2 font-bold"
-                  style={{ background: bot.color, color: on }}
+                  style={{ background: accent, color: onAccent }}
                 >
                   Send me a code
                 </button>
@@ -659,7 +670,7 @@ export function ChatApp({
                 type="button"
                 onClick={() => send(s)}
                 className="cursor-pointer rounded-full border px-3 py-1.5 text-[0.85rem] font-semibold hover:bg-muted"
-                style={{ borderColor: bot.color, color: "var(--foreground)" }}
+                style={{ borderColor: accent, color: "var(--foreground)" }}
               >
                 {s}
               </button>
@@ -671,7 +682,7 @@ export function ChatApp({
             <li
               key={m.id}
               className="max-w-[85%] self-end whitespace-pre-wrap rounded-[16px] rounded-tr-sm px-3.5 py-2.5 text-[0.94rem]"
-              style={{ background: bot.color, color: on }}
+              style={{ background: accent, color: onAccent }}
             >
               {m.text}
             </li>
@@ -756,7 +767,7 @@ export function ChatApp({
                   disabled={busy}
                   onClick={() => void startTask(t.typeId)}
                   className="cursor-pointer rounded-full border px-3.5 py-1.5 text-left text-[0.88rem] font-semibold disabled:opacity-60"
-                  style={{ borderColor: bot.color }}
+                  style={{ borderColor: accent }}
                 >
                   {t.name}
                   {t.due ? (
@@ -780,7 +791,7 @@ export function ChatApp({
                 type="button"
                 onClick={askForPerson}
                 className="cursor-pointer rounded-full px-3.5 py-1.5 text-[0.88rem] font-bold"
-                style={{ background: bot.color, color: on }}
+                style={{ background: accent, color: onAccent }}
               >
                 Yes, pass it on
               </button>
@@ -924,7 +935,7 @@ export function ChatApp({
                   type="submit"
                   disabled={busy}
                   className="cursor-pointer rounded-full px-3.5 py-1.5 text-[0.88rem] font-bold disabled:opacity-60"
-                  style={{ background: bot.color, color: on }}
+                  style={{ background: accent, color: onAccent }}
                 >
                   Send the request
                 </button>
@@ -985,7 +996,7 @@ export function ChatApp({
                   type="submit"
                   disabled={busy}
                   className="cursor-pointer rounded-full px-3.5 py-1.5 text-[0.88rem] font-bold disabled:opacity-60"
-                  style={{ background: bot.color, color: on }}
+                  style={{ background: accent, color: onAccent }}
                 >
                   Send my details
                 </button>
@@ -1049,7 +1060,7 @@ export function ChatApp({
             disabled={busy || !text.trim()}
             aria-label="Send"
             className="grid size-[42px] shrink-0 cursor-pointer place-items-center rounded-full disabled:opacity-50"
-            style={{ background: bot.color, color: on }}
+            style={{ background: accent, color: onAccent }}
           >
             <Send className="size-[18px]" />
           </button>
