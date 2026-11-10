@@ -53,6 +53,7 @@ export function ExhibitorsStep({
   botName,
   list,
   personalAnswers,
+  exhibitorsOnly = false,
   emailReady,
   manual,
   canEdit,
@@ -64,6 +65,8 @@ export function ExhibitorsStep({
   botName: string;
   list: ExhibitorList | null;
   personalAnswers: boolean;
+  /** Only exhibitors who are signed in can chat. */
+  exhibitorsOnly?: boolean;
   emailReady: boolean;
   /** BluePrint is connected: exhibitors signed in to the manual are signed in to the chat. */
   manual: boolean;
@@ -77,9 +80,11 @@ export function ExhibitorsStep({
   const [chosen, setChosen] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [on, setOn] = useState(personalAnswers);
+  const [only, setOnly] = useState(exhibitorsOnly);
   const upload = useRunner();
   const remove = useRunner();
   const toggle = useRunner();
+  const gate = useRunner();
 
   function send(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -310,6 +315,56 @@ export function ExhibitorsStep({
             </>
           )}
         </p>
+        {on ? (
+          <div
+            className="flex flex-col gap-2 border-t border-border pt-3"
+            data-testid="exhibitors-only"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="text-[0.98rem]">
+                  <label htmlFor="exhibitors-only">
+                    Only exhibitors who are signed in can chat
+                  </label>
+                </h3>
+                <p className="mt-1 max-w-[68ch] text-sm text-muted-foreground">
+                  For a bot that lives in the exhibitor manual. Its chat page link and WhatsApp
+                  number can reach anyone: with this on, anyone not signed in is shown how to sign
+                  in instead of the message box, and Billie isn&apos;t asked anything for them. You
+                  can still try the bot yourself.
+                </p>
+              </div>
+              <Switch
+                id="exhibitors-only"
+                checked={only}
+                disabled={!canEdit || gate.pending}
+                onCheckedChange={(v) =>
+                  gate.run(() => updateBotAction({ id: botId, exhibitorsOnly: v }), {
+                    done: () => {
+                      setOnly(v);
+                      router.refresh();
+                    },
+                  })
+                }
+              />
+            </div>
+            <p className="flex flex-wrap items-center gap-2 text-sm">
+              {only && waiting ? (
+                <>
+                  <Chip tone="warn">Closed to everyone</Chip> Nobody can sign in yet. {waiting}
+                </>
+              ) : only ? (
+                <>
+                  <Chip tone="good">On</Chip> Only signed-in exhibitors can ask questions.
+                </>
+              ) : (
+                <>
+                  <Chip>Off</Chip> Anyone who opens the chat can ask about the show.
+                </>
+              )}
+            </p>
+          </div>
+        ) : null}
         {!canEdit ? <Note>Only editors can change this.</Note> : null}
       </Panel>
 

@@ -281,6 +281,13 @@
       "when": 1794349234196,
       "tag": "0039_reminder_plans",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1794352089916,
+      "tag": "0040_exhibitors_only",
+      "breakpoints": true
     }
   ]
 }

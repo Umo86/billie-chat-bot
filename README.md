@@ -138,6 +138,11 @@ Chatbots, live handover and an email assistant for Media10 shows.
   orders, stand plan and build-up times, never columns the team unticks
   (notes, credit status). A sign-in lasts a show day. The Inbox shows who
   is signed in. Needs email sending (Resend), or BluePrint.
+- **Only signed-in exhibitors** (Exhibitors step, optional): an exhibitor
+  bot can be closed to anyone not signed in. They're shown how to sign in
+  (Your stand, or the exhibitor manual) instead of the message box,
+  WhatsApp gets the same, and Claude isn't asked. The team can still try
+  the bot.
 - **BluePrint, the exhibitor manual**: an admin connects it on an exhibitor
   bot's Exhibitors step (a key, shown once). Exhibitors signed in to the
   manual are signed in to the chat too, with no code, and BluePrint keeps

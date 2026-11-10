@@ -1,0 +1,1 @@
+ALTER TABLE "bots" ADD COLUMN "exhibitors_only" boolean DEFAULT false NOT NULL;

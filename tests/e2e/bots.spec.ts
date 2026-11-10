@@ -1,6 +1,7 @@
 import path from "node:path";
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { shot, signInAsAdmin } from "./helpers";
+import { withDb } from "./db";
 import { signToken } from "../../lib/exhibitors/blueprint-rules";
 
 /**
@@ -538,6 +539,33 @@ test("a visitor chats on the chat page: answer, rating, then the team", async ({
   // Space only: the nameboard isn't for Jo's stand, and the stand plan is approved: nothing to do.
   await expect(page.getByTestId("checklist")).toHaveCount(0);
   await expect(page.getByText(/Stand plan approved/)).toHaveCount(0);
+
+  // Only signed-in exhibitors can chat (the Exhibitors step's setting, set here directly):
+  // someone with just the chat page's link is shown how to sign in, with no message box.
+  const lock = (on: boolean) =>
+    withDb((c) =>
+      c.query("UPDATE bots SET exhibitors_only = $1 WHERE slug = 'exhibitor-help'", [on]),
+    );
+  await lock(true);
+  try {
+    const stranger = await browser.newContext();
+    const anon = await stranger.newPage();
+    await anon.goto("/c/exhibitor-help");
+    await expect(anon.getByTestId("chat-locked")).toContainText(
+      "This chat is for exhibitors. Sign in to the exhibitor manual, then open the chat from there.",
+    );
+    await expect(anon.getByLabel("Your message")).toHaveCount(0);
+    await shot(anon, "chat-exhibitors-only");
+    await stranger.close();
+    // Sam, from the manual, can ask as before.
+    await page.goto("about:blank");
+    await page.goto(signIn("sam@acme-displays.test"));
+    await expect(page.getByRole("button", { name: "Stand B12" })).toBeVisible();
+    await expect(page.getByLabel("Your message")).toBeVisible();
+    await expect(page.getByTestId("chat-locked")).toHaveCount(0);
+  } finally {
+    await lock(false);
+  }
   await visitor.close();
 });
 

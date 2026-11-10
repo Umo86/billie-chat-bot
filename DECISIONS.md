@@ -903,3 +903,16 @@ stand isn't theirs; one whose column has gone, or is kept from Billie,
 isn't shown. It shows when the chat opens while anything's still to do,
 and goes once all is done, so it reminds without nagging. Billie gets it
 with the exhibitor's record.
+
+## "Only signed-in exhibitors" is checked on the server, and fails closed
+
+An exhibitor bot lives in the exhibitor manual, but its chat page link and
+WhatsApp number reach anyone. With the setting on, the public chat API
+refuses every write but signing in (and out) from anyone not signed in,
+before a chat is kept or Claude is asked, and says how to sign in: Your
+stand, the manual, or (when neither is open) the event team's email. The
+chat service checks again, so WhatsApp (where nobody can sign in) and a
+sign-in that ran out get the same line. With nobody able to sign in, the
+chat stays closed to everyone rather than opening up, and the Exhibitors
+step says so. It needs "Answers about their own stand" on; staff trying
+the bot are let in, and a visitor bot never has it.

@@ -72,6 +72,7 @@ export async function copyBot(
         quality: from.quality,
         // The setting comes across; the exhibitor list doesn't (each show has its own).
         personalAnswers: from.personalAnswers,
+        exhibitorsOnly: from.exhibitorsOnly,
         status: "draft",
         rules: from.rules,
         tests: from.tests,

@@ -3,7 +3,8 @@ import { getActor } from "@/lib/auth/actor";
 import { can } from "@/lib/authz";
 import { botBySlug, type BotRow } from "@/lib/bots/load";
 import { getSettings } from "@/lib/settings";
-import { signInOpen } from "@/lib/exhibitors/sign-in";
+import { signInWays } from "@/lib/exhibitors/service";
+import { exhibitorsOnly } from "./exhibitors-only";
 import { bearer } from "./token";
 import { normaliseDomain } from "./domains";
 import { pageNudges, startersForPage } from "@/lib/bots/page-starters";
@@ -52,11 +53,17 @@ export type PublicBot = {
   live: boolean;
   /** Exhibitors can sign in for answers about their own stand. */
   signIn: boolean;
+  /** Exhibitors arrive signed in from BluePrint, the exhibitor manual. */
+  manualSignIn: boolean;
+  /** Only signed-in exhibitors can chat (lib/chat/exhibitors-only.ts). */
+  exhibitorsOnly: boolean;
+  /** The event team's email: for anyone the chat can't help. */
+  contactEmail: string;
 };
 
 /** The bot as the chat sees it; on a website page, with that page's starter questions. */
 export async function publicBot(bot: BotRow, pageUrl: string | null = null): Promise<PublicBot> {
-  const s = await getSettings();
+  const [s, ways] = await Promise.all([getSettings(), signInWays(bot)]);
   return {
     slug: bot.slug,
     name: bot.name,
@@ -87,7 +94,10 @@ export async function publicBot(bot: BotRow, pageUrl: string | null = null): Pro
     promise: bot.rules.promise,
     live: bot.status === "live",
     // The "Your stand" button: exhibitors sign in for answers from their own record.
-    signIn: await signInOpen(bot),
+    signIn: ways.code,
+    manualSignIn: ways.manual,
+    exhibitorsOnly: exhibitorsOnly(bot),
+    contactEmail: bot.contactEmail,
   };
 }
 

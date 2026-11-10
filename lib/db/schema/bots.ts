@@ -146,6 +146,12 @@ export const bots = pgTable(
      * answers from their own row of the exhibitor list (lib/exhibitors).
      */
     personalAnswers: boolean("personal_answers").notNull().default(false),
+    /**
+     * Only exhibitors who are signed in can chat (lib/chat/exhibitors-only.ts):
+     * anyone else is told how to sign in, and Billie isn't asked. Counts only
+     * with personalAnswers on, on an exhibitor bot.
+     */
+    exhibitorsOnly: boolean("exhibitors_only").notNull().default(false),
     /** Requests the bot takes through the chat, as forms (lib/requests/rules.ts). */
     requestTypes: jsonb("request_types").$type<RequestType[]>().notNull().default([]),
     lastTestRun: jsonb("last_test_run").$type<TestRun | null>(),

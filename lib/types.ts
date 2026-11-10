@@ -68,6 +68,8 @@ export type AnswerMeta = {
   flag?: "off_topic" | "suspicious";
   /** The team's links shown as buttons under this answer (lib/bots/links.ts). */
   links?: { label: string; url: string }[];
+  /** Told how to sign in: the bot is for signed-in exhibitors only (lib/chat/exhibitors-only.ts). */
+  locked?: boolean;
 };
 
 export type EmailTags = {

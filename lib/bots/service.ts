@@ -78,6 +78,7 @@ export type BotPatch = Partial<
     tests: TestQuestion[];
     requestTypes: RequestType[];
     personalAnswers: boolean;
+    exhibitorsOnly: boolean;
     links: BotLink[];
   }
 >;
@@ -146,7 +147,10 @@ export async function updateBot(actor: Actor, id: string, patch: BotPatch): Prom
       });
       values.rules = next.rules;
       values.quality = next.quality;
-      if (patch.audience === "visitors") values.personalAnswers = false;
+      if (patch.audience === "visitors") {
+        values.personalAnswers = false;
+        values.exhibitorsOnly = false;
+      }
     }
     const [bot] = await tx
       .update(bots)

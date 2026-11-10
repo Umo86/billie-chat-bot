@@ -209,6 +209,7 @@ export default async function BotPage({
           }
         }
         personalAnswers={bot.personalAnswers}
+        exhibitorsOnly={bot.exhibitorsOnly}
         emailReady={emailConfigured()}
         manual={Boolean(link)}
         canEdit={canEdit}

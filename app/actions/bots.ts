@@ -162,6 +162,7 @@ const patch = z.object({
     .optional(),
   quality: z.enum(["fast", "thorough"]).optional(),
   personalAnswers: z.boolean().optional(),
+  exhibitorsOnly: z.boolean().optional(),
   rules: rules.optional(),
   domains: z.array(z.string().max(253)).max(30).optional(),
   tests: z
@@ -280,6 +281,7 @@ export async function updateBotAction(input: unknown) {
         ...(data.emailSignOff !== undefined ? { emailSignOff: data.emailSignOff } : {}),
         ...(data.quality ? { quality: data.quality } : {}),
         ...(data.personalAnswers !== undefined ? { personalAnswers: data.personalAnswers } : {}),
+        ...(data.exhibitorsOnly !== undefined ? { exhibitorsOnly: data.exhibitorsOnly } : {}),
         ...(data.rules ? { rules: data.rules } : {}),
         ...(data.domains ? { domains: data.domains } : {}),
         ...(data.tests ? { tests: data.tests } : {}),

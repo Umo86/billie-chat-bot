@@ -325,6 +325,16 @@ export async function manualSignInOpen(bot: {
   return Boolean(link) && (await hasList(bot.id));
 }
 
+/** How someone can sign in to this bot's chat right now (lib/chat/exhibitors-only.ts). */
+export async function signInWays(bot: {
+  id: string;
+  audience: "visitors" | "exhibitors";
+  personalAnswers: boolean;
+}): Promise<{ code: boolean; manual: boolean }> {
+  const [code, manual] = await Promise.all([signInOpen(bot), manualSignInOpen(bot)]);
+  return { code, manual };
+}
+
 /** Has the bot a list to sign in against? */
 export async function hasList(botId: string): Promise<boolean> {
   const [row] = await db

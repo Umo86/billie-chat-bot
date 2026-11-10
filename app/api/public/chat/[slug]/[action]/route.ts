@@ -47,6 +47,9 @@ import {
   readManualSignIn,
   signInFromManual,
 } from "@/lib/exhibitors/blueprint";
+import { signedInExhibitor, signInWays } from "@/lib/exhibitors/service";
+import { exhibitorsOnly, lockedLine } from "@/lib/chat/exhibitors-only";
+import type { BotRow } from "@/lib/bots/load";
 
 /**
  * The public chat API, used by the chat frame (/embed/…) and the chat page
@@ -83,6 +86,18 @@ function failure(err: unknown): Response {
   console.error("public chat failed", err);
   return problem(500, "Something went wrong. Try again in a moment.");
 }
+
+/**
+ * An exhibitor bot only signed-in exhibitors can use (Exhibitors step): the
+ * refusal for anyone else, with how to sign in. Staff trying it are let in.
+ */
+async function lockedOut(bot: BotRow, note?: string): Promise<Response> {
+  return problem(403, note ?? lockedLine(await signInWays(bot), bot.contactEmail), {
+    reason: "exhibitors_only",
+  });
+}
+
+const gated = (bot: BotRow, channel: string) => channel !== "try" && exhibitorsOnly(bot);
 
 export async function OPTIONS(request: Request, ctx: Ctx): Promise<Response> {
   const { slug, action } = await ctx.params;
@@ -284,6 +299,13 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
           manual = { token: started.token ?? undefined, signedIn: done.signedIn };
         } else manual = { signedIn: null, signInNote: manualSignInLine(who.reason) };
       }
+      // Exhibitors only: nothing is kept or asked for anyone not signed in.
+      if (
+        gated(bot, channel) &&
+        !manual?.signedIn &&
+        !(conversation && (await signedInExhibitor(conversation)))
+      )
+        return lockedOut(bot, manual?.signInNote);
       const turn = await visitorMessage({
         bot,
         conversation,
@@ -306,6 +328,13 @@ export async function POST(request: Request, ctx: Ctx): Promise<Response> {
     if (!conversation) return problem(404, "This chat has ended. Start a new one.");
     if (!(await allow(`chat:conv:${conversation.id}`, LIMITS.chatPerConversation)))
       return problem(429, "Too many requests. Wait a few minutes, then try again.");
+    // Exhibitors only: signing in (and out, or closing a form) is all anyone else can do.
+    if (
+      gated(bot, channel) &&
+      !["sign-in", "verify", "sign-out", "cancel"].includes(action) &&
+      !(await signedInExhibitor(conversation))
+    )
+      return lockedOut(bot);
 
     if (action === "handover") {
       const reason: HandoverReason = "asked_for_person";

@@ -15,6 +15,7 @@ import { BotAvatar } from "@/components/bots/bot-avatar";
 import { textOn } from "@/lib/bots/slug";
 import { FIELD_LABEL } from "@/lib/bots/defaults";
 import { MAX_QUANTITY, money } from "@/lib/requests/rules";
+import { lockedLine } from "@/lib/chat/exhibitors-only";
 import type { PublicBot } from "@/lib/chat/public";
 import type { ChecklistItem, ContactField } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -67,6 +68,8 @@ type Turn = {
   checklist?: ChecklistItem[];
   /** Billie has stopped answering this chat: what to show instead of the message box. */
   stopped?: string;
+  /** For signed-in exhibitors only, and the sign-in has run out: how to sign in again. */
+  locked?: string;
 };
 
 /** "2027-02-14" as "Sun 14 Feb". */
@@ -189,6 +192,8 @@ export function ChatApp({
   const manualToken = useRef<string | null>(null);
   const lastAt = useRef<string | null>(null);
   const on = textOn(bot.color);
+  // For signed-in exhibitors only (Exhibitors step): anyone else is shown how to sign in.
+  const locked = bot.exhibitorsOnly && channel !== "try" && !signedIn && !stopped;
   // Older saved settings may lack the second colour: the header colour stands in.
   const accent = bot.accent || bot.color;
   const onAccent = textOn(accent);
@@ -229,6 +234,7 @@ export function ChatApp({
       setForm(turn.form);
       if (turn.stopped) setStopped(turn.stopped);
       if (turn.signedIn !== undefined) setSignedIn(turn.signedIn);
+      if (turn.locked) setSignedIn(null);
       if (replaceOffer) {
         setOffer(turn.offer);
         setRequest(turn.request ?? null);
@@ -386,6 +392,8 @@ export function ChatApp({
         setText(q);
         setError(body.error ?? "That didn't send. Try again.");
         if (res.status === 404 && tokenRef.current) forget();
+        // For signed-in exhibitors only, and theirs has run out: back to signing in.
+        if (res.status === 403 && body.reason === "exhibitors_only") setSignedIn(null);
         return;
       }
       if (signInToken) manualToken.current = null;
@@ -680,7 +688,7 @@ export function ChatApp({
             {bot.welcome || `Hi, I'm ${bot.name}. How can I help?`}
           </p>
         </li>
-        {empty && bot.starters.length ? (
+        {empty && bot.starters.length && !locked ? (
           <li className="flex flex-wrap gap-1.5" aria-label="Suggested questions">
             {bot.starters.map((s) => (
               <button
@@ -1120,6 +1128,24 @@ export function ChatApp({
           >
             {stopped}
           </p>
+        ) : locked ? (
+          <div
+            role="status"
+            className="flex flex-col items-start gap-2 rounded-[12px] border border-border bg-muted px-3 py-2.5 text-[0.9rem]"
+            data-testid="chat-locked"
+          >
+            <p>{lockedLine({ code: bot.signIn, manual: bot.manualSignIn }, bot.contactEmail)}</p>
+            {bot.signIn && !standOpen ? (
+              <button
+                type="button"
+                onClick={() => setStandOpen(true)}
+                className="cursor-pointer rounded-[10px] px-3.5 py-1.5 font-bold"
+                style={{ background: accent, color: onAccent }}
+              >
+                Sign in
+              </button>
+            ) : null}
+          </div>
         ) : (
           <form
             className="flex items-end gap-2"
@@ -1158,7 +1184,7 @@ export function ChatApp({
           </form>
         )}
         <div className="mt-1.5 flex items-center justify-between gap-2 text-[0.74rem] text-muted-foreground">
-          {status === "bot" && !stopped ? (
+          {status === "bot" && !stopped && !locked ? (
             <button
               type="button"
               onClick={askForPerson}

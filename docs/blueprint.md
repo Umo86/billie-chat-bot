@@ -35,6 +35,10 @@ The examples use Billie's live address, `https://billie-teal.vercel.app`.
 4. On the **Go live** step, add BluePrint's web address to the bot's
    websites (for example `manual.ukconstructionweek.com`). The chat only
    opens on the bot's own websites.
+5. Optional: turn on **Only exhibitors who are signed in can chat** (under
+   Answers about their own stand). Anyone who reaches the chat without
+   signing in (its chat page link, or WhatsApp) is shown how to sign in
+   instead of the message box, and Billie isn't asked anything for them.
 
 The key looks like `bp_k3x9w2m4q8za_` followed by 43 more characters. The
 12 characters after `bp_` are the key's id.

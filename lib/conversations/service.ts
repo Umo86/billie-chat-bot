@@ -46,7 +46,8 @@ import { queueSuggestion } from "./suggest";
 import { exhibitorChecklist, knownFor, taskExhibitor, typesFor } from "@/lib/requests/tasks";
 import { checklistText, hasToDo } from "@/lib/exhibitors/checklist";
 import { londonDate } from "@/lib/time";
-import { recordFor, signedInAs } from "@/lib/exhibitors/service";
+import { recordFor, signedInAs, signInWays } from "@/lib/exhibitors/service";
+import { exhibitorsOnly, lockedLine } from "@/lib/chat/exhibitors-only";
 
 /**
  * One conversation engine for every channel. Visitors' turns come from the
@@ -92,6 +93,8 @@ export type Turn = {
   checklist?: ChecklistItem[];
   /** Billie has stopped answering this chat (lib/chat/safety.ts): what to show instead. */
   stopped?: string;
+  /** For signed-in exhibitors only, and they aren't (lib/chat/exhibitors-only.ts): how to sign in. */
+  locked?: string;
 };
 
 export class ChatError extends Error {
@@ -326,6 +329,21 @@ export async function visitorMessage(input: {
     columns: { exhibitorId: true, signedInAt: true, signedInEmail: true },
   });
   const exhibitor = chatRow && input.channel !== "whatsapp" ? await taskExhibitor(chatRow) : null;
+  // For signed-in exhibitors only (Exhibitors step): anyone else is told how to sign in, and
+  // Claude isn't asked. On WhatsApp nobody can sign in, so it's the manual or the team's email.
+  if (input.channel !== "try" && exhibitorsOnly(input.bot) && !exhibitor) {
+    const line = lockedLine(
+      await signInWays(input.bot),
+      input.bot.contactEmail,
+      input.channel === "whatsapp",
+    );
+    const row = await db.transaction((tx) =>
+      insertMessage(tx, convId, { role: "bot", text: line, meta: { locked: true } }),
+    );
+    out.messages.push(...(await view([row])));
+    out.locked = line;
+    return out;
+  }
   try {
     const answerBot = await answerBotFor(input.bot);
     const person =
