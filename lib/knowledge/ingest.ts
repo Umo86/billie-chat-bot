@@ -140,6 +140,10 @@ export async function ingestSource(sourceId: string): Promise<void> {
         passageCount: chunks.length,
         contentHash,
         lastReadAt: new Date(),
+        // A page read before whose words are different now: the team sees what changed.
+        ...(src.contentHash && src.contentHash !== contentHash
+          ? { contentChangedAt: new Date() }
+          : {}),
       })
       .where(eq(sources.id, sourceId));
   });

@@ -77,6 +77,8 @@ export type SourceRow = {
   addedBy: string | null;
   createdAt: string;
   lastReadAt: string | null;
+  /** When a read last found different words. */
+  changedAt: string | null;
   /** Waiting or reading for over five minutes: offer "Read again". */
   stuck: boolean;
 };
@@ -95,11 +97,12 @@ export async function sourcesFor(kbId: string): Promise<SourceRow[]> {
     added_by: string | null;
     created_at: Date;
     last_read_at: Date | null;
+    content_changed_at: Date | null;
     stuck: boolean;
   }>(
     db,
     sql`SELECT s.id, s.title, s.kind, s.status, s.error, s.file_name, s.url, s.refresh_weekly, s.passage_count,
-               u.full_name AS added_by, s.created_at, s.last_read_at,
+               u.full_name AS added_by, s.created_at, s.last_read_at, s.content_changed_at,
                (s.status IN ('queued', 'reading') AND s.updated_at < now() - interval '5 minutes') AS stuck
         FROM sources s LEFT JOIN users u ON u.id = s.added_by
         WHERE s.knowledge_base_id = ${kbId} AND s.deleted_at IS NULL
@@ -119,6 +122,7 @@ export async function sourcesFor(kbId: string): Promise<SourceRow[]> {
     addedBy: r.added_by,
     createdAt: new Date(r.created_at).toISOString(),
     lastReadAt: r.last_read_at ? new Date(r.last_read_at).toISOString() : null,
+    changedAt: r.content_changed_at ? new Date(r.content_changed_at).toISOString() : null,
     stuck: Boolean(r.stuck),
   }));
 }

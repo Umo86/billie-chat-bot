@@ -826,3 +826,13 @@ it off or the visitor's device asks for less motion. Like the rest of
 `public/widget.js`, it sets styles through the DOM and animates with the
 Web Animations API, so it works under a strict Content-Security-Policy, and
 every word is set as text. A screen reader hears the whole line at once.
+
+## "Read again now" reads every page
+
+A whole website reads itself again every week, and then only pages that
+are new, a week old, or newer by the sitemap's date. That saves fetches,
+but an agenda can change with no date to show it, so the manual button
+reads every page. It costs nothing extra in credits: a page whose words
+are the same is not embedded again. When a read finds different words the
+page's `content_changed_at` is set, so the team can see which pages
+changed in the last week, and that the change was picked up.

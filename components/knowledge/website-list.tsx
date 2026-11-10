@@ -17,6 +17,22 @@ import type { WebsiteRow } from "@/lib/knowledge/websites";
 const plural = (n: number, one: string, many: string) =>
   `${n.toLocaleString("en-GB")} ${n === 1 ? one : many}`;
 
+function day(iso: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "Europe/London",
+  }).format(new Date(iso));
+}
+
+const WEEK = 7 * 86_400_000;
+/** The weekly read comes with the daily tidy-up, a week after the last one. */
+const nextRead = (lastIso: string) => new Date(Date.parse(lastIso) + WEEK).toISOString();
+/** Changed in the last week: what the latest reads picked up. */
+const changedLately = (iso: string | null, now: number) =>
+  Boolean(iso) && now - Date.parse(iso!) < WEEK;
+
 function when(iso: string) {
   return new Intl.DateTimeFormat("en-GB", {
     day: "numeric",
@@ -52,6 +68,8 @@ function Website({ site, canEdit }: { site: WebsiteRow; canEdit: boolean }) {
   const ready = site.pages.filter((p) => p.status === "ready").length;
   const failed = site.pages.filter((p) => p.status === "failed").length;
   const reading = site.pages.length - ready - failed;
+  const [now] = useState(() => Date.now());
+  const changed = site.pages.filter((p) => changedLately(p.changedAt, now)).length;
 
   return (
     <Panel className="flex flex-col gap-3" data-testid="website">
@@ -67,7 +85,7 @@ function Website({ site, canEdit }: { site: WebsiteRow; canEdit: boolean }) {
                 : site.status === "failed" && site.lastCrawledAt
                   ? `last tried ${when(site.lastCrawledAt)}`
                   : site.lastCrawledAt
-                    ? `looked at ${when(site.lastCrawledAt)}, and again every week`
+                    ? `read ${when(site.lastCrawledAt)} · reads itself again every week (next about ${day(nextRead(site.lastCrawledAt))})`
                     : "not read yet"}
             </p>
           </div>
@@ -100,6 +118,18 @@ function Website({ site, canEdit }: { site: WebsiteRow; canEdit: boolean }) {
         </div>
       </div>
 
+      {canEdit && site.status !== "failed" ? (
+        <p className="text-sm text-muted-foreground">
+          Changed the agenda or another page on the website? Press <b>Read again now</b> and Billie
+          reads every page again. It takes a few minutes, and pages that haven&apos;t changed cost
+          nothing.
+          {changed
+            ? ` ${plural(changed, "page has", "pages have")} changed in the last week.`
+            : site.lastCrawledAt && site.status === "ready" && !reading
+              ? " Nothing has changed in the last week."
+              : ""}
+        </p>
+      ) : null}
       {site.status === "failed" ? <Note tone="bad">{site.note}</Note> : null}
       {site.status === "ready" && site.note ? (
         <p className="text-sm text-muted-foreground">Found {site.note}</p>
@@ -157,6 +187,8 @@ function Website({ site, canEdit }: { site: WebsiteRow; canEdit: boolean }) {
                   <span className="text-bad">{p.error ?? "Couldn't be read."}</span>
                 ) : p.status !== "ready" ? (
                   <span className="text-muted-foreground">Reading…</span>
+                ) : changedLately(p.changedAt, now) ? (
+                  <span className="font-semibold text-good">Changed {day(p.changedAt!)}</span>
                 ) : null}
               </li>
             ))}

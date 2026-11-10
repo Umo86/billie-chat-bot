@@ -116,6 +116,12 @@ function SourceItem({
           {s.kind === "web" && s.url ? ` · ${s.url}` : ""}
           {s.addedBy ? ` · added by ${s.addedBy}` : ""} · {when(s.createdAt)}
         </p>
+        {s.kind === "web" && s.lastReadAt ? (
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Last read {when(s.lastReadAt)}
+            {s.changedAt ? ` · last changed ${when(s.changedAt)}` : ""}
+          </p>
+        ) : null}
         {s.status === "failed" && s.error ? (
           <p className="mt-1 text-sm text-bad">{s.error}</p>
         ) : null}
@@ -130,7 +136,7 @@ function SourceItem({
         ) : (
           <Chip tone="info">Learning…</Chip>
         )}
-        {s.kind === "web" && s.refreshWeekly ? <Chip>Checked weekly</Chip> : null}
+        {s.kind === "web" && s.refreshWeekly ? <Chip>Read again weekly</Chip> : null}
         {s.status === "ready" ? (
           <Button size="sm" variant="ghost" onClick={onView}>
             <Eye /> View
@@ -154,7 +160,7 @@ function SourceItem({
             disabled={pending || ((s.status === "queued" || s.status === "reading") && !s.stuck)}
             onClick={() => run(() => rereadAction({ id: s.id }))}
           >
-            <RotateCw /> {s.status === "failed" ? "Try again" : "Read again"}
+            <RotateCw /> {s.status === "failed" ? "Try again" : "Read again now"}
           </Button>
         ) : null}
         {canEdit ? (

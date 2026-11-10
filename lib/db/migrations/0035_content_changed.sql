@@ -1,0 +1,1 @@
+ALTER TABLE "sources" ADD COLUMN "content_changed_at" timestamp with time zone;

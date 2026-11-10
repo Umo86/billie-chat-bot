@@ -7,6 +7,7 @@ import {
   addWebsite,
   crawlWebsite,
   queueWebsiteRecrawls,
+  recrawlWebsite,
   removeWebsite,
   websitesFor,
 } from "@/lib/knowledge/websites";
@@ -55,6 +56,58 @@ async function pagesOf(websiteId: string) {
 }
 
 describe.skipIf(!hasDb)("whole websites (Postgres, stand-in web)", () => {
+  it("“Read again now” picks up a changed agenda the same day, and says which page changed", async () => {
+    const admin = await makeUser("admin");
+    const { bot, kb } = await makeBot({ name: "Agenda Bot" });
+    const site = `https://www.agenda-${randomUUID().slice(0, 6)}.test`;
+    // No dates in the sitemap: nothing tells Billie which page changed.
+    web.set(`${site}/sitemap.xml`, sitemap([`${site}/`, `${site}/agenda`]));
+    web.set(`${site}/`, html("The Show", "Two days of talks at ExCeL London."));
+    web.set(`${site}/agenda`, html("Agenda", "The keynote is at 10:00 on the Main Stage."));
+    const id = await addWebsite(admin, kb.id, { url: `${site}/`, leaveOut: [], maxPages: 20 });
+    await crawlWebsite(id);
+    for (const p of await pagesOf(id)) await ingestSource(p.id);
+    const ids = (await answerBotFor((await botById(bot.id))!)).knowledgeBaseIds;
+    expect((await retrieve(ids, "When is the keynote?")).map((f) => f.text).join(" ")).toContain(
+      "10:00",
+    );
+    let [row] = await websitesFor(kb.id);
+    expect(row.pages.every((p) => p.lastReadAt && !p.changedAt)).toBe(true);
+
+    // The agenda moves an hour later. The weekly look isn't due, so it would leave the page alone.
+    web.set(`${site}/agenda`, html("Agenda", "The keynote is at 11:00 on the Main Stage."));
+    const pages = await pagesOf(id);
+    const queuedFor = async (sourceId: string) =>
+      (
+        await db
+          .select()
+          .from(jobs)
+          .where(and(eq(jobs.dedupeKey, `ingest:${sourceId}`), eq(jobs.status, "queued")))
+      ).length;
+    await db.delete(jobs).where(like(jobs.dedupeKey, "ingest:%"));
+    await crawlWebsite(id);
+    for (const p of pages) expect(await queuedFor(p.id)).toBe(0);
+
+    // The admin presses "Read again now": every page is read again.
+    await recrawlWebsite(admin, id);
+    const [job] = await db
+      .select()
+      .from(jobs)
+      .where(eq(jobs.dedupeKey, `crawl:${id}:all`));
+    expect(job.payload).toMatchObject({ websiteId: id, all: true });
+    await crawlWebsite(id, new Date(), { all: true });
+    for (const p of pages) expect(await queuedFor(p.id)).toBe(1);
+    for (const p of pages) await ingestSource(p.id);
+    const after = (await retrieve(ids, "When is the keynote?")).map((f) => f.text).join(" ");
+    expect(after).toContain("11:00");
+    expect(after).not.toContain("10:00");
+    // Only the agenda is marked as changed; the home page was read and found the same.
+    [row] = await websitesFor(kb.id);
+    const byUrl = Object.fromEntries(row.pages.map((p) => [p.url, p]));
+    expect(byUrl[`${site}/agenda`].changedAt).toBeTruthy();
+    expect(byUrl[`${site}/`].changedAt).toBeNull();
+  });
+
   it("reads the pages in the sitemap robots.txt names, and keeps them up to date", async () => {
     const admin = await makeUser("admin");
     const { bot, kb } = await makeBot({ name: "Website Bot" });

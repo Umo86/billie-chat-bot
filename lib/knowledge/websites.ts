@@ -130,7 +130,13 @@ export async function recrawlWebsite(actor: Actor, id: string): Promise<void> {
       action: "update",
       summary: `Asked Billie to read ${row.host} again`,
     });
-    await enqueue("crawl_website", { websiteId: id }, { tx, dedupeKey: `crawl:${id}` });
+    // "Read again now" reads every page, not just those the sitemap says changed: an
+    // agenda can change without its date moving. Unchanged pages cost nothing to re-read.
+    await enqueue(
+      "crawl_website",
+      { websiteId: id, all: true },
+      { tx, dedupeKey: `crawl:${id}:all` },
+    );
   });
   await kickJobs({ long: true });
 }
@@ -217,7 +223,11 @@ async function discover(site: { url: string; host: string }) {
 }
 
 /** The "crawl_website" job. */
-export async function crawlWebsite(websiteId: string, now = new Date()): Promise<void> {
+export async function crawlWebsite(
+  websiteId: string,
+  now = new Date(),
+  opts: { all?: boolean } = {},
+): Promise<void> {
   const site = await db.query.websites.findFirst({
     where: and(eq(websites.id, websiteId), isNull(websites.deletedAt)),
   });
@@ -295,7 +305,7 @@ export async function crawlWebsite(websiteId: string, now = new Date()): Promise
       const changed =
         p.lastmod && had.lastReadAt && Date.parse(p.lastmod) > had.lastReadAt.getTime();
       const stale = !had.lastReadAt || now.getTime() - had.lastReadAt.getTime() >= WEEK;
-      if (changed || stale || had.status === "failed") {
+      if (opts.all || changed || stale || had.status === "failed") {
         await enqueue(
           "ingest_source",
           { sourceId: had.id },
@@ -347,6 +357,9 @@ export type WebsitePage = {
   url: string;
   status: "queued" | "reading" | "ready" | "failed";
   error: string | null;
+  lastReadAt: string | null;
+  /** When a read last found the page's words had changed. */
+  changedAt: string | null;
 };
 
 export type WebsiteRow = {
@@ -377,6 +390,8 @@ export async function websitesFor(kbId: string): Promise<WebsiteRow[]> {
       url: sources.url,
       status: sources.status,
       error: sources.error,
+      lastReadAt: sources.lastReadAt,
+      contentChangedAt: sources.contentChangedAt,
     })
     .from(sources)
     .where(
@@ -406,6 +421,8 @@ export async function websitesFor(kbId: string): Promise<WebsiteRow[]> {
         url: p.url ?? "",
         status: p.status,
         error: p.error,
+        lastReadAt: p.lastReadAt?.toISOString() ?? null,
+        changedAt: p.contentChangedAt?.toISOString() ?? null,
       })),
   }));
 }

@@ -167,7 +167,7 @@ export async function recrawlWebsiteAction(input: unknown) {
       await recrawlWebsite(actor, d.id);
       refresh();
     },
-    "Billie is reading the website again.",
+    "Billie is reading every page again. This takes a few minutes.",
   );
 }
 

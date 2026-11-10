@@ -119,7 +119,9 @@ const handlers: Handlers = {
     });
   },
   crawl_website: async (p) => {
-    await (await import("@/lib/knowledge/websites")).crawlWebsite(String(p.websiteId));
+    await (
+      await import("@/lib/knowledge/websites")
+    ).crawlWebsite(String(p.websiteId), new Date(), { all: p.all === true });
   },
   retention: async () => {
     await (await import("@/lib/privacy/retention")).runRetention();

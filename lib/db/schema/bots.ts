@@ -325,6 +325,8 @@ export const sources = pgTable(
     chars: integer("chars").notNull().default(0),
     passageCount: integer("passage_count").notNull().default(0),
     lastReadAt: timestamp("last_read_at", { withTimezone: true }),
+    /** When a read last found different words (a web page's agenda changed, say). */
+    contentChangedAt: timestamp("content_changed_at", { withTimezone: true }),
     addedBy: uuid("added_by").references(() => users.id, { onDelete: "set null" }),
     ...timestamps,
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
